@@ -11,11 +11,12 @@ Streamlit Cloud):
     SUPABASE_ANON_KEY = "..."
     OPENAI_API_KEY    = "sk-..."   # embeddings + chat model
 
-Expects a Supabase table `mensajes` with columns:
+Expects a Supabase table `mensajes` (see supabase_schema.sql) with columns:
     user_id (uuid), thread_id (text), rol (text), contenido (text),
     created_at (timestamptz)
 and RLS allowing each user to read/insert their own rows
-(`auth.uid() = user_id`).
+(`auth.uid() = user_id`). If the table is missing the chat still works,
+history just is not persisted.
 """
 
 import sqlite_fix  # noqa: F401  # must precede any chromadb import
@@ -75,41 +76,49 @@ def require_login(supabase):
 
 
 def load_history(supabase, user_id):
-    """Past messages for this user, oldest first."""
+    """Past messages for this user, oldest first. [] if persistence is down."""
 
-    rows = (
-        supabase.table("mensajes")
-        .select("rol, contenido, created_at")
-        .eq("user_id", user_id)
-        .order("created_at")
-        .execute()
-        .data
-    )
+    try:
+        rows = (
+            supabase.table("mensajes")
+            .select("rol, contenido, created_at")
+            .eq("user_id", user_id)
+            .order("created_at")
+            .execute()
+            .data
+        )
+    except Exception as exc:  # noqa: BLE001 - persistence is best-effort
+        st.session_state.persistence_error = str(exc)
+        return []
+    st.session_state.pop("persistence_error", None)
     return [{"role": row["rol"], "content": row["contenido"]} for row in rows]
 
 
 def save_exchange(supabase, user_id, thread_id, question, answer):
-    """Persist the user question and the agent answer as two rows."""
+    """Persist the question and answer as two rows. Best-effort: never raises."""
 
     now = datetime.now(timezone.utc).isoformat()
-    supabase.table("mensajes").insert(
-        [
-            {
-                "user_id": user_id,
-                "thread_id": thread_id,
-                "rol": "user",
-                "contenido": question,
-                "created_at": now,
-            },
-            {
-                "user_id": user_id,
-                "thread_id": thread_id,
-                "rol": "assistant",
-                "contenido": answer,
-                "created_at": now,
-            },
-        ]
-    ).execute()
+    rows = [
+        {
+            "user_id": user_id,
+            "thread_id": thread_id,
+            "rol": "user",
+            "contenido": question,
+            "created_at": now,
+        },
+        {
+            "user_id": user_id,
+            "thread_id": thread_id,
+            "rol": "assistant",
+            "contenido": answer,
+            "created_at": now,
+        },
+    ]
+    try:
+        supabase.table("mensajes").insert(rows).execute()
+    except Exception as exc:  # noqa: BLE001 - persistence is best-effort
+        st.session_state.persistence_error = str(exc)
+        st.toast("⚠️ No se pudo guardar el historial en Supabase", icon="⚠️")
 
 
 def sidebar(supabase, user):
@@ -126,6 +135,14 @@ def sidebar(supabase, user):
         with st.expander("Diagnóstico"):
             key = "OPENAI_API_KEY"
             st.write(("✅ " if os.getenv(key) else "❌ ") + key)
+
+            persistence_error = st.session_state.get("persistence_error")
+            if persistence_error:
+                st.write("❌ tabla `mensajes` (historial no se guarda)")
+                st.caption(persistence_error)
+            else:
+                st.write("✅ historial (tabla `mensajes`)")
+
             if not CHROMA_DIR.exists():
                 st.write("❌ chroma_db/ no encontrado")
             else:
