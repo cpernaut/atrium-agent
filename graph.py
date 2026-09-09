@@ -3,8 +3,8 @@
 Pipeline: ``classify`` -> ``retrieve`` -> ``agente_obra``.
 
 - ``classify`` tags the last question as ``normativa``, ``diseno`` or ``general``.
-- ``retrieve`` returns retrieval context. For now it is a fixed stub string;
-  the real Chroma-backed retrieval will replace it later.
+- ``retrieve`` runs a real similarity search against the local Chroma store
+  (``chroma_db/``, built by ``ingest.py``) using the user's last question.
 - ``agente_obra`` calls Gemini (through LangChain) with the context + history.
 
 The graph is compiled with a ``MemorySaver`` checkpointer, so passing a
@@ -16,16 +16,23 @@ from operator import add
 from typing import Annotated, Literal, Optional, TypedDict
 
 from dotenv import load_dotenv
+from langchain_chroma import Chroma
+from langchain_core.documents import Document
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 
+from ingest import get_vector_store
+
 # Load GEMINI_API_KEY (and any other variables) from the local .env file.
 load_dotenv()
 
 Category = Literal["normativa", "diseno", "general"]
+
+# How many chunks similarity search pulls into the context.
+TOP_K = 4
 
 # Keyword buckets used by the (temporary) rule-based classifier.
 _NORMATIVA_KEYWORDS = (
@@ -97,29 +104,33 @@ def classify(state: ObraState) -> ObraState:
     return {"category": category}
 
 
-def retrieve(state: ObraState) -> ObraState:
-    """Return retrieval context.
-
-    Stub implementation: a fixed test string. Will be replaced by a real
-    Chroma similarity search.
-    """
-
-    category = state.get("category", "general")
-    context = (
-        "[CONTEXTO DE PRUEBA] Fragmento normativo de ejemplo "
-        f"(categoría: {category}). La altura máxima permitida en una vivienda "
-        "unifamiliar en zona residencial es de 9 metros, equivalente a planta "
-        "baja más dos niveles."
-    )
-    return {"context": context}
+def _format_context(docs: list[Document]) -> str:
+    if not docs:
+        return "(no se encontraron fragmentos relevantes en la base de conocimiento)"
+    blocks = [
+        f"[{doc.metadata.get('source', '?')} — pág. {doc.metadata.get('page', '?')}]\n"
+        f"{doc.page_content}"
+        for doc in docs
+    ]
+    return "\n\n---\n\n".join(blocks)
 
 
-def build_graph(llm: Optional[BaseChatModel] = None) -> StateGraph:
+def build_graph(
+    llm: Optional[BaseChatModel] = None,
+    vector_store: Optional[Chroma] = None,
+) -> StateGraph:
     """Build the classify -> retrieve -> agente_obra graph.
 
-    Pass ``llm`` to inject a fake chat model in tests; when omitted, a real
-    Gemini client is created lazily inside the node.
+    Pass ``llm`` / ``vector_store`` to inject fakes in tests; when omitted, the
+    real Gemini client and the on-disk Chroma store are created lazily inside
+    the nodes.
     """
+
+    def retrieve(state: ObraState) -> ObraState:
+        store = vector_store or get_vector_store()
+        question = state["mensajes"][-1]
+        docs = store.similarity_search(question, k=TOP_K)
+        return {"context": _format_context(docs)}
 
     def agente_obra(state: ObraState) -> ObraState:
         model = llm or _create_llm()
@@ -133,7 +144,8 @@ def build_graph(llm: Optional[BaseChatModel] = None) -> StateGraph:
         )
         history = [HumanMessage(content=text) for text in state["mensajes"]]
         response = model.invoke([system, *history])
-        return {"mensajes": [response.content]}
+        # .text flattens both plain-string and structured (list) content.
+        return {"mensajes": [response.text]}
 
     graph = StateGraph(ObraState)
     graph.add_node("classify", classify)

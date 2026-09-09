@@ -11,3 +11,7 @@ __pycache__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Tooling (auto-generated symlinks into .venv)
+.claude/
+.agents/

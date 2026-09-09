@@ -5,7 +5,9 @@ cryptography<49
 streamlit
 langgraph
 langchain-google-genai
+langchain-openai
 langchain-chroma
+langchain-text-splitters
 chromadb
 pypdf
 supabase

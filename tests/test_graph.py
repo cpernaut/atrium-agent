@@ -6,6 +6,7 @@
 
 import itertools
 
+from langchain_core.documents import Document
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langgraph.checkpoint.memory import MemorySaver
 
@@ -14,10 +15,23 @@ from graph import build_graph
 FAKE_REPLY = "Respuesta de prueba del agente de obra."
 
 
+class _FakeVectorStore:
+    """Stand-in for Chroma so tests never hit the embeddings API."""
+
+    def similarity_search(self, query, k=4):
+        return [
+            Document(
+                page_content="La altura máxima permitida es de 9 metros.",
+                metadata={"source": "fake.pdf", "page": 1},
+            )
+        ]
+
+
 def _build_app():
     # cycle -> the fake model never runs out of canned replies.
     fake_llm = GenericFakeChatModel(messages=itertools.cycle([FAKE_REPLY]))
-    return build_graph(llm=fake_llm).compile(checkpointer=MemorySaver())
+    graph = build_graph(llm=fake_llm, vector_store=_FakeVectorStore())
+    return graph.compile(checkpointer=MemorySaver())
 
 
 def test_graph_returns_non_empty_answer():
