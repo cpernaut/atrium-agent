@@ -4,20 +4,29 @@ The graph lives in graph.py and is imported as-is. Run with:
 
     streamlit run app.py
 
-Needs secrets (`.streamlit/secrets.toml` locally, or the app's Secrets on
+Secrets (`.streamlit/secrets.toml` locally, or the app's Secrets on
 Streamlit Cloud):
 
-    APP_PASSWORD   = "your-password"
-    OPENAI_API_KEY = "sk-..."      # embeddings / retrieval
-    GEMINI_API_KEY = "..."         # chat model
+    SUPABASE_URL      = "https://xxxx.supabase.co"
+    SUPABASE_ANON_KEY = "..."
+    OPENAI_API_KEY    = "sk-..."   # embeddings / retrieval
+    GEMINI_API_KEY    = "..."      # chat model
+
+Expects a Supabase table `mensajes` with columns:
+    user_id (uuid), thread_id (text), rol (text), contenido (text),
+    created_at (timestamptz)
+and RLS allowing each user to read/insert their own rows
+(`auth.uid() = user_id`).
 """
 
 import sqlite_fix  # noqa: F401  # must precede any chromadb import
 
 import os
 import uuid
+from datetime import datetime, timezone
 
 import streamlit as st
+from supabase import AuthApiError, create_client
 
 from graph import build_graph
 from ingest import CHROMA_DIR, COLLECTION_NAME, get_vector_store
@@ -26,71 +35,121 @@ from langgraph.checkpoint.memory import MemorySaver
 st.set_page_config(page_title="Atrium Agent", page_icon="🏗️")
 
 
-def require_password() -> None:
-    """Gate the app behind st.secrets['APP_PASSWORD']."""
+def get_supabase():
+    """One Supabase client per browser session (it holds the auth session)."""
 
-    if st.session_state.get("authenticated"):
-        return
-
-    try:
-        expected = st.secrets["APP_PASSWORD"]
-    except (KeyError, FileNotFoundError):
-        st.error(
-            "Falta APP_PASSWORD en los secrets. "
-            'Agregá: APP_PASSWORD = "tu-clave"'
-        )
-        st.stop()
-
-    password = st.text_input("Contraseña", type="password")
-    if not password:
-        st.stop()
-    if password != expected:
-        st.error("Contraseña incorrecta.")
-        st.stop()
-
-    st.session_state.authenticated = True
-    st.rerun()
-
-
-def get_graph():
-    """Compile the graph once per session; reuse it across reruns."""
-
-    if "graph" not in st.session_state:
-        st.session_state.graph = build_graph().compile(checkpointer=MemorySaver())
-        st.session_state.thread_id = str(uuid.uuid4())
-        st.session_state.history = []
-    return st.session_state.graph
-
-
-def diagnostics() -> None:
-    """Sidebar panel to sanity-check the deployment (keys, vector store)."""
-
-    with st.sidebar:
-        st.subheader("Diagnóstico")
-
-        for key in ("OPENAI_API_KEY", "GEMINI_API_KEY"):
-            ok = bool(os.getenv(key))
-            st.write(("✅ " if ok else "❌ ") + key)
-
-        if not CHROMA_DIR.exists():
-            st.write("❌ chroma_db/ no encontrado")
-            return
-
+    if "supabase" not in st.session_state:
         try:
-            count = get_vector_store()._collection.count()
-            st.write(f"✅ colección `{COLLECTION_NAME}`: {count} chunks")
-        except Exception as exc:  # noqa: BLE001 - surface whatever went wrong
-            st.write("❌ no se pudo abrir el vector store")
-            st.exception(exc)
+            url = st.secrets["SUPABASE_URL"]
+            anon_key = st.secrets["SUPABASE_ANON_KEY"]
+        except (KeyError, FileNotFoundError):
+            st.error("Faltan SUPABASE_URL / SUPABASE_ANON_KEY en los secrets.")
+            st.stop()
+        st.session_state.supabase = create_client(url, anon_key)
+    return st.session_state.supabase
 
 
-require_password()
+def require_login(supabase):
+    """Show the login form until the user is authenticated."""
+
+    if st.session_state.get("user"):
+        return st.session_state.user
+
+    st.title("🏗️ Atrium Agent")
+    with st.form("login"):
+        email = st.text_input("Email")
+        password = st.text_input("Contraseña", type="password")
+        submitted = st.form_submit_button("Ingresar")
+
+    if submitted:
+        try:
+            result = supabase.auth.sign_in_with_password(
+                {"email": email, "password": password}
+            )
+        except AuthApiError as exc:
+            st.error(f"No se pudo iniciar sesión: {exc}")
+            st.stop()
+        st.session_state.user = result.user
+        st.rerun()
+
+    st.stop()
+
+
+def load_history(supabase, user_id):
+    """Past messages for this user, oldest first."""
+
+    rows = (
+        supabase.table("mensajes")
+        .select("rol, contenido, created_at")
+        .eq("user_id", user_id)
+        .order("created_at")
+        .execute()
+        .data
+    )
+    return [{"role": row["rol"], "content": row["contenido"]} for row in rows]
+
+
+def save_exchange(supabase, user_id, thread_id, question, answer):
+    """Persist the user question and the agent answer as two rows."""
+
+    now = datetime.now(timezone.utc).isoformat()
+    supabase.table("mensajes").insert(
+        [
+            {
+                "user_id": user_id,
+                "thread_id": thread_id,
+                "rol": "user",
+                "contenido": question,
+                "created_at": now,
+            },
+            {
+                "user_id": user_id,
+                "thread_id": thread_id,
+                "rol": "assistant",
+                "contenido": answer,
+                "created_at": now,
+            },
+        ]
+    ).execute()
+
+
+def sidebar(supabase, user):
+    with st.sidebar:
+        st.write(f"👤 {user.email}")
+        if st.button("Cerrar sesión"):
+            try:
+                supabase.auth.sign_out()
+            except Exception:  # noqa: BLE001 - logging out locally regardless
+                pass
+            st.session_state.clear()
+            st.rerun()
+
+        with st.expander("Diagnóstico"):
+            for key in ("OPENAI_API_KEY", "GEMINI_API_KEY"):
+                st.write(("✅ " if os.getenv(key) else "❌ ") + key)
+            if not CHROMA_DIR.exists():
+                st.write("❌ chroma_db/ no encontrado")
+            else:
+                try:
+                    count = get_vector_store()._collection.count()
+                    st.write(f"✅ colección `{COLLECTION_NAME}`: {count} chunks")
+                except Exception as exc:  # noqa: BLE001
+                    st.write("❌ no se pudo abrir el vector store")
+                    st.exception(exc)
+
+
+supabase = get_supabase()
+user = require_login(supabase)
+
+if "graph" not in st.session_state:
+    st.session_state.graph = build_graph().compile(checkpointer=MemorySaver())
+    st.session_state.thread_id = str(uuid.uuid4())
+    st.session_state.history = load_history(supabase, user.id)
+
+sidebar(supabase, user)
 
 st.title("🏗️ Atrium Agent")
 st.caption("Asistente de normativa de obra")
-
-diagnostics()
-graph = get_graph()
 
 for message in st.session_state.history:
     with st.chat_message(message["role"]):
@@ -107,11 +166,11 @@ if prompt := st.chat_input("Preguntá sobre normativa de obra…"):
     with st.chat_message("assistant"):
         with st.spinner("Pensando…"):
             try:
-                result = graph.invoke(
+                result = st.session_state.graph.invoke(
                     {"mensajes": [prompt]},
                     {"configurable": {"thread_id": st.session_state.thread_id}},
                 )
-            except Exception as exc:  # noqa: BLE001 - show the error instead of a blank reply
+            except Exception as exc:  # noqa: BLE001 - show the error, not a blank reply
                 st.exception(exc)
                 st.stop()
 
@@ -124,3 +183,4 @@ if prompt := st.chat_input("Preguntá sobre normativa de obra…"):
     st.session_state.history.append(
         {"role": "assistant", "content": answer, "context": context}
     )
+    save_exchange(supabase, user.id, st.session_state.thread_id, prompt, answer)
