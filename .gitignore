@@ -1,9 +1,6 @@
 # Entorno
 .env
 
-# Vector store
-chroma_db/
-
 # Python
 __pycache__/
 .venv/
