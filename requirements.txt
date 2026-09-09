@@ -1,0 +1,12 @@
+# cryptography >= 49 dejó de publicar wheel universal2/x86_64 para macOS Intel,
+# lo que forzaba compilar desde el source (necesita Rust + OpenSSL). 48.x sí trae wheel.
+cryptography<49
+
+streamlit
+langgraph
+langchain-google-genai
+langchain-chroma
+chromadb
+pypdf
+supabase
+python-dotenv

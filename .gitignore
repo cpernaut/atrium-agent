@@ -1,0 +1,13 @@
+# Entorno
+.env
+
+# Vector store
+chroma_db/
+
+# Python
+__pycache__/
+.venv/
+.pytest_cache/
+
+# Streamlit
+.streamlit/secrets.toml
