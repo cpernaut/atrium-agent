@@ -7,7 +7,6 @@ cryptography==48.0.1
 streamlit==1.63.0
 langgraph==1.2.11
 langchain-core==1.6.2
-langchain-google-genai==4.4.0
 langchain-openai==1.6.2
 langchain-chroma==1.1.0
 langchain-text-splitters==1.1.2

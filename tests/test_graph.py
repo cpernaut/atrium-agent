@@ -1,4 +1,4 @@
-"""Graph tests that use a fake chat model instead of the real Gemini API.
+"""Graph tests that use a fake chat model instead of a real LLM API.
 
 ``GenericFakeChatModel`` lives in ``langchain_core.language_models.fake_chat_models``
 (and is re-exported from ``langchain_core.language_models``).

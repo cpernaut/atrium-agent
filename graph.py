@@ -5,7 +5,8 @@ Pipeline: ``classify`` -> ``retrieve`` -> ``agente_obra``.
 - ``classify`` tags the last question as ``normativa``, ``diseno`` or ``general``.
 - ``retrieve`` runs a real similarity search against the local Chroma store
   (``chroma_db/``, built by ``ingest.py``) using the user's last question.
-- ``agente_obra`` calls Gemini (through LangChain) with the context + history.
+- ``agente_obra`` calls the OpenAI chat model (through LangChain) with the
+  context + history.
 
 The graph is compiled with a ``MemorySaver`` checkpointer, so passing a
 ``thread_id`` in the config keeps the conversation history across invocations.
@@ -22,18 +23,19 @@ from langchain_chroma import Chroma
 from langchain_core.documents import Document
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_openai import ChatOpenAI
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 
 from ingest import get_vector_store
 
-# Load GEMINI_API_KEY (and any other variables) from the local .env file.
+# Load OPENAI_API_KEY (and any other variables) from the local .env file.
 load_dotenv()
 
 Category = Literal["normativa", "diseno", "general"]
 
-# How many chunks similarity search pulls into the context.
+# Chat model and how many chunks similarity search pulls into the context.
+CHAT_MODEL = "gpt-5-mini"
 TOP_K = 4
 
 # Keyword buckets used by the (temporary) rule-based classifier.
@@ -82,15 +84,13 @@ class ObraState(TypedDict):
     context: str
 
 
-def _create_llm() -> ChatGoogleGenerativeAI:
-    api_key = os.getenv("GEMINI_API_KEY")
+def _create_llm() -> ChatOpenAI:
+    api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
         raise RuntimeError(
-            "GEMINI_API_KEY is missing. Set it in a local .env file."
+            "OPENAI_API_KEY is missing. Set it in a local .env file."
         )
-    return ChatGoogleGenerativeAI(
-        model="models/gemini-3.6-flash", google_api_key=api_key
-    )
+    return ChatOpenAI(model=CHAT_MODEL, api_key=api_key, temperature=0)
 
 
 def classify(state: ObraState) -> ObraState:
@@ -124,7 +124,7 @@ def build_graph(
     """Build the classify -> retrieve -> agente_obra graph.
 
     Pass ``llm`` / ``vector_store`` to inject fakes in tests; when omitted, the
-    real Gemini client and the on-disk Chroma store are created lazily inside
+    real OpenAI client and the on-disk Chroma store are created lazily inside
     the nodes.
     """
 

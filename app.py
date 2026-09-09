@@ -9,8 +9,7 @@ Streamlit Cloud):
 
     SUPABASE_URL      = "https://xxxx.supabase.co"
     SUPABASE_ANON_KEY = "..."
-    OPENAI_API_KEY    = "sk-..."   # embeddings / retrieval
-    GEMINI_API_KEY    = "..."      # chat model
+    OPENAI_API_KEY    = "sk-..."   # embeddings + chat model
 
 Expects a Supabase table `mensajes` with columns:
     user_id (uuid), thread_id (text), rol (text), contenido (text),
@@ -125,8 +124,8 @@ def sidebar(supabase, user):
             st.rerun()
 
         with st.expander("Diagnóstico"):
-            for key in ("OPENAI_API_KEY", "GEMINI_API_KEY"):
-                st.write(("✅ " if os.getenv(key) else "❌ ") + key)
+            key = "OPENAI_API_KEY"
+            st.write(("✅ " if os.getenv(key) else "❌ ") + key)
             if not CHROMA_DIR.exists():
                 st.write("❌ chroma_db/ no encontrado")
             else:

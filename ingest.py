@@ -36,15 +36,14 @@ ROOT_DIR = Path(__file__).parent
 DOCS_DIR = ROOT_DIR / "docs"
 CHROMA_DIR = ROOT_DIR / "chroma_db"
 COLLECTION_NAME = "obra"
-# Embeddings run on OpenAI (OPENAI_API_KEY). The Gemini free-tier embedding
-# quota was too small for these documents; the chat model stays on Gemini.
+# Embeddings run on OpenAI (OPENAI_API_KEY), same key as the chat model.
 EMBEDDING_MODEL = "text-embedding-3-small"
 
 CHUNK_SIZE = 1000
 CHUNK_OVERLAP = 150
 
-# Chunks per embedding request (Gemini caps a batch at 100), plus retry
-# settings for the per-minute rate limit.
+# Chunks per embedding request (OpenAI caps a batch at ~2048 inputs; 100
+# keeps requests small), plus retry settings for the per-minute rate limit.
 EMBED_BATCH_SIZE = 100
 MAX_RETRIES = 5
 
