@@ -4,17 +4,23 @@ The graph lives in graph.py and is imported as-is. Run with:
 
     streamlit run app.py
 
-Needs a `.streamlit/secrets.toml` with:
+Needs secrets (`.streamlit/secrets.toml` locally, or the app's Secrets on
+Streamlit Cloud):
 
-    APP_PASSWORD = "your-password"
+    APP_PASSWORD   = "your-password"
+    OPENAI_API_KEY = "sk-..."      # embeddings / retrieval
+    GEMINI_API_KEY = "..."         # chat model
 """
 
+import sqlite_fix  # noqa: F401  # must precede any chromadb import
+
+import os
 import uuid
 
 import streamlit as st
 
 from graph import build_graph
-from ingest import CHROMA_DIR
+from ingest import CHROMA_DIR, COLLECTION_NAME, get_vector_store
 from langgraph.checkpoint.memory import MemorySaver
 
 st.set_page_config(page_title="Atrium Agent", page_icon="🏗️")
@@ -30,7 +36,7 @@ def require_password() -> None:
         expected = st.secrets["APP_PASSWORD"]
     except (KeyError, FileNotFoundError):
         st.error(
-            "Falta APP_PASSWORD en `.streamlit/secrets.toml`. "
+            "Falta APP_PASSWORD en los secrets. "
             'Agregá: APP_PASSWORD = "tu-clave"'
         )
         st.stop()
@@ -56,19 +62,42 @@ def get_graph():
     return st.session_state.graph
 
 
+def diagnostics() -> None:
+    """Sidebar panel to sanity-check the deployment (keys, vector store)."""
+
+    with st.sidebar:
+        st.subheader("Diagnóstico")
+
+        for key in ("OPENAI_API_KEY", "GEMINI_API_KEY"):
+            ok = bool(os.getenv(key))
+            st.write(("✅ " if ok else "❌ ") + key)
+
+        if not CHROMA_DIR.exists():
+            st.write("❌ chroma_db/ no encontrado")
+            return
+
+        try:
+            count = get_vector_store()._collection.count()
+            st.write(f"✅ colección `{COLLECTION_NAME}`: {count} chunks")
+        except Exception as exc:  # noqa: BLE001 - surface whatever went wrong
+            st.write("❌ no se pudo abrir el vector store")
+            st.exception(exc)
+
+
 require_password()
 
 st.title("🏗️ Atrium Agent")
 st.caption("Asistente de normativa de obra")
 
-if not CHROMA_DIR.exists():
-    st.warning("No se encontró `chroma_db/`. Corré `python ingest.py` primero.")
-
+diagnostics()
 graph = get_graph()
 
 for message in st.session_state.history:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
+        if message.get("context"):
+            with st.expander("📄 Contexto recuperado"):
+                st.markdown(message["context"])
 
 if prompt := st.chat_input("Preguntá sobre normativa de obra…"):
     st.session_state.history.append({"role": "user", "content": prompt})
@@ -77,11 +106,21 @@ if prompt := st.chat_input("Preguntá sobre normativa de obra…"):
 
     with st.chat_message("assistant"):
         with st.spinner("Pensando…"):
-            result = graph.invoke(
-                {"mensajes": [prompt]},
-                {"configurable": {"thread_id": st.session_state.thread_id}},
-            )
-        answer = result["mensajes"][-1]
-        st.markdown(answer)
+            try:
+                result = graph.invoke(
+                    {"mensajes": [prompt]},
+                    {"configurable": {"thread_id": st.session_state.thread_id}},
+                )
+            except Exception as exc:  # noqa: BLE001 - show the error instead of a blank reply
+                st.exception(exc)
+                st.stop()
 
-    st.session_state.history.append({"role": "assistant", "content": answer})
+        answer = result["mensajes"][-1]
+        context = result.get("context", "")
+        st.markdown(answer)
+        with st.expander("📄 Contexto recuperado"):
+            st.markdown(context or "_(vacío)_")
+
+    st.session_state.history.append(
+        {"role": "assistant", "content": answer, "context": context}
+    )

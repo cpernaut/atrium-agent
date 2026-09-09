@@ -11,6 +11,8 @@ The graph is compiled with a ``MemorySaver`` checkpointer, so passing a
 ``thread_id`` in the config keeps the conversation history across invocations.
 """
 
+import sqlite_fix  # noqa: F401  # must precede any chromadb import
+
 import os
 from operator import add
 from typing import Annotated, Literal, Optional, TypedDict

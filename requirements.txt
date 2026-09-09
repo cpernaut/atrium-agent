@@ -1,14 +1,22 @@
-# cryptography >= 49 dejó de publicar wheel universal2/x86_64 para macOS Intel,
-# lo que forzaba compilar desde el source (necesita Rust + OpenSSL). 48.x sí trae wheel.
-cryptography<49
+# Versions pinned to what was tested locally so Streamlit Cloud reproduces it.
 
-streamlit
-langgraph
-langchain-google-genai
-langchain-openai
-langchain-chroma
-langchain-text-splitters
-chromadb
-pypdf
-supabase
-python-dotenv
+# cryptography >= 49 dropped the universal2/x86_64 macOS wheel (would force a
+# source build needing Rust + OpenSSL); 48.x still ships one.
+cryptography==48.0.1
+
+streamlit==1.63.0
+langgraph==1.2.11
+langchain-core==1.6.2
+langchain-google-genai==4.4.0
+langchain-openai==1.6.2
+langchain-chroma==1.1.0
+langchain-text-splitters==1.1.2
+chromadb==1.5.9
+pypdf==6.18.0
+supabase==2.31.0
+python-dotenv==1.2.3
+
+# Streamlit Community Cloud ships a system sqlite3 older than chromadb's
+# minimum (>= 3.35). Linux-only: there are no macOS wheels, and local dev
+# already has a recent sqlite3. See sqlite_fix.py.
+pysqlite3-binary==0.5.4.post2; platform_system == "Linux"

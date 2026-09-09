@@ -15,6 +15,8 @@ content, so on each run the script:
 Running it twice never duplicates documents.
 """
 
+import sqlite_fix  # noqa: F401  # must precede any chromadb import
+
 import hashlib
 import os
 import re
