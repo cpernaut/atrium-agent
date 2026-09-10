@@ -17,15 +17,30 @@ Expects a Supabase table `mensajes` (see supabase_schema.sql) with columns:
 and RLS allowing each user to read/insert their own rows
 (`auth.uid() = user_id`). If the table is missing the chat still works,
 history just is not persisted.
+
+Optional LangSmith tracing: set LANGCHAIN_TRACING_V2, LANGCHAIN_API_KEY and
+LANGCHAIN_PROJECT in the secrets and they are copied into the environment
+below, before the graph is imported.
 """
 
 import sqlite_fix  # noqa: F401  # must precede any chromadb import
 
 import os
+
+import streamlit as st
+
+# Copy LangSmith config from secrets to the env the LangChain stack reads,
+# before graph.py is imported. Optional: missing keys (or no secrets file at
+# all) are silently skipped.
+for _key in ("LANGCHAIN_TRACING_V2", "LANGCHAIN_API_KEY", "LANGCHAIN_PROJECT"):
+    try:
+        os.environ[_key] = str(st.secrets[_key])
+    except Exception:  # noqa: BLE001 - key absent or secrets not configured yet
+        pass
+
 import uuid
 from datetime import datetime, timezone
 
-import streamlit as st
 from supabase import AuthApiError, create_client
 
 from graph import build_graph
