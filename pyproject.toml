@@ -1,8 +1,6 @@
-[project]
-name = "atrium-agent"
-version = "0.2.0"
-description = "RAG assistant over Argentine building codes (LangGraph + Streamlit + Supabase)"
-requires-python = ">=3.11"
+# Tooling config only. No [project] table on purpose: the app is deployed by
+# installing requirements.txt, not as an installable package, and a stray
+# [project] can confuse Streamlit Cloud's dependency detection.
 
 [tool.ruff]
 line-length = 100
