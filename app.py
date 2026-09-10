@@ -57,15 +57,30 @@ except Exception:  # noqa: BLE001
     pass
 
 import uuid
+from contextlib import nullcontext
 from datetime import datetime, timezone
 
 from supabase import AuthApiError, create_client
 
 from graph import build_graph
 from ingest import CHROMA_DIR, COLLECTION_NAME, get_vector_store
+from langchain_core.tracers.context import tracing_v2_enabled
 from langgraph.checkpoint.memory import MemorySaver
 
 st.set_page_config(page_title="Atrium Agent", page_icon="🏗️")
+
+LANGSMITH_PROJECT = os.getenv("LANGSMITH_PROJECT") or os.getenv("LANGCHAIN_PROJECT")
+LANGSMITH_ON = bool(
+    os.getenv("LANGSMITH_API_KEY") or os.getenv("LANGCHAIN_API_KEY")
+) and any(
+    os.getenv(v, "").lower() == "true"
+    for v in (
+        "LANGSMITH_TRACING",
+        "LANGSMITH_TRACING_V2",
+        "LANGCHAIN_TRACING_V2",
+        "LANGCHAIN_TRACING",
+    )
+)
 
 
 def get_supabase():
@@ -154,6 +169,26 @@ def save_exchange(supabase, user_id, thread_id, question, answer):
         st.toast("⚠️ No se pudo guardar el historial en Supabase", icon="⚠️")
 
 
+def _check_langsmith():
+    """Hit the LangSmith API with the configured key / endpoint and report."""
+
+    try:
+        from langsmith import Client
+
+        client = Client()  # reads LANGSMITH_API_KEY / LANGSMITH_ENDPOINT from env
+        list(client.list_projects(limit=1))  # forces an authenticated request
+        endpoint = os.getenv("LANGSMITH_ENDPOINT", "https://api.smith.langchain.com")
+        st.success(f"Conecta OK ({endpoint})")
+        if LANGSMITH_PROJECT and not client.has_project(project_name=LANGSMITH_PROJECT):
+            st.warning(
+                f"La key funciona pero el proyecto `{LANGSMITH_PROJECT}` no existe "
+                "en este workspace todavía (se crea con el primer trace)."
+            )
+    except Exception as exc:  # noqa: BLE001 - report whatever the API said
+        st.error("La API de LangSmith rechazó la conexión:")
+        st.exception(exc)
+
+
 def sidebar(supabase, user):
     with st.sidebar:
         st.write(f"👤 {user.email}")
@@ -169,23 +204,10 @@ def sidebar(supabase, user):
             key = "OPENAI_API_KEY"
             st.write(("✅ " if os.getenv(key) else "❌ ") + key)
 
-            tracing_on = any(
-                os.getenv(v, "").lower() == "true"
-                for v in (
-                    "LANGSMITH_TRACING",
-                    "LANGSMITH_TRACING_V2",
-                    "LANGCHAIN_TRACING_V2",
-                    "LANGCHAIN_TRACING",
-                )
-            )
-            api_key = os.getenv("LANGSMITH_API_KEY") or os.getenv("LANGCHAIN_API_KEY")
-            project = (
-                os.getenv("LANGSMITH_PROJECT")
-                or os.getenv("LANGCHAIN_PROJECT")
-                or "default"
-            )
-            if tracing_on and api_key:
-                st.write(f"✅ LangSmith → `{project}`")
+            if LANGSMITH_ON:
+                st.write(f"✅ LangSmith → `{LANGSMITH_PROJECT or 'default'}`")
+                if st.button("Probar conexión LangSmith"):
+                    _check_langsmith()
             else:
                 st.write("➖ LangSmith tracing off")
 
@@ -233,12 +255,26 @@ if prompt := st.chat_input("Preguntá sobre normativa de obra…"):
         st.markdown(prompt)
 
     with st.chat_message("assistant"):
+        run_url = None
         with st.spinner("Pensando…"):
+            # Force tracing for this call (and grab a direct link) when
+            # LangSmith is configured; otherwise a plain no-op context.
+            tracer_ctx = (
+                tracing_v2_enabled(project_name=LANGSMITH_PROJECT)
+                if LANGSMITH_ON
+                else nullcontext()
+            )
             try:
-                result = st.session_state.graph.invoke(
-                    {"mensajes": [prompt]},
-                    {"configurable": {"thread_id": st.session_state.thread_id}},
-                )
+                with tracer_ctx as tracer:
+                    result = st.session_state.graph.invoke(
+                        {"mensajes": [prompt]},
+                        {"configurable": {"thread_id": st.session_state.thread_id}},
+                    )
+                    if tracer is not None:
+                        try:
+                            run_url = tracer.get_run_url()
+                        except Exception:  # noqa: BLE001 - link is best-effort
+                            run_url = None
             except Exception as exc:  # noqa: BLE001 - show the error, not a blank reply
                 st.exception(exc)
                 st.stop()
@@ -248,6 +284,8 @@ if prompt := st.chat_input("Preguntá sobre normativa de obra…"):
         st.markdown(answer)
         with st.expander("📄 Contexto recuperado"):
             st.markdown(context or "_(vacío)_")
+        if run_url:
+            st.caption(f"[🔎 Ver traza en LangSmith]({run_url})")
 
     st.session_state.history.append(
         {"role": "assistant", "content": answer, "context": context}
