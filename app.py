@@ -18,9 +18,10 @@ and RLS allowing each user to read/insert their own rows
 (`auth.uid() = user_id`). If the table is missing the chat still works,
 history just is not persisted.
 
-Optional LangSmith tracing: set LANGCHAIN_TRACING_V2, LANGCHAIN_API_KEY and
-LANGCHAIN_PROJECT in the secrets and they are copied into the environment
-below, before the graph is imported.
+Optional LangSmith tracing: put the LangSmith snippet in the secrets (any
+LANGSMITH_* / LANGCHAIN_* keys, e.g. LANGSMITH_TRACING, LANGSMITH_API_KEY,
+LANGSMITH_PROJECT) and they are copied into the environment below, before
+the graph is imported.
 """
 
 import sqlite_fix  # noqa: F401  # must precede any chromadb import
@@ -29,19 +30,31 @@ import os
 
 import streamlit as st
 
-# Copy LangSmith config from secrets to the env the LangChain stack reads,
-# before graph.py is imported. Optional: missing keys (or no secrets file at
-# all) are silently skipped.
-for _key in ("LANGCHAIN_TRACING_V2", "LANGCHAIN_API_KEY", "LANGCHAIN_PROJECT"):
-    try:
-        _value = str(st.secrets[_key]).strip()
-    except Exception:  # noqa: BLE001 - key absent or secrets not configured yet
-        continue
+# Copy every LANGSMITH_* / LANGCHAIN_* secret into the env the LangChain stack
+# reads, before graph.py is imported. Optional: with no secrets file, or none
+# of these keys, nothing happens.
+try:
+    _langsmith_keys = [
+        k
+        for k in st.secrets
+        if k.startswith(("LANGSMITH_", "LANGCHAIN_"))
+    ]
+except Exception:  # noqa: BLE001 - secrets not configured yet
+    _langsmith_keys = []
+for _key in _langsmith_keys:
+    _value = str(st.secrets[_key]).strip()
     # langsmith only treats the exact lowercase string "true" as "on", so a
     # TOML boolean (`true` -> "True") would silently disable tracing.
-    if _key == "LANGCHAIN_TRACING_V2":
+    if _key.endswith(("TRACING", "TRACING_V2")):
         _value = _value.lower()
     os.environ[_key] = _value
+
+try:  # the langsmith env lookup is lru_cached; drop a stale (pre-secrets) miss
+    from langsmith.utils import get_env_var as _ls_get_env_var
+
+    _ls_get_env_var.cache_clear()
+except Exception:  # noqa: BLE001
+    pass
 
 import uuid
 from datetime import datetime, timezone
@@ -156,13 +169,23 @@ def sidebar(supabase, user):
             key = "OPENAI_API_KEY"
             st.write(("✅ " if os.getenv(key) else "❌ ") + key)
 
-            if os.getenv("LANGCHAIN_TRACING_V2", "").lower() == "true" and os.getenv(
-                "LANGCHAIN_API_KEY"
-            ):
-                st.write(
-                    "✅ LangSmith → "
-                    f"`{os.getenv('LANGCHAIN_PROJECT', 'default')}`"
+            tracing_on = any(
+                os.getenv(v, "").lower() == "true"
+                for v in (
+                    "LANGSMITH_TRACING",
+                    "LANGSMITH_TRACING_V2",
+                    "LANGCHAIN_TRACING_V2",
+                    "LANGCHAIN_TRACING",
                 )
+            )
+            api_key = os.getenv("LANGSMITH_API_KEY") or os.getenv("LANGCHAIN_API_KEY")
+            project = (
+                os.getenv("LANGSMITH_PROJECT")
+                or os.getenv("LANGCHAIN_PROJECT")
+                or "default"
+            )
+            if tracing_on and api_key:
+                st.write(f"✅ LangSmith → `{project}`")
             else:
                 st.write("➖ LangSmith tracing off")
 
