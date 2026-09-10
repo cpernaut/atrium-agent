@@ -34,9 +34,14 @@ import streamlit as st
 # all) are silently skipped.
 for _key in ("LANGCHAIN_TRACING_V2", "LANGCHAIN_API_KEY", "LANGCHAIN_PROJECT"):
     try:
-        os.environ[_key] = str(st.secrets[_key])
+        _value = str(st.secrets[_key]).strip()
     except Exception:  # noqa: BLE001 - key absent or secrets not configured yet
-        pass
+        continue
+    # langsmith only treats the exact lowercase string "true" as "on", so a
+    # TOML boolean (`true` -> "True") would silently disable tracing.
+    if _key == "LANGCHAIN_TRACING_V2":
+        _value = _value.lower()
+    os.environ[_key] = _value
 
 import uuid
 from datetime import datetime, timezone
@@ -150,6 +155,16 @@ def sidebar(supabase, user):
         with st.expander("Diagnóstico"):
             key = "OPENAI_API_KEY"
             st.write(("✅ " if os.getenv(key) else "❌ ") + key)
+
+            if os.getenv("LANGCHAIN_TRACING_V2", "").lower() == "true" and os.getenv(
+                "LANGCHAIN_API_KEY"
+            ):
+                st.write(
+                    "✅ LangSmith → "
+                    f"`{os.getenv('LANGCHAIN_PROJECT', 'default')}`"
+                )
+            else:
+                st.write("➖ LangSmith tracing off")
 
             persistence_error = st.session_state.get("persistence_error")
             if persistence_error:
