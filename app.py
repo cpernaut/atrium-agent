@@ -1,105 +1,66 @@
-"""Streamlit chat UI for the obra assistant.
+"""Streamlit chat UI for the Atrium obra assistant.
 
-The graph lives in graph.py and is imported as-is. Run with:
+Run with ``streamlit run app.py``. All domain logic lives in the ``atrium``
+package; this module is only wiring and rendering.
 
-    streamlit run app.py
+Secrets (``.streamlit/secrets.toml`` locally, or the app's Secrets on
+Streamlit Cloud) — see ``.env.example`` for the full list:
 
-Secrets (`.streamlit/secrets.toml` locally, or the app's Secrets on
-Streamlit Cloud):
-
-    SUPABASE_URL      = "https://xxxx.supabase.co"
-    SUPABASE_ANON_KEY = "..."
-    OPENAI_API_KEY    = "sk-..."   # embeddings + chat model
-
-Expects a Supabase table `mensajes` (see supabase_schema.sql) with columns:
-    user_id (uuid), thread_id (text), rol (text), contenido (text),
-    created_at (timestamptz)
-and RLS allowing each user to read/insert their own rows
-(`auth.uid() = user_id`). If the table is missing the chat still works,
-history just is not persisted.
-
-Optional LangSmith tracing: put the LangSmith snippet in the secrets (any
-LANGSMITH_* / LANGCHAIN_* keys, e.g. LANGSMITH_TRACING, LANGSMITH_API_KEY,
-LANGSMITH_PROJECT) and they are copied into the environment below, before
-the graph is imported.
+    SUPABASE_URL, SUPABASE_ANON_KEY   # login + history
+    OPENAI_API_KEY                    # embeddings + chat model
+    LANGSMITH_TRACING, LANGSMITH_API_KEY, LANGSMITH_PROJECT   # optional tracing
 """
-
-import sqlite_fix  # noqa: F401  # must precede any chromadb import
-
-import os
 
 import streamlit as st
 
-# Copy every LANGSMITH_* / LANGCHAIN_* secret into the env the LangChain stack
-# reads, before graph.py is imported. Optional: with no secrets file, or none
-# of these keys, nothing happens.
+from atrium.config import apply_env
+
+# Bridge secrets into os.environ before importing anything that reads them
+# (LangChain / langsmith / OpenAI / Supabase clients).
 try:
-    _langsmith_keys = [
-        k
-        for k in st.secrets
-        if k.startswith(("LANGSMITH_", "LANGCHAIN_"))
-    ]
-except Exception:  # noqa: BLE001 - secrets not configured yet
-    _langsmith_keys = []
-for _key in _langsmith_keys:
-    _value = str(st.secrets[_key]).strip()
-    # langsmith only treats the exact lowercase string "true" as "on", so a
-    # TOML boolean (`true` -> "True") would silently disable tracing.
-    if _key.endswith(("TRACING", "TRACING_V2")):
-        _value = _value.lower()
-    os.environ[_key] = _value
+    _secrets = {key: st.secrets[key] for key in st.secrets}
+except Exception:  # noqa: BLE001 - no secrets file configured yet
+    _secrets = {}
+apply_env(_secrets)
 
-try:  # the langsmith env lookup is lru_cached; drop a stale (pre-secrets) miss
-    from langsmith.utils import get_env_var as _ls_get_env_var
+import uuid  # noqa: E402
 
-    _ls_get_env_var.cache_clear()
-except Exception:  # noqa: BLE001
-    pass
+from langgraph.checkpoint.memory import MemorySaver  # noqa: E402
+from supabase import AuthApiError  # noqa: E402
 
-import uuid
-from contextlib import nullcontext
-from datetime import datetime, timezone
+from atrium import auth, observability, persistence  # noqa: E402
+from atrium.config import ConfigError, settings  # noqa: E402
+from atrium.rag import build_graph  # noqa: E402
+from atrium.vectorstore import collection_size  # noqa: E402
 
-from supabase import AuthApiError, create_client
-
-from graph import build_graph
-from ingest import CHROMA_DIR, COLLECTION_NAME, get_vector_store
-from langchain_core.tracers.context import tracing_v2_enabled
-from langgraph.checkpoint.memory import MemorySaver
+observability.refresh_env_cache()
 
 st.set_page_config(page_title="Atrium Agent", page_icon="🏗️")
 
-LANGSMITH_PROJECT = os.getenv("LANGSMITH_PROJECT") or os.getenv("LANGCHAIN_PROJECT")
-LANGSMITH_ON = bool(
-    os.getenv("LANGSMITH_API_KEY") or os.getenv("LANGCHAIN_API_KEY")
-) and any(
-    os.getenv(v, "").lower() == "true"
-    for v in (
-        "LANGSMITH_TRACING",
-        "LANGSMITH_TRACING_V2",
-        "LANGCHAIN_TRACING_V2",
-        "LANGCHAIN_TRACING",
-    )
-)
 
-
+# --------------------------------------------------------------------------- #
+# Session resources
+# --------------------------------------------------------------------------- #
 def get_supabase():
-    """One Supabase client per browser session (it holds the auth session)."""
-
     if "supabase" not in st.session_state:
         try:
-            url = st.secrets["SUPABASE_URL"]
-            anon_key = st.secrets["SUPABASE_ANON_KEY"]
-        except (KeyError, FileNotFoundError):
-            st.error("Faltan SUPABASE_URL / SUPABASE_ANON_KEY en los secrets.")
+            st.session_state.supabase = auth.create_supabase()
+        except ConfigError as exc:
+            st.error(str(exc))
             st.stop()
-        st.session_state.supabase = create_client(url, anon_key)
     return st.session_state.supabase
 
 
-def require_login(supabase):
-    """Show the login form until the user is authenticated."""
+def get_graph():
+    if "graph" not in st.session_state:
+        st.session_state.graph = build_graph().compile(checkpointer=MemorySaver())
+    return st.session_state.graph
 
+
+# --------------------------------------------------------------------------- #
+# Auth
+# --------------------------------------------------------------------------- #
+def require_login(supabase):
     if st.session_state.get("user"):
         return st.session_state.user
 
@@ -111,145 +72,99 @@ def require_login(supabase):
 
     if submitted:
         try:
-            result = supabase.auth.sign_in_with_password(
-                {"email": email, "password": password}
-            )
+            st.session_state.user = auth.sign_in(supabase, email, password)
         except AuthApiError as exc:
             st.error(f"No se pudo iniciar sesión: {exc}")
             st.stop()
-        st.session_state.user = result.user
         st.rerun()
 
     st.stop()
 
 
-def load_history(supabase, user_id):
-    """Past messages for this user, oldest first. [] if persistence is down."""
-
+# --------------------------------------------------------------------------- #
+# History (Supabase-backed, best-effort)
+# --------------------------------------------------------------------------- #
+def load_history(supabase, user_id) -> list[dict]:
     try:
-        rows = (
-            supabase.table("mensajes")
-            .select("rol, contenido, created_at")
-            .eq("user_id", user_id)
-            .order("created_at")
-            .execute()
-            .data
-        )
-    except Exception as exc:  # noqa: BLE001 - persistence is best-effort
+        messages = persistence.load_history(supabase, user_id)
+    except persistence.PersistenceError as exc:
         st.session_state.persistence_error = str(exc)
         return []
     st.session_state.pop("persistence_error", None)
-    return [{"role": row["rol"], "content": row["contenido"]} for row in rows]
+    return [{"role": m.role, "content": m.content} for m in messages]
 
 
-def save_exchange(supabase, user_id, thread_id, question, answer):
-    """Persist the question and answer as two rows. Best-effort: never raises."""
-
-    now = datetime.now(timezone.utc).isoformat()
-    rows = [
-        {
-            "user_id": user_id,
-            "thread_id": thread_id,
-            "rol": "user",
-            "contenido": question,
-            "created_at": now,
-        },
-        {
-            "user_id": user_id,
-            "thread_id": thread_id,
-            "rol": "assistant",
-            "contenido": answer,
-            "created_at": now,
-        },
-    ]
+def save_exchange(supabase, user_id, thread_id, question, answer) -> None:
     try:
-        supabase.table("mensajes").insert(rows).execute()
-    except Exception as exc:  # noqa: BLE001 - persistence is best-effort
+        persistence.save_exchange(supabase, user_id, thread_id, question, answer)
+    except persistence.PersistenceError as exc:
         st.session_state.persistence_error = str(exc)
         st.toast("⚠️ No se pudo guardar el historial en Supabase", icon="⚠️")
 
 
-def _check_langsmith():
-    """Hit the LangSmith API with the configured key / endpoint and report."""
-
-    try:
-        from langsmith import Client
-
-        client = Client()  # reads LANGSMITH_API_KEY / LANGSMITH_ENDPOINT from env
-        list(client.list_projects(limit=1))  # forces an authenticated request
-        endpoint = os.getenv("LANGSMITH_ENDPOINT", "https://api.smith.langchain.com")
-        st.success(f"Conecta OK ({endpoint})")
-        if LANGSMITH_PROJECT and not client.has_project(project_name=LANGSMITH_PROJECT):
-            st.warning(
-                f"La key funciona pero el proyecto `{LANGSMITH_PROJECT}` no existe "
-                "en este workspace todavía (se crea con el primer trace)."
-            )
-    except Exception as exc:  # noqa: BLE001 - report whatever the API said
-        st.error("La API de LangSmith rechazó la conexión:")
-        st.exception(exc)
-
-
-def sidebar(supabase, user):
+# --------------------------------------------------------------------------- #
+# Sidebar
+# --------------------------------------------------------------------------- #
+def render_sidebar(supabase, user) -> None:
     with st.sidebar:
         st.write(f"👤 {user.email}")
         if st.button("Cerrar sesión"):
-            try:
-                supabase.auth.sign_out()
-            except Exception:  # noqa: BLE001 - logging out locally regardless
-                pass
+            auth.sign_out(supabase)
             st.session_state.clear()
             st.rerun()
 
         with st.expander("Diagnóstico"):
-            key = "OPENAI_API_KEY"
-            st.write(("✅ " if os.getenv(key) else "❌ ") + key)
-
-            if LANGSMITH_ON:
-                st.write(f"✅ LangSmith → `{LANGSMITH_PROJECT or 'default'}`")
-                if st.button("Probar conexión LangSmith"):
-                    _check_langsmith()
-            else:
-                st.write("➖ LangSmith tracing off")
-
-            persistence_error = st.session_state.get("persistence_error")
-            if persistence_error:
-                st.write("❌ tabla `mensajes` (historial no se guarda)")
-                st.caption(persistence_error)
-            else:
-                st.write("✅ historial (tabla `mensajes`)")
-
-            if not CHROMA_DIR.exists():
-                st.write("❌ chroma_db/ no encontrado")
-            else:
-                try:
-                    count = get_vector_store()._collection.count()
-                    st.write(f"✅ colección `{COLLECTION_NAME}`: {count} chunks")
-                except Exception as exc:  # noqa: BLE001
-                    st.write("❌ no se pudo abrir el vector store")
-                    st.exception(exc)
+            _diagnostics()
 
 
-supabase = get_supabase()
-user = require_login(supabase)
+def _diagnostics() -> None:
+    st.write(("✅ " if _has_openai_key() else "❌ ") + "OPENAI_API_KEY")
 
-if "graph" not in st.session_state:
-    st.session_state.graph = build_graph().compile(checkpointer=MemorySaver())
-    st.session_state.thread_id = str(uuid.uuid4())
-    st.session_state.history = load_history(supabase, user.id)
+    if observability.tracing_enabled():
+        st.write(f"✅ LangSmith → `{observability.tracing_project() or 'default'}`")
+        if st.button("Probar conexión LangSmith"):
+            ok, message = observability.check_connection()
+            (st.success if ok else st.error)(message)
+    else:
+        st.write("➖ LangSmith tracing off")
 
-sidebar(supabase, user)
+    error = st.session_state.get("persistence_error")
+    if error:
+        st.write("❌ tabla `mensajes` (historial no se guarda)")
+        st.caption(error)
+    else:
+        st.write("✅ historial (tabla `mensajes`)")
 
-st.title("🏗️ Atrium Agent")
-st.caption("Asistente de normativa de obra")
+    if not settings.chroma_dir.exists():
+        st.write("❌ `chroma_db/` no encontrado — corré `python ingest.py`")
+        return
+    try:
+        st.write(f"✅ colección `{settings.collection_name}`: {collection_size()} chunks")
+    except Exception as exc:  # noqa: BLE001
+        st.write("❌ no se pudo abrir el vector store")
+        st.exception(exc)
 
-for message in st.session_state.history:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
-        if message.get("context"):
-            with st.expander("📄 Contexto recuperado"):
-                st.markdown(message["context"])
 
-if prompt := st.chat_input("Preguntá sobre normativa de obra…"):
+def _has_openai_key() -> bool:
+    try:
+        return bool(settings.openai_api_key)
+    except ConfigError:
+        return False
+
+
+# --------------------------------------------------------------------------- #
+# Chat
+# --------------------------------------------------------------------------- #
+def render_history() -> None:
+    for message in st.session_state.history:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+            if message.get("context"):
+                with st.expander("📄 Contexto recuperado"):
+                    st.markdown(message["context"])
+
+
+def handle_prompt(supabase, user, prompt: str) -> None:
     st.session_state.history.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
@@ -257,15 +172,8 @@ if prompt := st.chat_input("Preguntá sobre normativa de obra…"):
     with st.chat_message("assistant"):
         run_url = None
         with st.spinner("Pensando…"):
-            # Force tracing for this call (and grab a direct link) when
-            # LangSmith is configured; otherwise a plain no-op context.
-            tracer_ctx = (
-                tracing_v2_enabled(project_name=LANGSMITH_PROJECT)
-                if LANGSMITH_ON
-                else nullcontext()
-            )
             try:
-                with tracer_ctx as tracer:
+                with observability.trace() as tracer:
                     result = st.session_state.graph.invoke(
                         {"mensajes": [prompt]},
                         {"configurable": {"thread_id": st.session_state.thread_id}},
@@ -287,7 +195,27 @@ if prompt := st.chat_input("Preguntá sobre normativa de obra…"):
         if run_url:
             st.caption(f"[🔎 Ver traza en LangSmith]({run_url})")
 
-    st.session_state.history.append(
-        {"role": "assistant", "content": answer, "context": context}
-    )
+    st.session_state.history.append({"role": "assistant", "content": answer, "context": context})
     save_exchange(supabase, user.id, st.session_state.thread_id, prompt, answer)
+
+
+# --------------------------------------------------------------------------- #
+# Page
+# --------------------------------------------------------------------------- #
+supabase = get_supabase()
+user = require_login(supabase)
+graph = get_graph()
+
+if "thread_id" not in st.session_state:
+    st.session_state.thread_id = str(uuid.uuid4())
+    st.session_state.history = load_history(supabase, user.id)
+
+render_sidebar(supabase, user)
+
+st.title("🏗️ Atrium Agent")
+st.caption("Asistente de normativa de obra")
+
+render_history()
+
+if prompt := st.chat_input("Preguntá sobre normativa de obra…"):
+    handle_prompt(supabase, user, prompt)
