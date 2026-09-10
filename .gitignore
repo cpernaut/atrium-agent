@@ -5,6 +5,8 @@
 __pycache__/
 .venv/
 .pytest_cache/
+.ruff_cache/
+*.egg-info/
 
 # Streamlit
 .streamlit/secrets.toml
