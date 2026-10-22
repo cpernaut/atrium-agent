@@ -121,7 +121,8 @@ ruff check . && ruff format --check .
 
 ## Entorno
 
-- Python 3.11 (producción en Streamlit Cloud). `requirements.txt` con versiones
+- Python 3.14, igual que producción en Streamlit Cloud (Manage app → Settings).
+  CI corre con la misma versión. `requirements.txt` con versiones
   fijas; agregar dependencias pinneadas y probar que instalen en Linux.
 - Secrets que la app espera: `OPENAI_API_KEY`, `SUPABASE_URL`,
   `SUPABASE_ANON_KEY`, y opcionalmente `LANGSMITH_*`.
