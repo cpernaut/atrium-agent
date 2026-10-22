@@ -183,6 +183,12 @@ _CSS_TABLA = """
     border-bottom: 1px solid #E4E8EC; padding: 0.15rem 0;
 }
 .st-key-tabla_presupuesto [data-testid="stColumn"] { min-width: 0; }
+/* The action icons are a horizontal block too: no row width, no row border. */
+.st-key-tabla_presupuesto [class*="st-key-acciones_"],
+.st-key-tabla_presupuesto [class*="st-key-acciones_"] [data-testid="stHorizontalBlock"] {
+    min-width: 0 !important; border-bottom: none !important; padding: 0 !important;
+    flex-wrap: nowrap;
+}
 .st-key-tabla_presupuesto [data-testid="stMarkdownContainer"] p { margin: 0; font-size: 0.88rem; }
 .st-key-tabla_presupuesto button p { font-size: 0.88rem; }
 .st-key-tabla_presupuesto [data-testid="stForm"] [data-testid="stHorizontalBlock"] {
@@ -439,7 +445,7 @@ def _fila_item(
                 estado,
             ],
         )
-        acciones = cols[-1].container(horizontal=True, gap="small")
+        acciones = cols[-1].container(horizontal=True, gap="small", key=f"acciones_i{item_id}")
         a1 = a2 = a3 = acciones
         if _icono(
             a1,
@@ -511,7 +517,7 @@ def _fila_gasto(supabase, g: dict, moneda: str) -> None:
         _celdas(cols, ["", "", f"~~{gastado}~~" if anulado else gastado, "", "", ""])
         if anulado:
             return
-        acciones = cols[-1].container(horizontal=True, gap="small")
+        acciones = cols[-1].container(horizontal=True, gap="small", key=f"acciones_g{g['id']}")
         a1 = a2 = acciones
         if _icono(
             a1,
