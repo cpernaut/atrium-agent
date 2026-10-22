@@ -30,6 +30,7 @@ Convención: el código (funciones, módulos, docstrings) está en inglés, pero
 | **Ítem (del presupuesto)** | Una línea del presupuesto: rubro, descripción, monto (puede ser 0) y moneda. Los gastos se cargan dentro de su ítem. | `presupuesto_items` · `FilaItem` |
 | **Gasto** | Un pago real de un **ítem** del presupuesto: fecha, descripción, monto, moneda y proveedor opcional. El rubro y la obra son los del ítem. | tabla `gastos` · `presupuesto_item_id` |
 | **Imprevistos** | El ítem por defecto de cada obra (rubro Otros, 10 % del presupuesto de la obra) para los gastos que no tienen otro ítem. | `es_imprevistos` · `crear_imprevistos` |
+| **Editar (gasto)** | Cambiar cualquier dato de un gasto, incluso pasarlo a otro ítem de la obra. Queda registro de quién y cuándo. Un anulado no se edita. | `update_gasto` · `editado_por` · `editado_en` |
 | **Saldo** | Total del ítem − gastado. | `FilaItem.saldo` |
 | **Semáforo** | Estado de un ítem, rubro u obra según el % consumido: Dentro del presupuesto (< 90 %) · Cerca del límite (90–100 %) · Excedido (> 100 %) · Sin presupuesto asignado. | `finanzas.estado` · `estado_con_icono` |
 | **Anular** | Marcar un gasto o ítem como mal cargado: deja de sumar pero no se borra. | columna `anulado` |

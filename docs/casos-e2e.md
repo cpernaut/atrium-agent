@@ -81,6 +81,10 @@ resultado esperado verificable.
 | F-03-CA-33 | «Cargá 350 mil de hierro» por chat con un ítem que coincide | Gasto en ese ítem con la cotización del día; aviso visible |
 | F-03-CA-33b | Ningún ítem coincide | No guarda; pregunta y ofrece «Imprevistos» |
 | F-03-CA-33c | Varios ítems coinciden | No guarda; la herramienta exige preguntar |
+| F-03-CA-36 | ✏️ de un gasto | Formulario con ítem, fecha, monto, moneda, descripción, proveedor y cotización actuales |
+| F-03-CA-37 | Editar monto, descripción y fecha, y moverlo a otro ítem | Queda en el ítem nuevo; totales de ítems y rubros actualizados |
+| F-03-CA-38 | Edición inválida o cancelada | Error claro y conserva lo escrito; Cancelar no cambia nada |
+| F-03-CA-39 | Cambiar la fecha de un gasto con cotización automática | Toma el MEP de la nueva fecha; una corregida a mano se respeta |
 | F-03-CA-35 | Cambiar el rubro de un ítem con gastos | Los gastos pasan a ese rubro en el resumen |
 | TABLA-1 | Presupuesto en una tabla (#45) | Abrir 💰 Plata | Una sola tabla con Ítems y % consumido; rubros cerrados; sin lista aparte |
 | TABLA-2 | Presupuesto en una tabla | Expandir rubro, ítem y volver a cerrar | Aparecen sus ítems y después sus gastos; al cerrar se ocultan |
@@ -141,10 +145,11 @@ borrado.
 | LIVE-16 | Gastos | B ve, corrige y anula el gasto de A; borrar | Permitido salvo borrar |
 | LIVE-17 | Rubros | Alta de rubro y duplicado con otras mayúsculas | Se crea; el duplicado se rechaza; no se borra |
 | LIVE-18 | Rubros | «Mamposteria», «MAMPOSTERÍA», «steel   FRAME» salteando la app | La base los rechaza como duplicados |
-| LIVE-19 | Integridad | Mover un ítem de obra, cambiar su fecha o autor, o el monto, el ítem o el rubro de un gasto, salteando la app | La base lo rechaza |
+| LIVE-19 | Integridad | Mover un ítem de obra, cambiar su fecha o autor, o la obra, el autor, el rubro o el registro de edición de un gasto, salteando la app | La base lo rechaza |
 | LIVE-20 | Presupuesto | B edita el ítem de A y lo borra | Se guarda (cotización manual); borrar lo anula y conserva el autor |
 | LIVE-21 | Integridad | Gasto sin ítem, con ítem de otra obra o borrado, salteando la app | La base lo rechaza; obra y rubro salen del ítem |
 | LIVE-22 | Presupuesto | B cambia el rubro del ítem de A y lo borra, salteando la app | El gasto sigue el rubro y queda anulado |
+| LIVE-24 | Gastos | B edita todo el gasto de A y lo mueve de ítem; después se anula | Se guarda con `editado_por` = B; el autor no cambia; anulado ya no se edita |
 | LIVE-23 | Presupuesto | Ítem en 0, ítem negativo, dos «Imprevistos» | 0 sí; negativo y segundo «Imprevistos» rechazados; se puede recrear tras borrarlo |
 
 ## Cómo ver los resultados

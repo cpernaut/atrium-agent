@@ -10,6 +10,8 @@ formatting with their currency, and user text is escaped before rendering.
 
 from __future__ import annotations
 
+from datetime import date
+
 import streamlit as st
 
 from atrium import finanzas
@@ -141,11 +143,15 @@ _A_BORRAR = "item_a_borrar"
 _NUEVO = "nuevo_item_"  # prefix of the new-item form widgets
 _GASTO_ABIERTO = "gasto_nuevo_item"  # id of the item whose «Registrar un gasto» form is open
 _GASTO_A_ANULAR = "gasto_a_anular"
-_GASTO_TC = "gasto_tc_abierto"  # id of the gasto whose rate is being corrected
+_GASTO_EDITANDO = "gasto_editando"  # id of the gasto being edited (#25)
 
 
 def _editar_prefijo(item_id: int) -> str:
     return f"editar_item_{item_id}_"
+
+
+def _editar_gasto_prefijo(gasto_id: int) -> str:
+    return f"editar_gasto_{gasto_id}_"
 
 
 def _gasto_prefijo(item_id: int) -> str:
@@ -256,8 +262,8 @@ def _alternar(
         _clear_prefix(_gasto_prefijo(st.session_state.pop(_GASTO_ABIERTO)))
     if st.session_state.get(_EDITANDO) in items:
         _clear_prefix(_editar_prefijo(st.session_state.pop(_EDITANDO)))
-    if st.session_state.get(_GASTO_TC) in gastos:
-        st.session_state.pop(f"tc_gasto_{st.session_state.pop(_GASTO_TC)}", None)
+    if st.session_state.get(_GASTO_EDITANDO) in gastos:
+        _clear_prefix(_editar_gasto_prefijo(st.session_state.pop(_GASTO_EDITANDO)))
     abierto = st.session_state.get(_NUEVO_ABIERTO)
     if rubro is not None and abierto is not True and abierto == rubro:
         st.session_state.pop(_NUEVO_ABIERTO, None)
@@ -422,6 +428,7 @@ def _fila_rubro(
             rubros,
             rubros_por_id,
             moneda,
+            vigentes,
         )
 
 
@@ -433,6 +440,7 @@ def _fila_item(
     rubros: list[dict],
     rubros_por_id: dict,
     moneda: str,
+    vigentes: list[dict],
 ) -> None:
     item_id = item["id"]
     editando = st.session_state.get(_EDITANDO) == item_id
@@ -527,15 +535,15 @@ def _fila_item(
         if fila.sin_convertir:
             st.caption(
                 f"⚠️ Total incompleto: {len(fila.sin_convertir)} registro(s) en otra moneda "
-                "sin cotización. Cargala con el lápiz del gasto o del ítem."
+                "sin cotización. Cargala con el lápiz ✏️ del gasto o del ítem."
             )
         if not fila.gastos:
             st.caption("Todavía no hay gastos en este ítem.")
     for gasto in sorted(fila.gastos, key=lambda x: (x.get("fecha") or "", x["id"]), reverse=True):
-        _fila_gasto(supabase, gasto, moneda)
+        _fila_gasto(supabase, gasto, moneda, vigentes, rubros_por_id)
 
 
-def _fila_gasto(supabase, g: dict, moneda: str) -> None:
+def _fila_gasto(supabase, g: dict, moneda: str, vigentes: list[dict], rubros_por_id: dict) -> None:
     texto = f"{_fecha_txt(g['fecha'])} · {g['descripcion']}"
     if g.get("proveedor"):
         texto += f" · {g['proveedor']}"
@@ -554,27 +562,25 @@ def _fila_gasto(supabase, g: dict, moneda: str) -> None:
         if anulado:
             cols[0].markdown(f"~~{texto_seguro(texto)}~~ — **Anulado**")
         else:
-            cols[0].markdown(f"{texto_seguro(texto)}  \n:gray[{texto_seguro(_cotizacion_txt(g))}]")
+            nota = _cotizacion_txt(g)
+            if g.get("editado_en"):
+                nota += f" · editado el {_fecha_txt(str(g['editado_en']))}"
+            cols[0].markdown(f"{texto_seguro(texto)}  \n:gray[{texto_seguro(nota)}]")
         _celdas(cols, ["", "", f"~~{gastado}~~" if anulado else gastado, "", "", ""])
         if anulado:
             return
         acciones = cols[-1].container(horizontal=True, gap="small", key=f"acciones_g{g['id']}")
         a1 = a2 = acciones
-        if _icono(
-            a1,
-            ":material/edit:",
-            f"gasto_cotizacion_{g['id']}",
-            "Corregir la cotización de este gasto",
-        ):
-            st.session_state.pop(f"tc_gasto_{g['id']}", None)
-            st.session_state[_GASTO_TC] = g["id"]
+        if _icono(a1, ":material/edit:", f"gasto_editar_{g['id']}", "Editar este gasto"):
+            _clear_prefix(_editar_gasto_prefijo(g["id"]))  # arranca con los valores actuales
+            st.session_state[_GASTO_EDITANDO] = g["id"]
             st.rerun()
         if _icono(a2, ":material/delete:", f"gasto_anular_{g['id']}", "Anular este gasto"):
             st.session_state.pop(_A_BORRAR, None)
             st.session_state[_GASTO_A_ANULAR] = g["id"]
             st.rerun()
-    if st.session_state.get(_GASTO_TC) == g["id"]:
-        _form_cotizacion_gasto(supabase, g)
+    if st.session_state.get(_GASTO_EDITANDO) == g["id"]:
+        _form_editar_gasto(supabase, g, vigentes, rubros_por_id)
 
 
 def _dialogos(supabase, vigentes: list[dict], gastos: list[dict], rubros_por_id: dict) -> None:
@@ -599,42 +605,131 @@ def _dialogos(supabase, vigentes: list[dict], gastos: list[dict], rubros_por_id:
             _dialogo_anular_gasto(supabase, gasto, item)
 
 
-def _form_cotizacion_gasto(supabase, gasto: dict) -> None:
-    with st.form(f"form_tc_gasto_{gasto['id']}"):
-        valor = st.number_input(
-            "Nueva cotización del dólar (pesos por dólar)",
+def _form_editar_gasto(supabase, g: dict, vigentes: list[dict], rubros_por_id: dict) -> None:
+    """#25: every field of a gasto, including its item (same obra) and its date."""
+
+    gasto_id = g["id"]
+    prefijo = _editar_gasto_prefijo(gasto_id)
+    opciones = [i["id"] for i in vigentes]
+    if g["presupuesto_item_id"] not in opciones:
+        opciones.insert(0, g["presupuesto_item_id"])
+    por_id = {i["id"]: i for i in vigentes}
+
+    def etiqueta(item_id) -> str:
+        item = por_id.get(item_id)
+        if item is None:
+            return "Ítem actual"
+        return f"{_rubro_nombre(rubros_por_id, item['rubro_id'])} · {_item_nombre(item)}"
+
+    with st.form(f"form_editar_gasto_{gasto_id}", border=True):
+        st.markdown(f"**Editar el gasto «{texto_seguro(g['descripcion'])}»**")
+        item_id = st.selectbox(
+            "Ítem del presupuesto (obligatorio)",
+            opciones,
+            index=opciones.index(g["presupuesto_item_id"]),
+            format_func=etiqueta,
+            key=f"{prefijo}item",
+            help="Podés moverlo a otro ítem de la obra; el rubro sigue al ítem.",
+        )
+        fecha = st.date_input(
+            "Fecha (obligatoria)",
+            value=date.fromisoformat(str(g["fecha"])[:10]),
+            max_value=finanzas.hoy(),
+            format="DD/MM/YYYY",
+            key=f"{prefijo}fecha",
+        )
+        c1, c2 = st.columns([3, 2])
+        monto = c1.number_input(
+            "Monto (obligatorio)",
+            min_value=0.0,
+            max_value=_MONTO_MAX,
+            value=float(g["monto"]),
+            step=1000.0,
+            format="%.2f",
+            key=f"{prefijo}monto",
+        )
+        moneda = c2.radio(
+            "Moneda (obligatoria)",
+            finanzas.MONEDAS,
+            index=list(finanzas.MONEDAS).index(g["moneda"]),
+            horizontal=True,
+            key=f"{prefijo}moneda",
+        )
+        descripcion = st.text_input(
+            "Descripción (obligatoria)",
+            value=g.get("descripcion") or "",
+            max_chars=200,
+            key=f"{prefijo}descripcion",
+        )
+        proveedor = st.text_input(
+            "Proveedor", value=g.get("proveedor") or "", max_chars=120, key=f"{prefijo}proveedor"
+        )
+        tc = st.number_input(
+            "Cotización del dólar",
             min_value=0.0,
             max_value=_TC_MAX,
-            value=None,
+            value=float(g["tipo_cambio"]) if g.get("tipo_cambio") else None,
             step=1.0,
             format="%.2f",
-            key=f"tc_gasto_{gasto['id']}",
+            placeholder="Sin cotización",
+            key=f"{prefijo}tc",
+            help=(
+                "Si la cambiás, queda corregida a mano. Si es automática y cambiás la "
+                "fecha, se recalcula sola con el MEP de la nueva fecha."
+            ),
         )
         b1, b2 = st.columns(2)
         guardar = b1.form_submit_button(
-            "Guardar cotización",
-            type="primary",
-            width="stretch",
-            key=f"gasto_tc_guardar_{gasto['id']}",
+            "Guardar cambios", type="primary", width="stretch", key=f"gasto_guardar_{gasto_id}_ed"
         )
         cancelar = b2.form_submit_button(
-            "Cancelar", width="stretch", key=f"gasto_tc_cancelar_{gasto['id']}"
+            "Cancelar", width="stretch", key=f"gasto_cancelar_{gasto_id}_ed"
         )
+
     if cancelar:
-        st.session_state.pop(_GASTO_TC, None)
+        st.session_state.pop(_GASTO_EDITANDO, None)
+        _clear_prefix(prefijo)
         st.rerun()
     if not guardar:
         return
-    if not valor:
-        st.error("No se guardó la cotización: ingresá un valor mayor que cero.")
+    faltan = []
+    if not monto:
+        faltan.append("ingresá un monto mayor que cero")
+    if not (descripcion or "").strip():
+        faltan.append("escribí una descripción")
+    if faltan:
+        st.error("No se guardaron los cambios: " + ", ".join(faltan) + ".")
         return
     try:
-        finanzas.set_tipo_cambio(supabase, "gastos", gasto["id"], valor)
+        guardado, aviso = finanzas.update_gasto(
+            supabase,
+            gasto_id,
+            presupuesto_item_id=item_id,
+            fecha=fecha,
+            monto=monto,
+            moneda=moneda,
+            descripcion=descripcion,
+            proveedor=proveedor,
+            tipo_cambio=tc or None,
+        )
     except finanzas.FinanzasError as exc:
-        st.error(f"No se guardó la cotización: {texto_seguro(exc)}")
+        st.error(f"No se guardaron los cambios: {texto_seguro(exc)}")
         return
-    _flash("success", "✅ Cotización corregida a mano.")
-    st.session_state.pop(_GASTO_TC, None)
+    _flash(
+        "success",
+        "✅ Gasto actualizado: "
+        + texto_seguro(
+            f"{finanzas.formato_monto(guardado['monto'], guardado['moneda'])}"
+            f" · {_cotizacion_txt(guardado)}."
+        ),
+    )
+    if aviso:
+        _flash("warning", f"⚠️ {texto_seguro(aviso)}")
+    destino = por_id.get(item_id)
+    if destino:  # que se vea dónde quedó
+        _abrir(f"r{destino['rubro_id']}", f"i{item_id}")
+    st.session_state.pop(_GASTO_EDITANDO, None)
+    _clear_prefix(prefijo)
     st.rerun()
 
 

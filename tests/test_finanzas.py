@@ -708,3 +708,140 @@ def test_item_con_rubro_desactivado_no_acepta_gastos_nuevos(db, mep):
     otro = _rubro(db, "Revoques")
     _editar(db, item, rubro_id=otro)  # lo pasa a un rubro activo...
     finanzas.add_gasto(db, item["id"], monto=10, moneda="USD", descripcion="después")  # ...y sí
+
+
+# --------------------------------------------------------------------------- #
+# #25 · Editar un gasto
+# --------------------------------------------------------------------------- #
+def _editar_gasto(db, gasto, **cambios):
+    datos = {
+        "presupuesto_item_id": gasto["presupuesto_item_id"],
+        "fecha": gasto["fecha"],
+        "monto": gasto["monto"],
+        "moneda": gasto["moneda"],
+        "descripcion": gasto["descripcion"],
+        "proveedor": gasto.get("proveedor"),
+    }
+    datos.update(cambios)
+    return finanzas.update_gasto(db, gasto["id"], **datos)
+
+
+def test_editar_gasto_cambia_todos_sus_datos(db, mep):
+    """#25: monto, moneda, descripción, proveedor y fecha se editan; obra y autor no."""
+
+    gasto, _ = _gasto(db)
+    ayer = finanzas.hoy() - timedelta(days=1)
+    editado, aviso = _editar_gasto(
+        db,
+        gasto,
+        monto="400.000",
+        moneda="usd",
+        descripcion="Hierro 10",
+        proveedor="HS",
+        fecha=ayer,
+    )
+    assert aviso is None
+    assert (editado["monto"], editado["moneda"], editado["descripcion"], editado["proveedor"]) == (
+        "400000.00",
+        "USD",
+        "Hierro 10",
+        "HS",
+    )
+    assert editado["fecha"] == ayer.isoformat() and editado["obra_id"] == gasto["obra_id"]
+
+
+def test_editar_gasto_lo_mueve_a_otro_item(db, mep):
+    """#25: el gasto se mueve a otro ítem de la obra y su rubro pasa a ser el del ítem."""
+
+    gasto, _ = _gasto(db)
+    otro = _item_db(db, rubro_id=_rubro(db, "Carpinterías"), descripcion="Mesada")
+    movido, _ = _editar_gasto(db, gasto, presupuesto_item_id=otro["id"])
+    assert movido["presupuesto_item_id"] == otro["id"]
+    assert movido["rubro_id"] == otro["rubro_id"]
+    filas = {f.rubro: f for f in finanzas.resumen(db, 1, "ARS").filas}
+    assert filas["Carpinterías"].gastado == Decimal("350000")
+
+
+def test_editar_gasto_no_mueve_a_item_borrado_ni_de_otra_obra(db, mep):
+    gasto, _ = _gasto(db)
+    borrado = _item_db(db, descripcion="Borrado")
+    finanzas.borrar_presupuesto_item(db, borrado["id"])
+    with pytest.raises(finanzas.FinanzasError, match="fue borrado"):
+        _editar_gasto(db, gasto, presupuesto_item_id=borrado["id"])
+    db.table("obras").insert({"nombre": "Otra"}).execute()
+    ajeno, _ = finanzas.add_presupuesto_item(
+        db, 2, monto=1, moneda="ARS", rubro_id=_rubro(db, "Pintura")
+    )
+    with pytest.raises(finanzas.FinanzasError, match="otra obra"):
+        _editar_gasto(db, gasto, presupuesto_item_id=ajeno["id"])
+
+
+def test_editar_gasto_recalcula_la_cotizacion_automatica_si_cambia_la_fecha(db, mep):
+    """#25 (decisión): con cotización automática, cambiar la fecha la recalcula; una
+    corregida a mano se respeta."""
+
+    gasto, _ = _gasto(db)  # MEP 1200, automática
+    mep["valor"] = Decimal("1100")
+    ayer = finanzas.hoy() - timedelta(days=1)
+    editado, _ = _editar_gasto(db, gasto, fecha=ayer, tipo_cambio=gasto["tipo_cambio"])
+    assert (editado["tipo_cambio"], editado["tipo_cambio_origen"]) == ("1100.0000", "auto")
+
+    manual, _ = _editar_gasto(db, editado, tipo_cambio="1050")
+    assert (manual["tipo_cambio"], manual["tipo_cambio_origen"]) == ("1050.0000", "manual")
+    mep["valor"] = Decimal("1300")
+    otra_fecha, _ = _editar_gasto(db, manual, fecha=finanzas.hoy(), tipo_cambio="1050")
+    assert (otra_fecha["tipo_cambio"], otra_fecha["tipo_cambio_origen"]) == ("1050.0000", "manual")
+
+
+def test_editar_gasto_sin_cotizacion_para_la_nueva_fecha_avisa(db, mep):
+    gasto, _ = _gasto(db)
+    mep["valor"] = None
+    editado, aviso = _editar_gasto(db, gasto, fecha=finanzas.hoy() - timedelta(days=2))
+    assert editado["tipo_cambio"] is None and "No hay cotización" in aviso
+
+
+@pytest.mark.parametrize(
+    "cambio, mensaje",
+    [
+        ({"monto": 0}, "mayor que cero"),
+        ({"descripcion": " "}, "Falta la descripción"),
+        ({"moneda": "EUR"}, "Moneda inválida"),
+        ({"fecha": "2999-01-01"}, "futura"),
+        ({"presupuesto_item_id": None}, "Elegí el ítem"),
+    ],
+)
+def test_editar_gasto_invalido_no_cambia_nada(db, mep, cambio, mensaje):
+    gasto, _ = _gasto(db)
+    with pytest.raises(finanzas.FinanzasError, match=mensaje):
+        _editar_gasto(db, gasto, **cambio)
+    assert finanzas.get_gasto(db, gasto["id"])["monto"] == gasto["monto"]
+
+
+def test_gasto_anulado_no_se_edita(db, mep):
+    gasto, _ = _gasto(db)
+    finanzas.anular_gasto(db, gasto["id"])
+    with pytest.raises(finanzas.FinanzasError, match="anulado"):
+        _editar_gasto(db, gasto, descripcion="x")
+
+
+def test_editar_gasto_solo_envia_campos_permitidos(db, mep, monkeypatch):
+    gasto, _ = _gasto(db)
+    enviados = []
+    original = db.table
+
+    def espiar(nombre):
+        query = original(nombre)
+        update = query.update
+
+        def registrar(payload):
+            enviados.append((nombre, dict(payload)))
+            return update(payload)
+
+        query.update = registrar
+        return query
+
+    monkeypatch.setattr(db, "table", espiar)
+    _editar_gasto(db, gasto, descripcion="otra")
+    assert enviados and all(
+        set(p) <= set(finanzas.CAMPOS_EDITABLES_GASTO) for t, p in enviados if t == "gastos"
+    )

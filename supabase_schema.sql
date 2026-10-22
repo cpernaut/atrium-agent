@@ -272,8 +272,36 @@ $$;
 
 drop trigger if exists gastos_desde_item on public.gastos;
 create trigger gastos_desde_item
-    before insert on public.gastos
+    before insert or update of presupuesto_item_id on public.gastos
     for each row execute function public.gasto_desde_item();
+
+-- #25 · Editar un gasto: todos sus datos menos la obra y el autor; también se
+-- puede mover a otro ítem vigente de la misma obra (lo valida gasto_desde_item).
+-- Queda registro de quién lo editó y cuándo. Un gasto anulado ya no se edita.
+alter table public.gastos add column if not exists editado_en timestamptz;
+alter table public.gastos add column if not exists editado_por uuid references auth.users (id);
+
+create or replace function public.gasto_editado()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+    if old.anulado then
+        raise exception 'Un gasto anulado no se puede editar.' using errcode = '23514';
+    end if;
+    new.editado_en := now();
+    new.editado_por := auth.uid();
+    return new;
+end;
+$$;
+
+drop trigger if exists gastos_editado on public.gastos;
+create trigger gastos_editado
+    before update of presupuesto_item_id, fecha, descripcion, proveedor, monto, moneda,
+                     tipo_cambio, tipo_cambio_origen
+    on public.gastos
+    for each row execute function public.gasto_editado();
 
 -- Si cambia el rubro de un ítem, sus gastos lo siguen (CA-35). Si se borra
 -- (anula) un ítem, se anulan sus gastos (R12b). Corre como dueño de la tabla
@@ -390,7 +418,8 @@ revoke update on public.presupuesto_items from authenticated, anon;
 grant update (rubro_id, descripcion, monto, moneda, tipo_cambio, tipo_cambio_origen, anulado)
     on public.presupuesto_items to authenticated;
 revoke update on public.gastos from authenticated, anon;
-grant update (tipo_cambio, tipo_cambio_origen, anulado)
+grant update (presupuesto_item_id, fecha, descripcion, proveedor, monto, moneda,
+              tipo_cambio, tipo_cambio_origen, anulado)
     on public.gastos to authenticated;
 -- Sin login no se crean gastos (además de RLS): así ni siquiera corre el trigger.
 revoke insert on public.gastos from anon;

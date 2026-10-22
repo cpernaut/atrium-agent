@@ -172,6 +172,14 @@ siguen).
   inclusive), 🔴 **Excedido** (> 100 %). Sin presupuesto: 🔴 «Excedido» si tiene
   gastos, ⚪ «Sin presupuesto asignado» si no. El mismo criterio vale para
   rubros y el total de la obra, y siempre se escribe en palabras.
+- **R17. Editar un gasto** (#25). Se editan todos sus datos: ítem (cualquier ítem
+  vigente de la misma obra; el rubro sigue al ítem), fecha, monto, moneda,
+  descripción, proveedor y cotización. La obra y quien lo cargó no cambian, y la
+  base registra quién lo editó y cuándo (`editado_por`, `editado_en`). Si la
+  cotización era automática y cambia la fecha, se recalcula con el MEP de la nueva
+  fecha; una corregida a mano se respeta; cambiarla en el formulario la deja
+  manual. Un gasto anulado ya no se edita. No se mueve a un ítem borrado, de otra
+  obra o de un rubro desactivado.
 
 ## Técnico
 
@@ -196,8 +204,8 @@ En la sección **📋 Obras**, la pestaña **💰 Plata**:
    - **Ítem**: se expande y muestra la fecha de carga, la cotización, el saldo y sus
      gastos. Acciones: **＋** registrar un gasto, **✏️** editar, **🗑️** borrar (R10,
      R12b). Si está en otra moneda, debajo del monto va el original.
-   - **Gasto**: fecha, descripción, proveedor y cotización. Acciones: **✏️**
-     corregir la cotización, **🗑️** anular (R14). Los anulados quedan tachados con
+   - **Gasto**: fecha, descripción, proveedor, cotización y, si se editó, cuándo.
+     Acciones: **✏️** editar todos sus datos (R17), **🗑️** anular (R14). Los anulados quedan tachados con
      «Anulado».
    - Los íconos tienen descripción (tooltip y lector de pantalla). Los formularios
      se abren debajo de la fila; las confirmaciones, en un diálogo.
@@ -325,6 +333,23 @@ dentro de cada ítem (CA-27, CA-29, CA-28 y CA-33).
 - **F-03-CA-35** — *Dado* un ítem con gastos *cuando* le cambio el rubro *entonces*
   sus gastos pasan a ese rubro en el resumen.
 
+**Editar un gasto** (#25)
+
+- **F-03-CA-36** — *Dado* un gasto *cuando* toco su ✏️ *entonces* se abre un
+  formulario con todos sus datos actuales: ítem, fecha, monto, moneda,
+  descripción, proveedor y cotización.
+- **F-03-CA-37** — *Dado* el formulario *cuando* cambio monto, descripción, fecha y
+  lo paso a otro ítem y guardo *entonces* el gasto queda en el ítem nuevo y los
+  totales de ítems y rubros se actualizan.
+- **F-03-CA-38** — *Dado* el formulario *cuando* guardo un dato inválido *entonces*
+  veo el error y se conserva lo escrito; *cuando* cancelo, no cambia nada.
+- **F-03-CA-39** — *Dado* un gasto con cotización automática *cuando* le cambio la
+  fecha *entonces* se recalcula con el MEP de esa fecha; si estaba corregida a
+  mano, se respeta.
+- **F-03-CA-40** — *Dado* un usuario logueado *cuando* intenta, salteando la app,
+  cambiar la obra, el autor o el registro de edición de un gasto, editar uno
+  anulado o moverlo a un ítem de otra obra o borrado *entonces* la base lo rechaza.
+
 ## Implementación
 
 | Pieza | Dónde |
@@ -352,8 +377,6 @@ confirmación explícita.
 
 - **Pantalla de rubros:** agregar, renombrar, ordenar y desactivar rubros desde
   la app. El dominio y la base ya lo soportan.
-- Editar un gasto, incluido moverlo a otro ítem (#25; hoy se anula y se carga de
-  nuevo).
 - Varias ofertas de proveedores por ítem (#36) y lista de proveedores (#37).
 
 ## Decisiones
@@ -376,3 +399,6 @@ confirmación explícita.
 | D14 | ¿Mover un gasto a otro ítem? | ✅ Sí, a futuro, con «Editar gasto» (#25) |
 | D15 | ¿Monto inicial de «Imprevistos»? | ✅ 10 % del presupuesto de la obra; puede valer 0; editable y borrable (#35) |
 | D16 | ¿Moneda de «Imprevistos»? | ✅ La de la obra (#35) |
+| D17 | ¿Qué datos de un gasto se editan? | ✅ Todos, incluida la fecha del pago; no la obra ni el autor (#25) |
+| D18 | ¿Se puede mover un gasto a otro ítem? | ✅ Sí, en el mismo formulario de edición (#25; reemplaza D14) |
+| D19 | ¿Qué pasa con la cotización al editar? | ✅ Si es automática y cambia la fecha, se recalcula; la manual se respeta (#25) |

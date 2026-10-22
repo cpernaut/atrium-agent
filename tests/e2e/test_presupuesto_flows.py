@@ -582,7 +582,7 @@ def test_tabla_2_expandir_rubro_item_y_gastos(e2e):
 
 def test_tabla_3_iconos_segun_el_nivel(e2e):
     """TABLA-3: el rubro tiene «agregar ítem»; el ítem, «registrar gasto», «editar» y
-    «borrar»; el gasto, «corregir cotización» y «anular»; todos con descripción."""
+    «borrar»; el gasto, «editar» y «anular»; todos con descripción."""
 
     _obra(e2e)
     item = _item(e2e, "Pintura", 100, descripcion="Látex")
@@ -594,7 +594,7 @@ def test_tabla_3_iconos_segun_el_nivel(e2e):
     assert ayudas[f"gasto_agregar_{item['id']}"] == "Registrar un gasto en Látex"
     assert ayudas[f"item_editar_{item['id']}"] == "Editar el ítem Látex"
     assert ayudas[f"item_borrar_{item['id']}"] == "Borrar el ítem Látex"
-    assert ayudas[f"gasto_cotizacion_{gasto['id']}"] == "Corregir la cotización de este gasto"
+    assert ayudas[f"gasto_editar_{gasto['id']}"] == "Editar este gasto"
     assert ayudas[f"gasto_anular_{gasto['id']}"] == "Anular este gasto"
     for b in _tab(at).button:
         assert b.label.strip() and (b.help or not b.label.startswith(":material")), b.key
