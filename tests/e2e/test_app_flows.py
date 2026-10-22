@@ -85,7 +85,7 @@ def test_e2e_04_crear_obra(e2e):
 
     at = at.run()  # siguiente carga: ya figura en el listado y en las métricas
     assert at.dataframe[0].value["nombre"].tolist() == ["Casa Lote 12"]
-    assert [m.value for m in at.metric] == ["1", "1", "0%"]
+    assert [m.value for m in at.tabs[0].metric] == ["1", "1", "0%"]
 
 
 def test_e2e_05_obra_sin_nombre(e2e):

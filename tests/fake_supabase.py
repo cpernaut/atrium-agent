@@ -1,17 +1,30 @@
-"""A tiny in-memory stand-in for the Supabase query builder used by atrium.obras."""
+"""A tiny in-memory stand-in for the Supabase query builder used by the domain."""
 
 from __future__ import annotations
 
 import copy
 import itertools
+from collections import defaultdict
 from datetime import date
+from decimal import Decimal
 from types import SimpleNamespace
 
 # Column defaults from supabase_schema.sql, applied on insert like Postgres does.
 _DEFAULTS = {
     "obras": {"estado": "Planificación", "moneda": "ARS", "avance": 0},
     "bitacora": {"fecha": date.today().isoformat()},
+    "rubros": {"orden": 1000, "activo": True},
+    "presupuesto_items": {"anulado": False},
+    "gastos": {"anulado": False},
 }
+
+
+def _sort_key(value):
+    """Numbers sort as numbers (like Postgres), everything else as text."""
+
+    if isinstance(value, (int, float, Decimal)) and not isinstance(value, bool):
+        return (0, value, "")
+    return (1, 0, str(value or ""))
 
 
 class _Query:
@@ -20,6 +33,7 @@ class _Query:
         self.filters: list = []
         self.orders: list = []
         self.max_rows: int | None = None
+        self.offset = 0
         self.op, self.payload = "select", None
 
     # builders -------------------------------------------------------------
@@ -43,6 +57,10 @@ class _Query:
         self.max_rows = n
         return self
 
+    def range(self, start, end):
+        self.offset, self.max_rows = start, end - start + 1
+        return self
+
     def insert(self, payload):
         self.op, self.payload = "insert", payload
         return self
@@ -59,7 +77,7 @@ class _Query:
         if self.op == "insert":
             new = []
             for item in self.payload if isinstance(self.payload, list) else [self.payload]:
-                row = {"id": next(self.db.ids), "created_at": f"t{len(rows):04d}"}
+                row = {"id": next(self.db.ids[self.table_name]), "created_at": f"t{len(rows):04d}"}
                 row.update(_DEFAULTS.get(self.table_name, {}))
                 row.update(item)
                 rows.append(row)
@@ -71,15 +89,29 @@ class _Query:
                 row.update(self.payload)
             return SimpleNamespace(data=copy.deepcopy(matched))
         for col, desc in reversed(self.orders):
-            matched.sort(key=lambda r, c=col: str(r.get(c) or ""), reverse=desc)
-        return SimpleNamespace(data=copy.deepcopy(matched[: self.max_rows]))
+            matched.sort(key=lambda r, c=col: _sort_key(r.get(c)), reverse=desc)
+        limite = self.max_rows
+        if self.db.max_rows_por_respuesta is not None:  # like PostgREST's max-rows
+            limite = min(limite or 10**9, self.db.max_rows_por_respuesta)
+        fin = None if limite is None else self.offset + limite
+        return SimpleNamespace(data=copy.deepcopy(matched[self.offset : fin]))
 
 
 class FakeSupabase:
     def __init__(self):
         self.tables: dict[str, list[dict]] = {}
-        self.ids = itertools.count(1)
+        self.ids = defaultdict(lambda: itertools.count(1))  # one sequence per table
         self.fail: str | None = None
+        self.max_rows_por_respuesta: int | None = None
 
     def table(self, name):
         return _Query(self, name)
+
+
+def seed_rubros(db: FakeSupabase) -> None:
+    """The rubros precargados by supabase_schema.sql."""
+
+    from atrium.finanzas import RUBROS_INICIALES
+
+    for nombre, orden in RUBROS_INICIALES:
+        db.table("rubros").insert({"nombre": nombre, "orden": orden}).execute()

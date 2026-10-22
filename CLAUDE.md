@@ -27,9 +27,12 @@ Supabase. Desplegada en Streamlit Community Cloud desde `main`.
 
 ```
 app.py            orquestación y render; nada de lógica de negocio
-*_ui.py           pantallas de Streamlit (p. ej. obras_ui.py), una por sección
+*_ui.py           pantallas de Streamlit (obras_ui.py, plata_ui.py), una por sección
+ui_utils.py       helpers de pantalla (texto_seguro)
 atrium/           dominio. NUNCA importa streamlit
   obras.py        acceso a datos de un área: funciones que reciben el `client`
+  finanzas.py     F-03: rubros, gastos, presupuesto, conversión y resumen
+  cotizaciones.py dólar MEP desde una fuente pública (único acceso a internet)
   obra_tools.py   herramientas del agente: cierran sobre el client del usuario
   rag.py          grafo LangGraph: classify -> retrieve -> agente_obra (+ tools)
 supabase_schema.sql  todo el esquema, idempotente
@@ -56,7 +59,9 @@ supabase_schema.sql  todo el esquema, idempotente
   (se anula o archiva con un booleano).
 - Las restricciones van también en la base (`check`, `not null`), no solo en Python.
 - Montos: `numeric(14,2)` + columna `moneda` (`ARS`/`USD`). Nunca sumar monedas
-  distintas sin tipo de cambio explícito.
+  distintas sin tipo de cambio explícito. Cálculos con `Decimal`, nunca `float`.
+- Cada tabla nueva suma sus chequeos de RLS e integridad en `tests/sql/`
+  (corren en Postgres real en cada PR).
 
 ## Nombres e idioma
 
@@ -66,6 +71,14 @@ supabase_schema.sql  todo el esquema, idempotente
   figuran en [`docs/producto/glosario.md`](docs/producto/glosario.md) (tablas,
   columnas, valores, herramientas del agente).
 - Widgets de Streamlit con `key=` estable cuando un test los usa.
+
+## Accesibilidad (pantallas)
+
+- Todo campo con etiqueta visible; los obligatorios dicen «(obligatorio)».
+- El estado nunca depende solo del color: siempre también en palabras.
+- Montos con formato argentino y su moneda (`finanzas.formato_monto`).
+- Ante un error, el formulario conserva lo escrito; tras guardar, se limpia.
+- Acciones irreversibles o de anulación piden confirmación explícita.
 
 ## Tests (obligatorios)
 
@@ -92,6 +105,12 @@ ruff check . && ruff format --check .
   ni los logs. `.env` y `.streamlit/secrets.toml` están en `.gitignore`.
 - Antes de exponer datos nuevos, preguntarse: ¿los ve alguien sin login? La
   respuesta tiene que ser no, y tiene que haber un test `live` que lo pruebe.
+- Texto cargado por usuarios dentro de `st.markdown`, `st.caption`, avisos y
+  errores: siempre con `texto_seguro()` (evita links e imágenes externas
+  inyectadas). Respuestas del agente: con `respuesta_segura()` (mantiene el
+  formato pero nunca carga imágenes).
+- Llamadas a internet solo a URLs fijas en `Settings`, con timeout, y
+  validando la respuesta como dato no confiable.
 
 ## Entorno
 

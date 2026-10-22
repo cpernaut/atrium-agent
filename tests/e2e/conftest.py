@@ -7,12 +7,15 @@ swaps only the external services:
 - Supabase -> ``E2ESupabase`` (in-memory tables + a fake auth with one user)
 - OpenAI chat model -> a scripted ``ToolCallingFake``
 - Chroma -> ``RecordingStore``
+- Dólar MEP source -> ``Harness.mep`` (a dict of quotes by date)
 
 Nothing touches the network, so the suite is fast, free and deterministic.
 """
 
 from __future__ import annotations
 
+import re
+from datetime import date, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -23,7 +26,8 @@ from supabase import AuthApiError
 import atrium.auth
 import atrium.rag
 import atrium.vectorstore
-from tests.fake_supabase import FakeSupabase
+from atrium import cotizaciones, finanzas
+from tests.fake_supabase import FakeSupabase, seed_rubros
 from tests.fakes import RecordingStore, ToolCallingFake
 
 APP = str(Path(__file__).resolve().parents[2] / "app.py")
@@ -49,6 +53,7 @@ class E2ESupabase(FakeSupabase):
     def __init__(self):
         super().__init__()
         self.auth = FakeAuth({EMAIL: PASSWORD})
+        seed_rubros(self)  # like the precarga in supabase_schema.sql
 
 
 class Harness:
@@ -58,6 +63,23 @@ class Harness:
         self.db = E2ESupabase()
         self.store = RecordingStore()
         self.llm = ToolCallingFake(messages=iter([]), seen=[])
+        # MEP quotes served by the fake source: {date: (compra, venta)}.
+        # By default the last 30 days quote 1190/1210 (average 1200).
+        hoy = finanzas.hoy()
+        self.mep = {hoy - timedelta(days=d): (1190, 1210) for d in range(30)}
+        self.mep_caido = False
+
+    def fetch_mep(self):
+        if self.mep_caido:
+            raise cotizaciones.CotizacionError("timeout")
+        return [
+            {"casa": "bolsa", "fecha": f.isoformat(), "compra": c, "venta": v}
+            for f, (c, v) in self.mep.items()
+        ]
+
+    def set_mep(self, quotes: dict[date, tuple[float, float]]):
+        self.mep = dict(quotes)
+        cotizaciones.clear_cache()
 
     def script(self, *replies):
         """Next answers of the chat model, in order (AIMessages or tool calls)."""
@@ -92,11 +114,13 @@ def texts(at: AppTest) -> str:
     parts = []
     for kind in ("markdown", "caption", "error", "success", "info", "warning", "title"):
         parts += [str(el.value) for el in getattr(at, kind)]
-    return "\n".join(parts)
+    # Markdown escapes (from texto_seguro) removed: this is what the user reads.
+    # Security tests inspect the raw element values instead.
+    return re.sub(r"\\([!-/:-@\[-`{-~])", r"\1", "\n".join(parts))
 
 
 @pytest.fixture
-def e2e(monkeypatch) -> Harness:
+def e2e(monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "sk-e2e")
     monkeypatch.setenv("SUPABASE_URL", "https://e2e.supabase.co")
     monkeypatch.setenv("SUPABASE_ANON_KEY", "anon-e2e")
@@ -105,4 +129,7 @@ def e2e(monkeypatch) -> Harness:
     monkeypatch.setattr(atrium.rag, "_create_llm", lambda: harness.llm)
     monkeypatch.setattr(atrium.rag, "get_vector_store", lambda: harness.store)
     monkeypatch.setattr(atrium.vectorstore, "collection_size", lambda: 42)
-    return harness
+    monkeypatch.setattr(cotizaciones, "_fetch_json", harness.fetch_mep)
+    cotizaciones.clear_cache()
+    yield harness
+    cotizaciones.clear_cache()

@@ -21,16 +21,24 @@ Convención: el código (funciones, módulos, docstrings) está en inglés, pero
 | **Agente** | El asistente de chat. Responde normativa y lee o escribe obras con herramientas. | `atrium/rag.py` · `atrium/obra_tools.py` |
 | **Equipo** | Los usuarios con login. Todos ven y editan todas las obras. | rol `authenticated` en RLS |
 
-## Nuevos (definidos en F-03; propuestos en F-04 y F-05)
+## Presupuesto y gastos (F-03)
+
+| Término | Significado | En el código |
+|---|---|---|
+| **Rubro** | Categoría de trabajo o costo: Fundaciones, Estructura, Steel frame… Lista compartida, precargada y ampliable; se desactiva en vez de borrarse. Se comparte entre presupuesto y etapas. | tabla `rubros` · `RUBROS_INICIALES` |
+| **Presupuesto** | Lo que se prevé gastar en una obra, desglosado en **ítems** por rubro, cada uno con su moneda. | tabla `presupuesto_items` |
+| **Gasto** | Un pago real: fecha, rubro, descripción, monto, moneda y proveedor opcional. | tabla `gastos` |
+| **Anular** | Marcar un gasto o ítem como mal cargado: deja de sumar pero no se borra. | columna `anulado` |
+| **Desvío** | Gastado − presupuestado, por rubro y total, en una misma moneda. Positivo = **Excedido**. | `FilaResumen.desvio` · `estado_desvio` |
+| **Ejecutado** | Gastado ÷ presupuestado. | `FilaResumen.ejecutado` |
+| **Tipo de cambio** | Pesos por dólar usados para convertir: el **MEP promedio** (compra + venta ÷ 2) de la fecha del gasto o ítem. Se trae solo y se puede corregir. | `tipo_cambio` · `tipo_cambio_origen` (`auto`/`manual`) |
+| **Cotización** | El valor del MEP de una fecha (o del día hábil anterior), de una fuente pública. | `atrium/cotizaciones.py` |
+| **Total incompleto** | Resumen al que le faltan registros que no se pudieron convertir por no tener cotización. | `Resumen.incompleto` |
+
+## Nuevos (propuestos en F-04 y F-05)
 
 | Término | Significado | En el código (propuesto) |
 |---|---|---|
-| **Rubro** | Categoría de trabajo o costo: Fundaciones, Estructura, Mampostería, Instalación eléctrica… Se comparte entre presupuesto y etapas. | tabla `rubros` |
-| **Presupuesto** | Lo que se prevé gastar en una obra, desglosado en **ítems** por rubro, con moneda. | tabla `presupuesto_items` |
-| **Gasto** | Un pago o compromiso real: fecha, rubro, monto, moneda, proveedor y comprobante opcional. | tabla `gastos` |
-| **Desvío** | Diferencia entre lo gastado y lo presupuestado, por rubro y total, en una misma moneda. | calculado en `atrium/finanzas.py` |
-| **Tipo de cambio** | Pesos por dólar usados para convertir: el **MEP promedio** (compra + venta ÷ 2) de la fecha del gasto o ítem. Se trae solo y se puede corregir. | `tipo_cambio` · `tipo_cambio_origen` (`auto`/`manual`) |
-| **Cotización** | El valor del MEP de una fecha, obtenido de una fuente pública. | `atrium/cotizaciones.py` |
 | **Etapa** | Tramo planificado de la obra (por ejemplo «Estructura»), con fechas previstas y reales, y avance propio. | tabla `etapas` |
 | **Cronograma** | El conjunto ordenado de etapas de una obra. | vista en `obras_ui.py` |
 | **Atraso** | Una etapa cuya fecha de fin prevista ya pasó sin estar terminada, o que va más lenta de lo previsto. | calculado en `atrium/cronograma.py` |

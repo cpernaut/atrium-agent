@@ -51,6 +51,12 @@ class Settings:
     max_embed_retries: int = 5
     docs_dir: Path = DOCS_DIR
     chroma_dir: Path = CHROMA_DIR
+    # Serie histórica del dólar MEP ("bolsa"): [{"fecha", "compra", "venta", ...}].
+    cotizaciones_url: str = "https://api.argentinadatos.com/v1/cotizaciones/dolares/bolsa"
+    cotizaciones_timeout: float = 5.0
+    cotizaciones_ttl_seconds: int = 3600
+    # Si la cotización más cercana es más vieja que esto, se considera que no hay dato.
+    cotizaciones_max_dias_atras: int = 10
 
     @property
     def openai_api_key(self) -> str:

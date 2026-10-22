@@ -1,0 +1,126 @@
+# Revisión automática de cada PR.
+# 1) Tests y lint, y esquema + seguridad en Postgres. 2) Si pasan, un modelo de
+#    OpenAI (Codex) revisa los cambios y deja un comentario en el PR.
+# La revisión NUNCA aprueba ni mergea: eso queda en manos de una persona.
+#
+# Requiere el secret OPENAI_API_KEY (Settings → Secrets and variables → Actions).
+
+name: Revisión del PR
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+concurrency:
+  group: pr-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Tests y lint
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements*.txt
+      - run: pip install -r requirements-dev.txt
+      - run: ruff check .
+      - run: ruff format --check .
+      - run: pytest
+
+  schema:
+    name: Esquema y seguridad en Postgres
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGHOST: localhost
+      PGPORT: "5432"
+      PGUSER: postgres
+      PGPASSWORD: postgres
+    steps:
+      - uses: actions/checkout@v4
+      - name: Aplicar supabase_schema.sql y verificar RLS y restricciones
+        run: tests/sql/run.sh
+
+  review:
+    name: Revisión con OpenAI
+    needs: [checks, schema]
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    outputs:
+      resultado: ${{ steps.codex.outputs.final-message }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: refs/pull/${{ github.event.pull_request.number }}/merge
+          fetch-depth: 0
+          persist-credentials: false
+
+      - id: codex
+        uses: openai/codex-action@v1
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          prompt: |
+            Revisá el pull request #${{ github.event.pull_request.number }} de Atrium Agent
+            (Streamlit + LangGraph + Supabase). Los cambios son los de este checkout
+            respecto de origin/${{ github.base_ref }}: usá
+            `git diff origin/${{ github.base_ref }}...HEAD` para verlos.
+            Seguí las reglas de CLAUDE.md y la ficha en docs/producto/ que corresponda.
+            Los tests, el lint y los chequeos de esquema en Postgres ya pasaron.
+
+            Prestá especial atención a:
+            - supabase_schema.sql: cualquier DROP, cambio de columnas o política RLS
+              que pueda borrar datos o exponerlos a usuarios no logueados.
+            - Claves o secretos en el código (deben ir solo en Secrets).
+            - Herramientas del agente que escriban en la base sin que el usuario lo pida.
+            - Errores de lógica y tests que falten para el comportamiento nuevo.
+            - Que las capas de atrium/ no importen Streamlit.
+
+            Respondé en español, en Markdown, con este formato:
+            1. Una primera línea: «Sin bloqueantes» o «Hay bloqueantes».
+            2. Lista de problemas, cada uno con archivo:línea, qué pasa y cómo arreglarlo.
+            Si no encontrás problemas, decilo en una línea. No modifiques archivos.
+
+  comment:
+    name: Publicar la revisión
+    needs: review
+    if: needs.review.outputs.resultado != ''
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: actions/github-script@v7
+        env:
+          RESULTADO: ${{ needs.review.outputs.resultado }}
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+              body: `### 🤖 Revisión automática (OpenAI)\n\n${process.env.RESULTADO}\n\n_Esta revisión no aprueba ni mergea el PR._`,
+            });

@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 
 from langchain_core.tools import BaseTool, StructuredTool
 
-from atrium import obras
+from atrium import finanzas, obras
 
 if TYPE_CHECKING:
     from supabase import Client
@@ -108,7 +108,90 @@ def build_obra_tools(
         acciones.append(f"✏️ «{encontrada['nombre']}» actualizada: {detalle}")
         return f"Obra {encontrada['nombre']} actualizada: {detalle}."
 
+    def _rubro(texto: str) -> tuple[dict | None, str | None]:
+        matches = finanzas.find_rubros(client, texto)
+        if len(matches) == 1:
+            return matches[0], None
+        disponibles = ", ".join(r["nombre"] for r in finanzas.list_rubros(client))
+        if not matches:
+            return None, (
+                f"No hay un rubro «{texto}». Elegí el más adecuado entre: {disponibles}. "
+                "Si ninguno corresponde, preguntale al usuario."
+            )
+        # F-03: with an ambiguous rubro the agent must ask, never pick one itself.
+        return None, (
+            "No registré el gasto: hay varios rubros que coinciden ("
+            + ", ".join(r["nombre"] for r in matches)
+            + "). Preguntale al usuario cuál corresponde antes de volver a intentarlo."
+        )
+
+    def registrar_gasto(
+        monto: float,
+        descripcion: str,
+        rubro: str,
+        moneda: str = "ARS",
+        obra: str | None = None,
+        fecha: str | None = None,
+        proveedor: str | None = None,
+    ) -> str:
+        """Registra un gasto de una obra. Usala SOLO si el usuario pide explícitamente
+        cargar o registrar un gasto. `monto` es un número (350 mil = 350000). `moneda`
+        es ARS o USD. `rubro` es el nombre de un rubro existente (por ejemplo, el hierro
+        va en Estructura). `fecha` en formato AAAA-MM-DD (vacío = hoy). La cotización
+        del dólar MEP se completa sola."""
+        try:
+            encontrada, problema = _resolver(obra)
+            if problema:
+                return problema
+            elegido, problema = _rubro(rubro)
+            if problema:
+                return problema
+            gasto, aviso = finanzas.add_gasto(
+                client,
+                encontrada["id"],
+                monto=monto,
+                moneda=moneda,
+                rubro_id=elegido["id"],
+                descripcion=descripcion,
+                fecha=fecha or None,
+                proveedor=proveedor,
+            )
+        except (obras.ObrasError, finanzas.FinanzasError) as exc:
+            return f"No se pudo registrar el gasto: {exc}"
+        monto_txt = finanzas.formato_monto(gasto["monto"], gasto["moneda"])
+        acciones.append(
+            f"💸 Gasto registrado en «{encontrada['nombre']}»: {monto_txt} · {elegido['nombre']}"
+        )
+        texto = (
+            f"Gasto registrado en {encontrada['nombre']}: {monto_txt}, rubro "
+            f"{elegido['nombre']}, fecha {gasto['fecha']}"
+        )
+        if gasto.get("tipo_cambio"):
+            texto += f", cotización MEP {finanzas.formato_numero(gasto['tipo_cambio'], 2)}."
+        else:
+            texto += f". {aviso}"
+        return texto
+
+    def resumen_plata(obra: str | None = None, moneda: str = "ARS") -> str:
+        """Muestra presupuestado, gastado y desvío por rubro de una obra, en ARS o USD
+        (dólar MEP). Usala para preguntas sobre plata, gastos, presupuesto o desvíos."""
+        try:
+            encontrada, problema = _resolver(obra)
+            if problema:
+                return problema
+            res = finanzas.resumen(client, encontrada["id"], moneda)
+        except (obras.ObrasError, finanzas.FinanzasError) as exc:
+            return f"No se pudo calcular el resumen: {exc}"
+        return finanzas.describe_resumen(res, encontrada["nombre"])
+
     return [
         StructuredTool.from_function(fn)
-        for fn in (listar_obras, ver_obra, agregar_nota_bitacora, actualizar_obra)
+        for fn in (
+            listar_obras,
+            ver_obra,
+            agregar_nota_bitacora,
+            actualizar_obra,
+            registrar_gasto,
+            resumen_plata,
+        )
     ]
