@@ -44,9 +44,24 @@ LOGO = ASSETS / "atrium-logo.svg"  # isotipo + «ATRIUM STUDIO», para el login
 ISOTIPO_CHICO = str(ASSETS / "atrium-favicon.svg")  # trazo grueso: se lee en tamaños chicos
 FAVICON = str(ASSETS / "favicon.png")
 
-st.set_page_config(page_title="Atrium Agent", page_icon=FAVICON)
+NOMBRE_APP = "Atrium Studio"
+ETIQUETA_BETA = "Versión beta"
+
+st.set_page_config(page_title=f"{NOMBRE_APP} · Beta", page_icon=FAVICON)
 # Arriba a la izquierda va solo el isotipo: el texto del logo no se lee a ese tamaño.
 st.logo(ISOTIPO_CHICO, size="large", icon_image=ISOTIPO_CHICO)
+
+
+def titulo() -> None:
+    """App name with a visible beta label (text, not only color)."""
+
+    st.title(NOMBRE_APP)
+    st.badge(
+        ETIQUETA_BETA,
+        icon=":material/science:",
+        color="orange",
+        help="La app está en prueba: puede cambiar y tener errores. Contanos lo que encuentres.",
+    )
 
 
 def logo_centrado(max_px: int = 220) -> None:
@@ -89,7 +104,7 @@ def require_login(supabase):
         return st.session_state.user
 
     logo_centrado()
-    st.title("Atrium Agent")
+    titulo()
     st.caption("Ingresá con tu cuenta del equipo.")
     with st.form("login"):
         email = st.text_input("Email", key="login_email")
@@ -261,7 +276,7 @@ if seccion == SECCION_OBRAS:
     render_obras_page(supabase, user)
     st.stop()
 
-st.title("Atrium Agent")
+titulo()
 st.caption("Normativa de obra y seguimiento de tus obras")
 
 render_history()

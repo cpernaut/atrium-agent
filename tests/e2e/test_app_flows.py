@@ -45,7 +45,8 @@ def test_e2e_02_login_valido_muestra_agente(e2e):
     at = e2e.login()
 
     assert not at.exception
-    assert "Atrium Agent" in [t.value for t in at.title]
+    assert "Atrium Studio" in [t.value for t in at.title]
+    assert any("Versión beta" in m.value for m in at.markdown), "falta la etiqueta beta"
     assert EMAIL in "\n".join(m.value for m in at.sidebar.markdown)
     assert at.chat_input
 
@@ -295,6 +296,9 @@ def test_e2e_17_login_y_app_muestran_el_logo(e2e, monkeypatch):
     at = e2e.open()
 
     assert not at.exception
+    assert "Atrium Studio" in [x.value for x in at.title]
+    assert any("Versión beta" in m.value for m in at.markdown)
+    assert llamadas["config"]["page_title"] == "Atrium Studio · Beta"
     logos = [m.value for m in at.markdown if 'alt="Atrium Studio"' in m.value]
     assert logos and "data:image/svg+xml;base64," in logos[0], "el login no muestra el logo"
     assert llamadas["config"]["page_icon"].endswith("assets/favicon.png")

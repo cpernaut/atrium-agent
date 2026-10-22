@@ -1,4 +1,4 @@
-# Definición de producto — Atrium Agent
+# Definición de producto — Atrium Studio
 
 Esta carpeta es la fuente de verdad sobre **qué** construimos y **por qué**.
 El **cómo** técnico está en [`CLAUDE.md`](../../CLAUDE.md).

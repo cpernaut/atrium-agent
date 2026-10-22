@@ -2,7 +2,7 @@
 
 ## En una frase
 
-Atrium Agent es el **copiloto de obra** de Atrium: concentra en un solo lugar
+Atrium Studio (hoy en versión beta) es el **copiloto de obra** de Atrium: concentra en un solo lugar
 las obras del equipo, su avance, su plata y sus papeles, y responde la
 normativa aplicable a cada obra.
 
