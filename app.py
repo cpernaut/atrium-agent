@@ -1,7 +1,7 @@
-"""Streamlit chat UI for the Atrium obra assistant.
+"""Streamlit UI for Atrium: the obra assistant chat and the obras tracker.
 
 Run with ``streamlit run app.py``. All domain logic lives in the ``atrium``
-package; this module is only wiring and rendering.
+package; this module (and ``obras_ui.py``) is only wiring and rendering.
 
 Secrets (``.streamlit/secrets.toml`` locally, or the app's Secrets on
 Streamlit Cloud) — see ``.env.example`` for the full list:
@@ -32,6 +32,7 @@ from atrium import auth, observability, persistence  # noqa: E402
 from atrium.config import ConfigError, settings  # noqa: E402
 from atrium.rag import build_graph  # noqa: E402
 from atrium.vectorstore import collection_size  # noqa: E402
+from obras_ui import render_obras_page, select_obra_activa  # noqa: E402
 
 observability.refresh_env_cache()
 
@@ -51,9 +52,10 @@ def get_supabase():
     return st.session_state.supabase
 
 
-def get_graph():
+def get_graph(supabase, user):
     if "graph" not in st.session_state:
-        st.session_state.graph = build_graph().compile(checkpointer=MemorySaver())
+        graph = build_graph(obras_client=supabase, autor=user.email)
+        st.session_state.graph = graph.compile(checkpointer=MemorySaver())
     return st.session_state.graph
 
 
@@ -105,9 +107,18 @@ def save_exchange(supabase, user_id, thread_id, question, answer) -> None:
 # --------------------------------------------------------------------------- #
 # Sidebar
 # --------------------------------------------------------------------------- #
-def render_sidebar(supabase, user) -> None:
+SECCION_AGENTE = "🤖 Agente"
+SECCION_OBRAS = "📋 Obras"
+
+
+def render_sidebar(supabase, user) -> str:
+    """Draw the sidebar; returns the selected section."""
+
     with st.sidebar:
         st.write(f"👤 {user.email}")
+        seccion = st.radio("Sección", [SECCION_AGENTE, SECCION_OBRAS], horizontal=True)
+        if seccion == SECCION_AGENTE:
+            select_obra_activa(supabase)
         if st.button("Cerrar sesión"):
             auth.sign_out(supabase)
             st.session_state.clear()
@@ -115,6 +126,7 @@ def render_sidebar(supabase, user) -> None:
 
         with st.expander("Diagnóstico"):
             _diagnostics()
+    return seccion
 
 
 def _diagnostics() -> None:
@@ -159,6 +171,8 @@ def render_history() -> None:
     for message in st.session_state.history:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
+            for accion in message.get("acciones", []):
+                st.caption(accion)
             if message.get("context"):
                 with st.expander("📄 Contexto recuperado"):
                     st.markdown(message["context"])
@@ -175,7 +189,7 @@ def handle_prompt(supabase, user, prompt: str) -> None:
             try:
                 with observability.trace() as tracer:
                     result = st.session_state.graph.invoke(
-                        {"mensajes": [prompt]},
+                        {"mensajes": [prompt], "obra_id": st.session_state.get("obra_activa")},
                         {"configurable": {"thread_id": st.session_state.thread_id}},
                     )
                     if tracer is not None:
@@ -189,13 +203,18 @@ def handle_prompt(supabase, user, prompt: str) -> None:
 
         answer = result["mensajes"][-1]
         context = result.get("context", "")
+        acciones = result.get("acciones") or []
         st.markdown(answer)
+        for accion in acciones:
+            st.caption(accion)
         with st.expander("📄 Contexto recuperado"):
             st.markdown(context or "_(vacío)_")
         if run_url:
             st.caption(f"[🔎 Ver traza en LangSmith]({run_url})")
 
-    st.session_state.history.append({"role": "assistant", "content": answer, "context": context})
+    st.session_state.history.append(
+        {"role": "assistant", "content": answer, "context": context, "acciones": acciones}
+    )
     save_exchange(supabase, user.id, st.session_state.thread_id, prompt, answer)
 
 
@@ -204,18 +223,22 @@ def handle_prompt(supabase, user, prompt: str) -> None:
 # --------------------------------------------------------------------------- #
 supabase = get_supabase()
 user = require_login(supabase)
-graph = get_graph()
+graph = get_graph(supabase, user)
 
 if "thread_id" not in st.session_state:
     st.session_state.thread_id = str(uuid.uuid4())
     st.session_state.history = load_history(supabase, user.id)
 
-render_sidebar(supabase, user)
+seccion = render_sidebar(supabase, user)
+
+if seccion == SECCION_OBRAS:
+    render_obras_page(supabase, user)
+    st.stop()
 
 st.title("🏗️ Atrium Agent")
-st.caption("Asistente de normativa de obra")
+st.caption("Normativa de obra y seguimiento de tus obras")
 
 render_history()
 
-if prompt := st.chat_input("Preguntá sobre normativa de obra…"):
+if prompt := st.chat_input("Preguntá normativa o pedí algo sobre tus obras…"):
     handle_prompt(supabase, user, prompt)
