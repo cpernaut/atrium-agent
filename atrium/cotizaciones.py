@@ -22,6 +22,10 @@ from decimal import Decimal, InvalidOperation
 from atrium.config import settings
 
 _MAX_BYTES = 5_000_000
+# Sane range for ARS per USD. Rows outside it are treated as bad data (and the
+# database column numeric(12,4) couldn't store them anyway).
+_MIN_VALOR = Decimal("0.01")
+_MAX_VALOR = Decimal("10000000")
 
 
 class CotizacionError(RuntimeError):
@@ -77,7 +81,7 @@ def _parse(payload: object) -> dict[date, Cotizacion]:
             venta = Decimal(str(row["venta"]))
         except (KeyError, ValueError, InvalidOperation):
             continue
-        if compra.is_finite() and venta.is_finite() and compra > 0 and venta > 0:
+        if all(v.is_finite() and _MIN_VALOR <= v <= _MAX_VALOR for v in (compra, venta)):
             serie[fecha] = Cotizacion(fecha, compra, venta)
     if not serie:
         raise CotizacionError("La fuente de cotizaciones no trajo ningún dato válido.")

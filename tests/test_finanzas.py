@@ -116,13 +116,13 @@ def test_gasto_con_cotizacion_automatica(db, mep):
 
     gasto, aviso = _gasto(db)
     assert aviso is None
-    assert (gasto["tipo_cambio"], gasto["tipo_cambio_origen"]) == ("1200", "auto")
+    assert (gasto["tipo_cambio"], gasto["tipo_cambio_origen"]) == ("1200.0000", "auto")
     assert gasto["monto"] == "350000.00" and gasto["fecha"] == finanzas.hoy().isoformat()
 
 
 def test_gasto_en_pesos_tambien_guarda_cotizacion(db, mep):
     gasto, _ = _gasto(db, moneda="ARS")
-    assert gasto["tipo_cambio"] == "1200"
+    assert gasto["tipo_cambio"] == "1200.0000"
 
 
 def test_fuente_caida_guarda_sin_cotizacion(db, mep):
@@ -192,10 +192,17 @@ def test_gasto_con_fecha_futura(db, mep):
         ("1.234,50", "1234.50"),
         ("1234,5", "1234.50"),
         (1500.555, "1500.56"),
+        ("0.5", "0.50"),
+        ("12.5", "12.50"),
+        ("0.001", None),  # empieza con 0: no es separador de miles -> redondea a 0
     ],
 )
 def test_montos_en_formato_argentino(texto, esperado):
-    assert str(finanzas.parse_monto(texto)) == esperado
+    if esperado is None:
+        with pytest.raises(finanzas.FinanzasError, match="mayor que cero"):
+            finanzas.parse_monto(texto)
+    else:
+        assert str(finanzas.parse_monto(texto)) == esperado
 
 
 @pytest.mark.parametrize("moneda", ["pesos", "$", "usd", "U$S", "dólares"])
@@ -288,7 +295,7 @@ def test_presupuesto_usa_mep_del_dia(db, mep):
         db, 1, monto="5000", moneda="USD", rubro_id=_rubro(db, "Honorarios")
     )
     assert aviso is None
-    assert (item["tipo_cambio"], item["tipo_cambio_origen"]) == ("1200", "auto")
+    assert (item["tipo_cambio"], item["tipo_cambio_origen"]) == ("1200.0000", "auto")
     assert item["fecha"] == finanzas.hoy().isoformat()
 
 
@@ -340,3 +347,29 @@ def test_paginas_sin_fin_se_cortan(db, monkeypatch):
     monkeypatch.setattr(finanzas, "_PAGINA", 5)
     with pytest.raises(finanzas.FinanzasError, match="demasiados"):
         finanzas.list_rubros(db)  # 18 rubros > 2 páginas de 5
+
+
+@pytest.mark.parametrize("valor", ["1e30", "9" * 40, 10**20])
+def test_montos_enormes_dan_error_claro(valor):
+    """Revisión PR #5: un monto enorme no rompe con InvalidOperation."""
+
+    with pytest.raises(finanzas.FinanzasError, match="demasiado grande"):
+        finanzas.parse_monto(valor)
+    with pytest.raises(finanzas.FinanzasError, match="demasiado grande"):
+        finanzas.parse_tipo_cambio(valor)
+
+
+@pytest.mark.parametrize("valor", ["0.001", "0.00001"])
+def test_tipo_cambio_que_redondea_a_cero(valor):
+    with pytest.raises(finanzas.FinanzasError, match="mayor que cero"):
+        finanzas.parse_monto(valor) if valor == "0.001" else finanzas.parse_tipo_cambio(valor)
+
+
+@pytest.mark.parametrize("absurdo", [Decimal("100000000"), Decimal("0.00001")])
+def test_cotizacion_absurda_no_impide_guardar(db, mep, absurdo):
+    """Revisión PR #5 / R3: una cotización inválida se descarta y el gasto se guarda."""
+
+    mep["valor"] = absurdo
+    gasto, aviso = _gasto(db)
+    assert "tipo_cambio" not in gasto and aviso
+    assert len(finanzas.list_gastos(db, 1)) == 1

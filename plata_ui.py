@@ -18,6 +18,9 @@ _SCHEMA_HINT = (
     "tablas `rubros`, `presupuesto_items` y `gastos`."
 )
 _FLASH = "plata_flash"
+# Input limits matching the database columns (numeric(14,2) and numeric(12,4)).
+_MONTO_MAX = 999_999_999_999.0
+_TC_MAX = 99_999_999.0
 _ULTIMOS = 20
 
 
@@ -186,7 +189,12 @@ def _render_form_gasto(supabase, obra_id: int, activos: list[dict]) -> None:
     with st.form("nuevo_gasto"):
         c1, c2 = st.columns([3, 1])
         monto = c1.number_input(
-            "Monto (obligatorio)", min_value=0.0, step=1000.0, format="%.2f", key="gasto_monto"
+            "Monto (obligatorio)",
+            min_value=0.0,
+            max_value=_MONTO_MAX,
+            step=1000.0,
+            format="%.2f",
+            key="gasto_monto",
         )
         moneda = c2.selectbox("Moneda", finanzas.MONEDAS, key="gasto_moneda")
         rubro_id = st.selectbox(
@@ -213,6 +221,7 @@ def _render_form_gasto(supabase, obra_id: int, activos: list[dict]) -> None:
             tc = st.number_input(
                 "Cotización del dólar (opcional)",
                 min_value=0.0,
+                max_value=_TC_MAX,
                 step=1.0,
                 format="%.2f",
                 key="gasto_tc",
@@ -286,6 +295,7 @@ def _render_gastos(supabase, gastos: list[dict], rubros_por_id: dict) -> None:
             valor = st.number_input(
                 "Nueva cotización del dólar (pesos por dólar)",
                 min_value=0.0,
+                max_value=_TC_MAX,
                 step=1.0,
                 format="%.2f",
                 key="tc_gasto_valor",
@@ -355,12 +365,18 @@ def _render_presupuesto(
         descripcion = st.text_input("Descripción", max_chars=200, key="item_descripcion")
         c1, c2 = st.columns([3, 1])
         monto = c1.number_input(
-            "Monto (obligatorio)", min_value=0.0, step=1000.0, format="%.2f", key="item_monto"
+            "Monto (obligatorio)",
+            min_value=0.0,
+            max_value=_MONTO_MAX,
+            step=1000.0,
+            format="%.2f",
+            key="item_monto",
         )
         moneda = c2.selectbox("Moneda", finanzas.MONEDAS, key="item_moneda")
         tc = st.number_input(
             "Cotización del dólar (opcional)",
             min_value=0.0,
+            max_value=_TC_MAX,
             step=1.0,
             format="%.2f",
             key="item_tc",
@@ -412,6 +428,7 @@ def _render_presupuesto(
         valor = st.number_input(
             "Nueva cotización del dólar para el ítem (pesos por dólar)",
             min_value=0.0,
+            max_value=_TC_MAX,
             step=1.0,
             format="%.2f",
             key="tc_item_valor",

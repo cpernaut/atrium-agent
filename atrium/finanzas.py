@@ -111,7 +111,7 @@ def _run(query) -> list[Fila]:
 # --------------------------------------------------------------------------- #
 # Parsing and validation
 # --------------------------------------------------------------------------- #
-_MILES_AR = re.compile(r"^\d{1,3}(\.\d{3})+$")
+_MILES_AR = re.compile(r"^[1-9]\d{0,2}(\.\d{3})+$")  # "350.000"; never "0.001"
 
 
 def parse_decimal(valor: Any) -> Decimal:
@@ -141,22 +141,24 @@ def parse_decimal(valor: Any) -> Decimal:
     return numero
 
 
+def _en_rango(valor: Any, paso: Decimal, maximo: Decimal, que: str) -> Decimal:
+    """Round to ``paso`` only after checking the range (huge values can't be rounded)."""
+
+    numero = parse_decimal(valor)
+    if numero > maximo:
+        raise FinanzasError(f"{que} es demasiado grande.")
+    redondeado = numero.quantize(paso, rounding=ROUND_HALF_UP)
+    if redondeado <= 0:
+        raise FinanzasError(f"{que} tiene que ser mayor que cero.")
+    return redondeado
+
+
 def parse_monto(valor: Any) -> Decimal:
-    monto = parse_decimal(valor).quantize(_CENTAVOS, rounding=ROUND_HALF_UP)
-    if monto <= 0:
-        raise FinanzasError("El monto tiene que ser mayor que cero.")
-    if monto > _MONTO_MAX:
-        raise FinanzasError("El monto es demasiado grande.")
-    return monto
+    return _en_rango(valor, _CENTAVOS, _MONTO_MAX, "El monto")
 
 
 def parse_tipo_cambio(valor: Any) -> Decimal:
-    tc = parse_decimal(valor).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
-    if tc <= 0:
-        raise FinanzasError("El tipo de cambio tiene que ser mayor que cero.")
-    if tc > _TC_MAX:
-        raise FinanzasError("El tipo de cambio es demasiado grande.")
-    return tc
+    return _en_rango(valor, Decimal("0.0001"), _TC_MAX, "El tipo de cambio")
 
 
 def _moneda(valor: Any) -> str:
@@ -287,7 +289,9 @@ def cotizar(fecha: date) -> tuple[Decimal | None, str | None, str | None]:
 
     try:
         tc = cotizaciones.mep_promedio(fecha)
-    except cotizaciones.CotizacionError:
+        if tc is not None:
+            tc = parse_tipo_cambio(tc)  # an absurd value from the source must not block saving
+    except (cotizaciones.CotizacionError, FinanzasError):
         return (
             None,
             None,

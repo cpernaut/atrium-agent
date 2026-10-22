@@ -99,3 +99,11 @@ def test_solo_https(monkeypatch):
     )
     with pytest.raises(cotizaciones.CotizacionError, match="https"):
         cotizaciones._fetch_json()
+
+
+@pytest.mark.parametrize("compra, venta", [(100000000, 100000000), (0.00001, 0.00001)])
+def test_descarta_valores_fuera_de_rango(fuente, compra, venta):
+    """Revisión PR #5: valores absurdos de la fuente se tratan como dato inválido."""
+
+    fuente["payload"] = [_row(VIERNES, compra, venta), _row(date(2026, 10, 15), 1100, 1120)]
+    assert cotizaciones.mep(VIERNES).fecha == date(2026, 10, 15)
