@@ -77,10 +77,13 @@ def users(admin, run_id):
 
 
 def cleanup(admin: Client, user_ids: list[str]) -> None:
-    # Obras first (bitácora goes with them via ON DELETE CASCADE), then any
-    # leftover rows that point at the users, then the users themselves.
-    # (gastos and presupuesto_items also go with their obra via ON DELETE CASCADE).
-    admin.table("obras").delete().like("nombre", f"{PREFIX}%").execute()
+    """Delete ONLY what this run's throwaway users created, then the users.
+
+    Never by name: an obra called «[E2E] …» by someone else (or by another
+    run) must survive. Child rows first, then obras (their cascade takes any
+    rows other users added to them), rubros, history and the users.
+    """
+
     for user_id in user_ids:
         for tabla in ("gastos", "presupuesto_items", "bitacora"):
             admin.table(tabla).delete().eq("creado_por", user_id).execute()
