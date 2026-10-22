@@ -692,3 +692,21 @@ def test_tabla_8_cerrar_el_rubro_cancela_sus_formularios(e2e):
     assert at.radio(key=f"{k}moneda").value == "USD"
     assert at.text_input(key=f"{k}descripcion").value == ""
     assert finanzas.list_gastos(e2e.db, 1) == []
+
+
+def test_tabla_9_ayudas_de_los_iconos_no_interpretan_markdown(e2e):
+    """TABLA-9 (seguridad): los textos de ayuda de los íconos muestran los nombres de
+    rubros e ítems como texto, sin cargar imágenes ni links externos."""
+
+    _obra(e2e)
+    malo = e2e.db.table("rubros").insert({"nombre": MALICIOSO, "orden": 5}).execute().data[0]
+    item, _ = finanzas.add_presupuesto_item(
+        e2e.db, 1, monto=10, moneda="ARS", rubro_id=malo["id"], descripcion=MALICIOSO
+    )
+    at = _plata(e2e)
+
+    ayudas = [b.help for b in _tab(at).button if b.help]
+    propias = [a for a in ayudas if "evil" in a]
+    assert len(propias) >= 4  # agregar ítem, registrar gasto, editar y borrar
+    for ayuda in propias:
+        assert "](https://" not in ayuda and "![" not in ayuda, ayuda

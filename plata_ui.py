@@ -393,9 +393,9 @@ def _fila_rubro(
             key=f"rubro_agregar_{rubro_id}",
             # R7: a deactivated rubro keeps its items but takes no new ones.
             help=(
-                f"Agregar un ítem en {nombre}"
+                f"Agregar un ítem en {texto_seguro(nombre)}"
                 if activo
-                else f"{nombre} está desactivado: no se le agregan ítems nuevos"
+                else f"{texto_seguro(nombre)} está desactivado: no se le agregan ítems nuevos"
             ),
             type="tertiary",
             disabled=not activo,
@@ -477,7 +477,7 @@ def _fila_item(
             a1,
             ":material/add:",
             f"gasto_agregar_{item_id}",
-            f"Registrar un gasto en {nombre}",
+            f"Registrar un gasto en {texto_seguro(nombre)}",
             disabled=cargando,
         ):
             prefijo = _gasto_prefijo(item_id)
@@ -486,11 +486,21 @@ def _fila_item(
             st.session_state[_GASTO_ABIERTO] = item_id
             _abrir(clave)
             st.rerun()
-        if _icono(a2, ":material/edit:", f"item_editar_{item_id}", f"Editar el ítem {nombre}"):
+        if _icono(
+            a2,
+            ":material/edit:",
+            f"item_editar_{item_id}",
+            f"Editar el ítem {texto_seguro(nombre)}",
+        ):
             _clear_prefix(_editar_prefijo(item_id))  # arranca con los valores actuales
             st.session_state[_EDITANDO] = item_id
             st.rerun()
-        if _icono(a3, ":material/delete:", f"item_borrar_{item_id}", f"Borrar el ítem {nombre}"):
+        if _icono(
+            a3,
+            ":material/delete:",
+            f"item_borrar_{item_id}",
+            f"Borrar el ítem {texto_seguro(nombre)}",
+        ):
             st.session_state.pop(_GASTO_A_ANULAR, None)
             st.session_state[_A_BORRAR] = item_id
             st.rerun()
