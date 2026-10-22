@@ -27,9 +27,13 @@ Convención: el código (funciones, módulos, docstrings) está en inglés, pero
 |---|---|---|
 | **Rubro** | Categoría de trabajo o costo: Fundaciones, Estructura, Steel frame… Lista compartida, precargada y ampliable; se desactiva en vez de borrarse. Se comparte entre presupuesto y etapas. | tabla `rubros` · `RUBROS_INICIALES` |
 | **Presupuesto** | Lo que se prevé gastar en una obra, desglosado en **ítems** por rubro, cada uno con su moneda. | tabla `presupuesto_items` |
-| **Gasto** | Un pago real: fecha, rubro, descripción, monto, moneda y proveedor opcional. | tabla `gastos` |
+| **Ítem (del presupuesto)** | Una línea del presupuesto: rubro, descripción, monto (puede ser 0) y moneda. Los gastos se cargan dentro de su ítem. | `presupuesto_items` · `FilaItem` |
+| **Gasto** | Un pago real de un **ítem** del presupuesto: fecha, descripción, monto, moneda y proveedor opcional. El rubro y la obra son los del ítem. | tabla `gastos` · `presupuesto_item_id` |
+| **Imprevistos** | El ítem por defecto de cada obra (rubro Otros, 10 % del presupuesto de la obra) para los gastos que no tienen otro ítem. | `es_imprevistos` · `crear_imprevistos` |
+| **Saldo** | Total del ítem − gastado. | `FilaItem.saldo` |
+| **Semáforo** | Estado de un ítem, rubro u obra según el % consumido: Dentro del presupuesto (< 90 %) · Cerca del límite (90–100 %) · Excedido (> 100 %) · Sin presupuesto asignado. | `finanzas.estado` · `estado_con_icono` |
 | **Anular** | Marcar un gasto o ítem como mal cargado: deja de sumar pero no se borra. | columna `anulado` |
-| **Borrar (ítem de presupuesto)** | Lo que el usuario ve como «Borrar»: el ítem sale de la lista y de los totales, y queda anulado en la base (F-03 R10). | `borrar_presupuesto_item` |
+| **Borrar (ítem de presupuesto)** | Lo que el usuario ve como «Borrar ítem»: el ítem y sus gastos salen de la lista y de los totales, y quedan anulados en la base (F-03 R10, R12b). | `borrar_presupuesto_item` |
 | **Desvío** | Gastado − presupuestado, por rubro y total, en una misma moneda. Positivo = **Excedido**. | `FilaResumen.desvio` · `estado_desvio` |
 | **Ejecutado** | Gastado ÷ presupuestado. | `FilaResumen.ejecutado` |
 | **Tipo de cambio** | Pesos por dólar usados para convertir: el **MEP promedio** (compra + venta ÷ 2) de la fecha del gasto o ítem. Se trae solo y se puede corregir. | `tipo_cambio` · `tipo_cambio_origen` (`auto`/`manual`) |

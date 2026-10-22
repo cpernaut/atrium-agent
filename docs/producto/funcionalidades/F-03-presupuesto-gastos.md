@@ -71,9 +71,10 @@ Honorarios y trámites · Limpieza final · Otros.
 | obra_id | bigint | FK `obras`, cascade |
 | rubro_id | bigint | FK `rubros` |
 | descripcion | text | opcional |
-| monto | numeric(14,2) | > 0 |
+| monto | numeric(14,2) | ≥ 0 (puede valer 0: el precio se carga después, D9) |
 | moneda | text | `ARS` o `USD` |
 | fecha | date | default hoy; fecha de la cotización |
+| es_imprevistos | bool | default `false`; como mucho un «Imprevistos» vigente por obra |
 | tipo_cambio | numeric(12,4) | ARS por USD (MEP promedio); > 0 o vacío |
 | tipo_cambio_origen | text | `auto` o `manual`; vacío si no hay cotización |
 | creado_por | uuid | default `auth.uid()` |
@@ -82,9 +83,10 @@ Honorarios y trámites · Limpieza final · Otros.
 
 | Campo | Tipo | Reglas |
 |---|---|---|
-| obra_id | bigint | FK `obras`, cascade |
+| presupuesto_item_id | bigint | FK `presupuesto_items`, **obligatorio**; ítem vigente de la misma obra; no se cambia |
+| obra_id | bigint | FK `obras`, cascade; lo pone la base desde el ítem |
 | fecha | date | default hoy; no futura |
-| rubro_id | bigint | FK `rubros` |
+| rubro_id | bigint | FK `rubros`; lo pone la base desde el ítem y lo sigue si el ítem cambia de rubro |
 | descripcion | text | no vacía |
 | proveedor | text | opcional |
 | monto | numeric(14,2) | > 0 |
@@ -95,7 +97,10 @@ Honorarios y trámites · Limpieza final · Otros.
 | creado_por | uuid | default `auth.uid()` |
 
 RLS en las tres tablas: el equipo lee, crea y actualiza (para anular o
-corregir la cotización). Sin DELETE.
+corregir la cotización). Sin DELETE. Triggers: `gastos_desde_item` (obra y rubro
+del gasto desde su ítem; rechaza ítems borrados o de otra obra) y
+`presupuesto_items_propaga` (si el ítem cambia de rubro o se borra, sus gastos lo
+siguen).
 
 ## Reglas de negocio
 
@@ -117,15 +122,16 @@ corregir la cotización). Sin DELETE.
   cotización, **no se convierte**: el resumen lo informa aparte y avisa que el
   total está incompleto.
 - **R6.** Desvío = gastado − presupuestado. Porcentaje ejecutado =
-  gastado ÷ presupuestado. Si un rubro no tiene presupuesto, se muestra
-  «sin presupuesto».
+  gastado ÷ presupuestado. Sin presupuesto no hay porcentaje (ver R16).
 - **R7.** Un rubro desactivado no aparece para cargas nuevas, pero sí en los
   datos históricos.
 - **R8. Sin valores por defecto que induzcan errores.** Los formularios de alta
   (gasto e ítem de presupuesto) arrancan con el rubro vacío («Elegí un rubro»), y
   el de ítem de presupuesto arranca **completamente vacío**: rubro, descripción,
   monto, moneda y cotización. Guardar sin elegir rubro (o moneda) se rechaza con
-  un mensaje claro y el formulario conserva lo escrito.
+  un mensaje claro y el formulario conserva lo escrito. El monto del ítem es
+  opcional: vacío se guarda como 0 (D9). En el gasto, la moneda es la excepción:
+  arranca en la del ítem (R15).
 - **R9. Edición de ítems de presupuesto.** Se pueden cambiar rubro, descripción,
   monto, moneda y cotización. Nunca cambian la obra, la fecha de carga ni quién lo
   cargó (la base lo impide, no solo la app). Si se cambia la cotización, queda con
@@ -135,6 +141,32 @@ corregir la cotización). Sin DELETE.
   D8). Pide confirmación en un diálogo que dice qué ítem se borra y qué efecto
   tiene; al confirmar, el ítem desaparece de la lista y de los totales, pero queda
   en la base como `anulado`. Cancelar o cerrar el diálogo no cambia nada.
+
+**Gastos por ítem** (issue #35, decisiones D9 a D16)
+
+- **R11. Todo gasto pertenece a un ítem** de presupuesto vigente de la misma obra.
+  El rubro y la obra del gasto los toma del ítem (la base lo garantiza). Ningún
+  gasto queda suelto: no hay formulario de gasto fuera de un ítem.
+- **R12. «Imprevistos».** Toda obra nueva nace con un ítem «Imprevistos» en el
+  rubro **Otros**, en la **moneda de la obra**, por el **10 % del presupuesto de
+  la obra** (0 si no tiene). Se calcula una vez, al crearlo. Se puede editar,
+  poner en 0 o borrar como cualquier ítem; si no hay uno vigente, el alta de ítem
+  ofrece «Es el ítem de imprevistos». Ahí van los gastos que no tienen otro ítem.
+  Las obras que ya existían lo reciben con la migración.
+- **R12b. Borrar un ítem con gastos** borra (anula) el ítem **y sus gastos**. El
+  diálogo avisa cuántos gastos tiene y por qué monto, y el botón dice «Borrar ítem
+  y gastos».
+- **R13.** Un gasto puede estar en otra moneda que su ítem; para comparar se usa
+  la cotización de cada uno. Sin cotización, el ítem avisa «total incompleto».
+- **R14. Anular un gasto** pide confirmación en un diálogo que lo nombra; deja de
+  sumar y queda tachado y guardado.
+- **R15.** Al agregar un gasto, la moneda arranca en la del ítem y se puede
+  cambiar. Los demás campos arrancan vacíos (la fecha, en hoy).
+- **R16. Semáforo.** Cada ítem muestra total, gastado y % consumido. Estado:
+  🟢 **Dentro del presupuesto** (< 90 %), 🟡 **Cerca del límite** (90 % a 100 %,
+  inclusive), 🔴 **Excedido** (> 100 %). Sin presupuesto: 🔴 «Excedido» si tiene
+  gastos, ⚪ «Sin presupuesto asignado» si no. El mismo criterio vale para
+  rubros y el total de la obra, y siempre se escribe en palabras.
 
 ## Técnico
 
@@ -147,36 +179,39 @@ corregir la cotización). Sin DELETE.
 
 ## Pantallas
 
-En la sección **📋 Obras**, una pestaña nueva **💰 Plata**:
+En la sección **📋 Obras**, la pestaña **💰 Plata**:
 1. Selector de obra y de moneda de visualización (ARS / USD MEP).
-2. Tres números arriba: presupuestado, gastado y desvío (en rojo si se pasa).
+2. Tres números arriba: presupuestado, gastado y desvío, con el estado en palabras.
 3. Tabla por rubro con barra de ejecución.
-4. Botón **+ Gasto** con un formulario corto: monto, moneda, rubro y descripción.
-   Plegados quedan fecha, proveedor y cotización (precargada, editable).
-5. Últimos gastos con su cotización (✏️ si es manual), con opción de anular.
-6. **Presupuesto de la obra** (sección visible, no plegada):
+4. **Presupuesto de la obra** (sección visible, no plegada):
    - Lista de ítems **agrupada por rubro**, en el orden de obra. Cada grupo muestra
-     el nombre del rubro, la cantidad de ítems y el subtotal en la moneda de
-     visualización.
-   - Cada ítem es una fila desplegable titulada con su descripción y monto. Al
-     abrirla se ven **los detalles** (rubro, descripción, monto y moneda, fecha de
-     carga, cotización y su origen) y dos acciones con texto: **Editar** y
-     **Borrar**.
-   - **Editar** reemplaza los detalles por un formulario con los valores actuales,
-     editables, y los botones **Guardar cambios** y **Cancelar**. Hay un solo ítem
-     en edición a la vez.
-   - **Borrar** abre un diálogo de confirmación (R10) con **Cancelar** y
-     **Borrar ítem**.
+     el rubro, la cantidad de ítems, el subtotal, lo gastado y el estado.
+   - Cada ítem es una fila desplegable titulada con descripción, total, gastado,
+     % consumido y estado (R16). Al abrirla se ve primero el **resumen** (total,
+     gastado, saldo, estado y barra), después los **detalles** (rubro, descripción,
+     fecha de carga, cotización) y las acciones **Editar ítem** y **Borrar ítem**.
+   - Debajo, **Gastos de este ítem**: fecha, monto, descripción, proveedor y
+     cotización de cada uno, con **Cotización** (corregirla a mano) y **Anular**.
+     Los anulados se ven tachados y con la palabra «Anulado».
+   - **+ Agregar gasto** abre, dentro del ítem, el formulario «Nuevo gasto en
+     «…»»: fecha, monto, moneda (la del ítem), descripción, proveedor y
+     cotización opcional, con **Agregar gasto** y **Cancelar**.
+   - **Editar ítem** reemplaza el ítem por un formulario con los valores actuales
+     y **Guardar cambios** y **Cancelar**.
+   - **Borrar ítem** abre el diálogo de confirmación (R10, R12b).
    - **+ Agregar ítem** abre el formulario de alta **vacío** (R8), con **Agregar**
-     y **Cancelar**; cada vez que se abre vuelve a estar vacío.
+     y **Cancelar**.
 
 ## Agente
 
 Herramientas nuevas:
-- `registrar_gasto(monto, moneda, rubro, descripcion, obra?, fecha?, proveedor?)`
-  — solo si se pide. La cotización se completa sola (R3). Si el rubro es ambiguo,
-  pregunta.
-- `resumen_plata(obra?, moneda?)` — presupuestado, gastado y desvío por rubro.
+- `registrar_gasto(monto, descripcion, item, moneda?, rubro?, obra?, fecha?, proveedor?)`
+  — solo si se pide. Busca el **ítem** de la obra por su descripción (o por el
+  rubro); si hay uno, registra; si hay varios, no guarda y pregunta; si no hay
+  ninguno, no guarda y pregunta a qué ítem va o si va a «Imprevistos». Nunca crea
+  ítems. Moneda vacía = la del ítem. La cotización se completa sola (R3).
+- `resumen_plata(obra?, moneda?)` — presupuestado, gastado y desvío por rubro, y
+  total, gastado, saldo y estado por ítem.
 
 Ejemplos: «¿cuánto llevamos gastado en Lote 12 en dólares?», «¿en qué rubro nos
 estamos pasando?», «cargá 350 mil pesos de hierro, proveedor Hierros Sur».
@@ -246,8 +281,46 @@ estamos pasando?», «cargá 350 mil pesos de hierro, proveedor Hierros Sur».
 - **F-03-CA-24** — *Dado* un usuario logueado *cuando* intenta, salteando la app,
   cambiar la obra, la fecha de carga o el autor de un ítem *entonces* la base lo
   rechaza.
-- **F-03-CA-25** — *Dado* «Registrar un gasto» *cuando* se abre *entonces* el rubro
-  está vacío; guardar sin rubro muestra «Elegí un rubro» y conserva lo escrito.
+- **F-03-CA-25** — *(reemplazado por CA-27 y CA-32: ya no hay gasto suelto.)*
+
+**Gastos por ítem** (issue #35). Los CA-2, CA-9, CA-10 y CA-11 se cumplen ahora
+dentro de cada ítem (CA-27, CA-29, CA-28 y CA-33).
+
+- **F-03-CA-26** — *Dado* un ítem de ARS 100.000 *cuando* sus gastos suman 89.000,
+  90.000, 100.000 o 101.000 *entonces* veo total, gastado y %, con
+  🟢 «Dentro del presupuesto», 🟡 «Cerca del límite», 🟡 «Cerca del límite» y
+  🔴 «Excedido»; al abrirlo veo sus gastos y el saldo.
+- **F-03-CA-27** — *Dado* un ítem *cuando* toco «+ Agregar gasto» *entonces* se abre
+  dentro del ítem un formulario vacío que lo nombra, con la moneda del ítem
+  precargada (se puede cambiar); al guardar, el gasto aparece en ese ítem y se
+  actualizan el ítem, el rubro y los totales.
+- **F-03-CA-28** — *Dado* el formulario de gasto sin monto o sin descripción
+  *cuando* toco Agregar gasto *entonces* dice qué falta, no guarda y conserva lo
+  escrito.
+- **F-03-CA-29** — *Dado* un gasto *cuando* toco Anular *entonces* un diálogo lo
+  nombra; *si* cancelo, no cambia nada; *si* confirmo, se ve tachado («Anulado»),
+  deja de sumar y sigue en la base.
+- **F-03-CA-30** — *Dado* un ítem con gastos *cuando* toco Borrar ítem *entonces* el
+  diálogo avisa cuántos gastos tiene y por qué monto; confirmar anula el ítem y
+  sus gastos, que siguen en la base y dejan de sumar.
+- **F-03-CA-30b** — *Dado* que creo una obra con presupuesto USD 85.000 *entonces*
+  ya tiene «Imprevistos» por USD 8.500 en Otros; sin presupuesto, por 0.
+- **F-03-CA-30c** — *Dado* una obra sin «Imprevistos» vigente *cuando* agrego un
+  ítem *entonces* puedo marcarlo como imprevistos; si ya hay uno, no se ofrece.
+- **F-03-CA-30d** — *Dado* el alta de ítem sin monto *cuando* lo agrego *entonces* se
+  guarda en 0 y muestra «Sin presupuesto asignado»; un negativo se rechaza.
+- **F-03-CA-31** — *Dado* un gasto en USD en un ítem en ARS *entonces* se convierte
+  con la cotización del gasto; sin cotización, el ítem dice «total incompleto».
+- **F-03-CA-32** — Ya no existe un formulario de gasto suelto ni «Últimos gastos».
+- **F-03-CA-33** — *Dado* «cargá 350 mil de hierro» por chat *cuando* un solo ítem
+  coincide *entonces* registra el gasto en ese ítem; con varios, no guarda y
+  pregunta; con ninguno, no guarda y ofrece «Imprevistos».
+- **F-03-CA-34** — *Dado* un usuario logueado *cuando* intenta, salteando la app,
+  crear un gasto sin ítem, con un ítem de otra obra o borrado, o mover un gasto de
+  ítem *entonces* la base lo rechaza; obra y rubro del gasto siempre son los del
+  ítem.
+- **F-03-CA-35** — *Dado* un ítem con gastos *cuando* le cambio el rubro *entonces*
+  sus gastos pasan a ese rubro en el resumen.
 
 ## Implementación
 
@@ -258,7 +331,8 @@ estamos pasando?», «cargá 350 mil pesos de hierro, proveedor Hierros Sur».
 | Reglas y cálculos | `atrium/finanzas.py` |
 | Pantalla 💰 Plata | `plata_ui.py` |
 | Herramientas del agente | `registrar_gasto`, `resumen_plata` en `atrium/obra_tools.py` |
-| Tests | `tests/test_finanzas.py`, `tests/test_cotizaciones.py`, `tests/e2e/test_plata_flows.py`, `tests/live/test_finanzas_live.py`, `tests/sql/test_rls_f03.sql` |
+| «Imprevistos» de una obra nueva | `obras_ui.py` → `finanzas.crear_imprevistos` |
+| Tests | `tests/test_finanzas.py`, `tests/test_cotizaciones.py`, `tests/e2e/test_plata_flows.py`, `tests/e2e/test_presupuesto_flows.py`, `tests/live/test_finanzas_live.py`, `tests/sql/test_rls_f03.sql` |
 
 **Seguridad:** RLS en las tres tablas, sin DELETE; todas las reglas de datos
 también como `check` en la base; la URL de cotizaciones es fija y su respuesta se
@@ -275,7 +349,9 @@ confirmación explícita.
 
 - **Pantalla de rubros:** agregar, renombrar, ordenar y desactivar rubros desde
   la app. El dominio y la base ya lo soportan.
-- Editar un gasto (hoy se anula y se carga de nuevo).
+- Editar un gasto, incluido moverlo a otro ítem (#25; hoy se anula y se carga de
+  nuevo).
+- Varias ofertas de proveedores por ítem (#36) y lista de proveedores (#37).
 
 ## Decisiones
 
@@ -289,3 +365,11 @@ confirmación explícita.
 | D6 | ¿Quién ve gastos y presupuestos? | ✅ Todo el equipo, como las obras |
 | D7 | ¿Qué cotización usan los ítems de presupuesto? | ✅ La misma regla que los gastos: MEP promedio de su fecha, editable *(derivada de D2 y D3; confirmar)* |
 | D8 | ¿Qué hace «Borrar» en un ítem de presupuesto? | ✅ Lo oculta de la lista y de los totales, pero lo conserva en la base como anulado (22/10/2026) |
+| D9 | ¿Un ítem puede valer 0? | ✅ Sí, cualquiera: se listan los ítems y los montos se cargan después. Vacío = 0 (#35) |
+| D10 | ¿Gasto imprevisto sin ítem? | ✅ Ítem «Imprevistos» por defecto en cada obra; ningún gasto queda suelto (#35) |
+| D11 | ¿Borrar un ítem con gastos? | ✅ Sí: se borran el ítem y sus gastos; la confirmación lo avisa (#35) |
+| D12 | ¿Moneda del gasto nuevo? | ✅ La del ítem, editable (#35) |
+| D13 | ¿Qué muestra cada ítem? | ✅ Total, gastado y %; rojo > 100 %, amarillo 90–100 %, verde < 90 % (#35) |
+| D14 | ¿Mover un gasto a otro ítem? | ✅ Sí, a futuro, con «Editar gasto» (#25) |
+| D15 | ¿Monto inicial de «Imprevistos»? | ✅ 10 % del presupuesto de la obra; puede valer 0; editable y borrable (#35) |
+| D16 | ¿Moneda de «Imprevistos»? | ✅ La de la obra (#35) |

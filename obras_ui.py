@@ -7,7 +7,7 @@ from datetime import date
 import pandas as pd
 import streamlit as st
 
-from atrium import obras
+from atrium import finanzas, obras
 from plata_ui import render_plata
 from ui_utils import texto_seguro
 
@@ -173,7 +173,7 @@ def _render_nueva(supabase) -> None:
 
         if st.form_submit_button("Crear obra"):
             try:
-                obras.create_obra(
+                creada = obras.create_obra(
                     supabase,
                     {
                         "nombre": nombre.strip(),
@@ -190,9 +190,30 @@ def _render_nueva(supabase) -> None:
                     },
                 )
             except obras.ObrasError as exc:
-                st.error(str(exc))
+                st.error(texto_seguro(exc))
             else:
-                st.success(f"Obra «{nombre.strip()}» creada.")
+                st.success(f"Obra «{texto_seguro(nombre.strip())}» creada.")
+                _crear_imprevistos(supabase, creada)
+
+
+def _crear_imprevistos(supabase, obra: obras.Obra) -> None:
+    """#35 R12: every new obra starts with its «Imprevistos» budget item."""
+
+    try:
+        item, aviso = finanzas.crear_imprevistos(supabase, obra)
+    except finanzas.FinanzasError as exc:
+        st.warning(
+            "⚠️ No se pudo crear el ítem «Imprevistos» del presupuesto: "
+            f"{texto_seguro(exc)}. Podés agregarlo desde «+ Agregar ítem»."
+        )
+        return
+    st.caption(
+        "Presupuesto: se agregó el ítem «Imprevistos» por "
+        f"{texto_seguro(finanzas.formato_monto(item['monto'], item['moneda']))} (10 % del "
+        "presupuesto de la obra). Lo podés editar o borrar en 💰 Plata."
+    )
+    if aviso:
+        st.caption(f"⚠️ {texto_seguro(aviso)}")
 
 
 def _render_bitacora(supabase, user, lista: list[obras.Obra]) -> None:
