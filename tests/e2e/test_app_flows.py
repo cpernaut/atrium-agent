@@ -305,3 +305,19 @@ def test_e2e_17_login_y_app_muestran_el_logo(e2e, monkeypatch):
     imagen, opciones = llamadas["logo"]
     assert imagen.endswith("assets/atrium-favicon.svg")
     assert opciones["icon_image"].endswith("assets/atrium-favicon.svg")
+
+
+def test_e2e_18_historial_interrumpido_se_recupera(e2e):
+    """E2E-18: si la carga del historial se corta a mitad de camino (por ejemplo, un
+    toque que dispara otra recarga), la app no queda rota: vuelve a cargarlo."""
+
+    e2e.db.table("mensajes").insert(
+        {"user_id": f"id-{EMAIL}", "thread_id": "t", "rol": "user", "contenido": "Hola de ayer"}
+    ).execute()
+    at = e2e.login()
+    # Sesión como la que dejó el error: conversación iniciada pero sin historial.
+    del at.session_state["history"]
+    at = at.run()
+
+    assert not at.exception
+    assert any("Hola de ayer" in m.value for m in at.markdown)
