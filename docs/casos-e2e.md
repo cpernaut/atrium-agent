@@ -5,7 +5,7 @@ resultado esperado verificable.
 
 | Nivel | Dónde | Cuándo corre | Servicios |
 |---|---|---|---|
-| **E2E simulado** | `tests/e2e/` | En cada PR (workflow «Revisión de Claude») y con `pytest` | Supabase, OpenAI y Chroma simulados; la app de Streamlit es la real |
+| **E2E simulado** | `tests/e2e/` | En cada PR (workflow «Revisión del PR») y con `pytest` | Supabase, OpenAI y Chroma simulados; la app de Streamlit es la real |
 | **E2E real** | `tests/live/` | A mano: Actions → «E2E contra Supabase» → Run workflow | Supabase real; usuarios y obras temporales que se borran al final |
 
 ## E2E simulado — la app completa
