@@ -169,7 +169,7 @@ create table if not exists public.presupuesto_items (
 create table if not exists public.gastos (
     id                 bigint generated always as identity primary key,
     obra_id            bigint not null references public.obras (id) on delete cascade,
-    fecha              date not null default current_date check (fecha <= current_date),
+    fecha              date not null,
     rubro_id           bigint not null references public.rubros (id),
     descripcion        text not null
                        check (char_length(btrim(descripcion)) between 1 and 200),
@@ -184,6 +184,20 @@ create table if not exists public.gastos (
     constraint gastos_tc_con_origen
         check ((tipo_cambio is null) = (tipo_cambio_origen is null))
 );
+
+-- Fechas en hora argentina: la base corre en UTC y, entre las 21:00 y las 24:00,
+-- current_date ya sería «mañana». Como alter, para que valga también en tablas
+-- que ya existían cuando se vuelve a correr este archivo.
+alter table public.gastos
+    alter column fecha set default (now() at time zone 'America/Argentina/Buenos_Aires')::date;
+alter table public.gastos drop constraint if exists gastos_fecha_check;
+alter table public.gastos drop constraint if exists gastos_fecha_no_futura;
+alter table public.gastos add constraint gastos_fecha_no_futura
+    check (fecha <= (now() at time zone 'America/Argentina/Buenos_Aires')::date);
+alter table public.presupuesto_items
+    alter column fecha set default (now() at time zone 'America/Argentina/Buenos_Aires')::date;
+alter table public.bitacora
+    alter column fecha set default (now() at time zone 'America/Argentina/Buenos_Aires')::date;
 
 create index if not exists presupuesto_items_obra_idx on public.presupuesto_items (obra_id);
 create index if not exists gastos_obra_fecha_idx on public.gastos (obra_id, fecha desc);

@@ -44,9 +44,23 @@ insert into public.presupuesto_items (obra_id, rubro_id, monto, moneda, tipo_cam
 insert into public.gastos (obra_id, rubro_id, descripcion, monto, moneda)
   select o.id, r.id, 'Hierro', 350000, 'ARS' from public.obras o, public.rubros r
   where o.nombre = 'Obra RLS' and r.nombre = 'Estructura';
-select pg_temp.ok((select fecha = current_date and not anulado and tipo_cambio is null
+select pg_temp.ok((select fecha = (now() at time zone 'America/Argentina/Buenos_Aires')::date
+                          and not anulado and tipo_cambio is null
                    from public.gastos where descripcion = 'Hierro'),
-                  'gasto: defaults (fecha hoy, no anulado, sin cotización)');
+                  'gasto: defaults (fecha de hoy en Argentina, no anulado, sin cotización)');
+-- «Mañana» en Argentina se rechaza siempre, también entre las 21 y las 24 (UTC ya es mañana).
+select pg_temp.falla($$insert into public.gastos (obra_id, rubro_id, descripcion, monto, moneda, fecha)
+  select id, 1, 'x', 10, 'ARS', (now() at time zone 'America/Argentina/Buenos_Aires')::date + 1
+  from public.obras limit 1$$, '23514');
+select pg_temp.ok(
+  (select pg_get_constraintdef(oid) like '%America/Argentina/Buenos_Aires%'
+   from pg_constraint where conname = 'gastos_fecha_no_futura')
+  and (select bool_and(pg_get_expr(d.adbin, d.adrelid) like '%America/Argentina/Buenos_Aires%')
+       from pg_attrdef d join pg_attribute a on a.attrelid = d.adrelid and a.attnum = d.adnum
+       where a.attname = 'fecha'
+         and d.adrelid in ('public.gastos'::regclass, 'public.presupuesto_items'::regclass,
+                           'public.bitacora'::regclass)),
+  'fechas: default y validación en hora argentina (gastos, presupuesto, bitácora)');
 
 -- Integridad (F-03-CA-10): la base rechaza datos inválidos aunque se saltee la app.
 select pg_temp.falla($$insert into public.gastos (obra_id, rubro_id, descripcion, monto, moneda)
