@@ -60,6 +60,11 @@ supabase_schema.sql  todo el esquema, idempotente
 - Las restricciones van también en la base (`check`, `not null`), no solo en Python.
 - Montos: `numeric(14,2)` + columna `moneda` (`ARS`/`USD`). Nunca sumar monedas
   distintas sin tipo de cambio explícito. Cálculos con `Decimal`, nunca `float`.
+- Qué columnas se pueden editar se fija en la base con permisos por columna
+  (`revoke update` + `grant update (…)`), además de la lista en el dominio
+  (p. ej. `CAMPOS_EDITABLES_ITEM`). Nunca se edita la obra, la fecha ni el autor.
+- «Borrar» en la interfaz es siempre anular: confirmación en `st.dialog`
+  controlado por `session_state` (así se puede testear) con `on_dismiss`.
 - Cada tabla nueva suma sus chequeos de RLS e integridad en `tests/sql/`
   (corren en Postgres real en cada PR).
 

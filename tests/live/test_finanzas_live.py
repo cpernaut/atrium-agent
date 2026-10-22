@@ -6,6 +6,7 @@ and the unique index on rubros. IDs match docs/casos-e2e.md.
 
 import uuid
 from datetime import timedelta
+from decimal import Decimal
 
 import pytest
 from postgrest.exceptions import APIError
@@ -115,3 +116,68 @@ def test_live_18_rubros_casi_duplicados(users, nombre):
 
     with pytest.raises(APIError):
         users.a.client.table("rubros").insert({"nombre": nombre}).execute()
+
+
+@pytest.mark.parametrize(
+    "tabla, cambio",
+    [
+        ("presupuesto_items", {"obra_id": 1}),
+        ("presupuesto_items", {"fecha": "2020-01-01"}),
+        ("presupuesto_items", {"creado_por": None}),
+        ("gastos", {"monto": "1"}),
+    ],
+    ids=["item-obra", "item-fecha", "item-autor", "gasto-monto"],
+)
+def test_live_19_columnas_que_no_se_editan(users, obra_de_a, estructura, tabla, cambio):
+    """LIVE-19 (F-03-CA-24): salteando la app no se puede mover un ítem de obra ni
+    cambiar su fecha o autor, ni el monto de un gasto."""
+
+    if tabla == "gastos":
+        fila, _ = finanzas.add_gasto(
+            users.a.client,
+            obra_de_a["id"],
+            monto="10",
+            moneda="ARS",
+            rubro_id=estructura,
+            descripcion=f"{PREFIX} g",
+            tipo_cambio="1200",
+        )
+    else:
+        fila, _ = finanzas.add_presupuesto_item(
+            users.a.client,
+            obra_de_a["id"],
+            monto="10",
+            moneda="ARS",
+            rubro_id=estructura,
+            tipo_cambio="1200",
+        )
+    with pytest.raises(APIError):
+        users.a.client.table(tabla).update(cambio).eq("id", fila["id"]).execute()
+
+
+def test_live_20_editar_y_borrar_item(users, obra_de_a, estructura):
+    """LIVE-20 (F-03 R9/R10): B edita el ítem de A; «borrar» lo oculta y lo conserva."""
+
+    item, _ = finanzas.add_presupuesto_item(
+        users.a.client,
+        obra_de_a["id"],
+        monto="10",
+        moneda="ARS",
+        rubro_id=estructura,
+        descripcion=f"{PREFIX} item",
+        tipo_cambio="1200",
+    )
+    editado = finanzas.update_presupuesto_item(
+        users.b.client,
+        item["id"],
+        monto="25",
+        moneda="USD",
+        rubro_id=estructura,
+        descripcion=f"{PREFIX} editado",
+        tipo_cambio="1150",
+    )
+    assert Decimal(str(editado["monto"])) == Decimal("25")
+    assert (editado["moneda"], editado["tipo_cambio_origen"]) == ("USD", "manual")
+    finanzas.borrar_presupuesto_item(users.b.client, item["id"])
+    final = finanzas.get_presupuesto_item(users.a.client, item["id"])
+    assert final["anulado"] is True and final["creado_por"] == users.a.id

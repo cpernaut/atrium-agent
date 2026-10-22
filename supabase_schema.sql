@@ -241,3 +241,12 @@ create policy "gastos: equipo crea" on public.gastos
 drop policy if exists "gastos: equipo edita" on public.gastos;
 create policy "gastos: equipo edita" on public.gastos
     for update to authenticated using (true) with check (true);
+
+-- Qué columnas se pueden modificar después de crear un registro (F-03 R9).
+-- La obra, la fecha, el autor y el id nunca cambian, aunque se saltee la app.
+revoke update on public.presupuesto_items from authenticated, anon;
+grant update (rubro_id, descripcion, monto, moneda, tipo_cambio, tipo_cambio_origen, anulado)
+    on public.presupuesto_items to authenticated;
+revoke update on public.gastos from authenticated, anon;
+grant update (tipo_cambio, tipo_cambio_origen, anulado)
+    on public.gastos to authenticated;

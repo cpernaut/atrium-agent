@@ -382,3 +382,99 @@ def test_cotizacion_absurda_no_impide_guardar(db, mep, absurdo):
     gasto, aviso = _gasto(db)
     assert "tipo_cambio" not in gasto and aviso
     assert len(finanzas.list_gastos(db, 1)) == 1
+
+
+# --------------------------------------------------------------------------- #
+# Edición y borrado de ítems de presupuesto (F-03 R9, R10)
+# --------------------------------------------------------------------------- #
+def _item_db(db, **cambios):
+    datos = {
+        "monto": "1000",
+        "moneda": "USD",
+        "rubro_id": _rubro(db, "Pintura"),
+        "descripcion": "A",
+    }
+    datos.update(cambios)
+    item, _ = finanzas.add_presupuesto_item(db, 1, **datos)
+    return item
+
+
+def _editar(db, item, **cambios):
+    datos = {
+        "monto": item["monto"],
+        "moneda": item["moneda"],
+        "rubro_id": item["rubro_id"],
+        "descripcion": item.get("descripcion"),
+    }
+    datos.update(cambios)
+    return finanzas.update_presupuesto_item(db, item["id"], **datos)
+
+
+def test_editar_item_cambia_solo_campos_permitidos(db, mep):
+    item = _item_db(db)
+    editado = _editar(
+        db, item, monto="2.500,50", moneda="ars", rubro_id=_rubro(db, "Estructura"), descripcion="B"
+    )
+    assert (editado["monto"], editado["moneda"], editado["descripcion"]) == ("2500.50", "ARS", "B")
+    assert editado["rubro_id"] == _rubro(db, "Estructura")
+    assert (editado["fecha"], editado["obra_id"]) == (item["fecha"], item["obra_id"])
+    assert (editado["tipo_cambio"], editado["tipo_cambio_origen"]) == ("1200.0000", "auto")
+
+
+def test_editar_cotizacion(db, mep):
+    item = _item_db(db)
+    igual = _editar(db, item, tipo_cambio="1200")
+    assert igual["tipo_cambio_origen"] == "auto"  # mismo valor: no cambia el origen
+    cambiada = _editar(db, item, tipo_cambio=1150)
+    assert (cambiada["tipo_cambio"], cambiada["tipo_cambio_origen"]) == ("1150.0000", "manual")
+    vacia = _editar(db, item, tipo_cambio=None)
+    assert vacia["tipo_cambio"] == "1150.0000"  # vacío: conserva la actual
+
+
+def test_editar_item_sin_cotizacion_la_agrega_manual(db, mep):
+    mep["valor"] = None
+    item = _item_db(db)
+    assert "tipo_cambio" not in item
+    editado = _editar(db, item, tipo_cambio="1190")
+    assert (editado["tipo_cambio"], editado["tipo_cambio_origen"]) == ("1190.0000", "manual")
+
+
+@pytest.mark.parametrize(
+    "cambio, mensaje",
+    [
+        ({"monto": 0}, "mayor que cero"),
+        ({"moneda": ""}, "Elegí la moneda"),
+        ({"moneda": "EUR"}, "Moneda inválida"),
+        ({"rubro_id": None}, "Elegí un rubro"),
+        ({"descripcion": "x" * 201}, "hasta 200"),
+        ({"tipo_cambio": -5}, "mayor que cero"),
+    ],
+)
+def test_editar_item_invalido_no_cambia_nada(db, mep, cambio, mensaje):
+    item = _item_db(db)
+    with pytest.raises(finanzas.FinanzasError, match=mensaje):
+        _editar(db, item, **cambio)
+    assert finanzas.get_presupuesto_item(db, item["id"])["monto"] == item["monto"]
+
+
+def test_item_borrado_no_se_edita(db, mep):
+    item = _item_db(db)
+    finanzas.borrar_presupuesto_item(db, item["id"])
+    with pytest.raises(finanzas.FinanzasError, match="fue borrado"):
+        _editar(db, item, descripcion="Z")
+    assert finanzas.get_presupuesto_item(db, item["id"])["anulado"] is True
+
+
+def test_rubro_desactivado_se_conserva_pero_no_se_elige(db, mep):
+    item = _item_db(db)
+    finanzas.set_rubro_activo(db, item["rubro_id"], False)
+    assert _editar(db, item, descripcion="sigue en Pintura")["rubro_id"] == item["rubro_id"]
+    otro = _rubro(db, "Revoques")
+    finanzas.set_rubro_activo(db, otro, False)
+    with pytest.raises(finanzas.FinanzasError, match="desactivado"):
+        _editar(db, item, rubro_id=otro)
+
+
+def test_editar_item_inexistente(db, mep):
+    with pytest.raises(finanzas.FinanzasError, match="No se encontró"):
+        finanzas.update_presupuesto_item(db, 999, monto=1, moneda="ARS", rubro_id=1)

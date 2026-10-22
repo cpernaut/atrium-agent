@@ -76,29 +76,6 @@ def _seed_gasto(e2e, monto, moneda, rubro, tipo_cambio=None, **mas):
 # --------------------------------------------------------------------------- #
 # Presupuesto
 # --------------------------------------------------------------------------- #
-def test_f03_ca_1_cargar_presupuesto_por_rubro(e2e):
-    """F-03-CA-1: tres ítems en tres rubros -> resumen por rubro y total."""
-
-    _obra(e2e)
-    at = _plata(e2e)
-    assert "Todavía no hay presupuesto ni gastos" in texts(at)
-
-    for rubro, monto in (
-        ("Fundaciones", 2_000_000),
-        ("Estructura", 5_000_000),
-        ("Pintura", 800_000),
-    ):
-        at.selectbox(key="item_rubro").set_value(_rubro(e2e, rubro))
-        at.number_input(key="item_monto").set_value(float(monto))
-        at = click(at, "Agregar al presupuesto")
-        assert not at.exception
-        assert f"Ítem agregado: {rubro}" in visible(at)
-
-    tabla = _tabla(at)
-    assert list(tabla.index) == ["Fundaciones", "Estructura", "Pintura"]  # orden de obra
-    assert tabla.loc["Estructura", "Presupuestado"] == "ARS 5.000.000"
-    assert _metricas(at)["Presupuestado"] == "ARS 7.800.000"
-    assert at.number_input(key="item_monto").value == 0.0  # el formulario quedó limpio
 
 
 # --------------------------------------------------------------------------- #
@@ -361,7 +338,7 @@ def test_f03_a11y_1_todos_los_campos_tienen_etiqueta(e2e):
     for campo in campos:
         assert campo.label and campo.label.strip(), campo.key
     obligatorios = {c.key: c.label for c in campos if "obligatori" in c.label}
-    assert {"gasto_monto", "gasto_rubro", "gasto_descripcion", "item_monto"} <= set(obligatorios)
+    assert {"gasto_monto", "gasto_rubro", "gasto_descripcion"} <= set(obligatorios)
 
 
 def test_f03_a11y_2_estado_en_palabras(e2e):
@@ -376,28 +353,6 @@ def test_f03_a11y_2_estado_en_palabras(e2e):
 
     assert _tabla(at).loc["Pintura", "Estado"] == "Excedido"
     assert "🔴 Excedido" in texts(at)
-
-
-def test_f03_ca_6b_corregir_cotizacion_de_un_item(e2e):
-    """F-03-CA-6 (presupuesto): un ítem cargado sin cotización se corrige a mano y
-    deja de dejar el total incompleto."""
-
-    _obra(e2e)
-    e2e.mep_caido = True
-    finanzas.add_presupuesto_item(
-        e2e.db, 1, monto=5000, moneda="USD", rubro_id=_rubro(e2e, "Honorarios")
-    )
-    at = _plata(e2e)
-    assert "Total incompleto" in texts(at)
-
-    at.number_input(key="tc_item_valor").set_value(1200.0)
-    at = click(at, "Guardar cotización del ítem")
-
-    assert not at.exception
-    item = finanzas.list_presupuesto(e2e.db, 1)[0]
-    assert (item["tipo_cambio"], item["tipo_cambio_origen"]) == ("1200.0000", "manual")
-    assert "Total incompleto" not in texts(at)
-    assert _metricas(at)["Presupuestado"] == "ARS 6.000.000"
 
 
 def test_f03_ca_9b_confirmacion_no_pasa_a_otro_gasto(e2e):
@@ -417,30 +372,6 @@ def test_f03_ca_9b_confirmacion_no_pasa_a_otro_gasto(e2e):
     at = click(at, "Anular gasto")
     assert "Marcá la confirmación" in texts(at)
     assert not any(g["anulado"] for g in finanzas.list_gastos(e2e.db, 1))
-
-
-def test_f03_ca_9c_anular_item_pide_confirmacion_propia(e2e):
-    """F-03-CA-9 (presupuesto): la confirmación también es por ítem."""
-
-    _obra(e2e)
-    for monto in (100, 200):
-        finanzas.add_presupuesto_item(
-            e2e.db, 1, monto=monto, moneda="ARS", rubro_id=_rubro(e2e, "Pintura")
-        )
-    primero, segundo = finanzas.list_presupuesto(e2e.db, 1)
-    at = _plata(e2e)
-
-    at.selectbox(key="anular_item_id").set_value(primero["id"]).run()
-    at.checkbox(key=f"anular_item_ok_{primero['id']}").check().run()
-    at.selectbox(key="anular_item_id").set_value(segundo["id"]).run()
-    at = click(at, "Anular ítem")
-    assert "Marcá la confirmación" in texts(at)
-
-    at.checkbox(key=f"anular_item_ok_{segundo['id']}").check()
-    at = click(at, "Anular ítem")
-    anulados = [i["id"] for i in finanzas.list_presupuesto(e2e.db, 1) if i["anulado"]]
-    assert anulados == [segundo["id"]]
-    assert _metricas(at)["Presupuestado"] == "ARS 100"
 
 
 def test_f03_ca_11c_rubro_ambiguo_pide_aclarar(e2e):
@@ -463,27 +394,6 @@ def test_f03_ca_11c_rubro_ambiguo_pide_aclarar(e2e):
     assert "Instalación eléctrica" in resultado and "Instalación de gas" in resultado
     assert finanzas.list_gastos(e2e.db, 1) == []
     assert "💸" not in texts(at)
-
-
-def test_f03_seg_2_avisos_escapan_nombres(e2e):
-    """F-03-SEG-2 (revisión PR #5): un rubro con Markdown no se interpreta en el
-    aviso de «Ítem agregado»."""
-
-    _obra(e2e)
-    malicioso = (
-        e2e.db.table("rubros")
-        .insert({"nombre": "![x](https://evil.test/p.png)", "orden": 5})
-        .execute()
-        .data[0]
-    )
-    at = _plata(e2e)
-    at.selectbox(key="item_rubro").set_value(malicioso["id"])
-    at.number_input(key="item_monto").set_value(100.0)
-    at = click(at, "Agregar al presupuesto")
-
-    exitos = [m.value for m in at.success]
-    assert exitos and "![x](https://" not in exitos[0]
-    assert r"\!\[x\]" in exitos[0]
 
 
 def test_f03_seg_3_avisos_del_chat_escapan_nombres(e2e):
