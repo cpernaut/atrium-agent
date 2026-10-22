@@ -194,13 +194,14 @@ En la sección **📋 Obras**, la pestaña **💰 Plata**:
    - Cada ítem es una fila desplegable titulada con descripción, total, gastado,
      % consumido y estado (R16). Al abrirla se ve primero el **resumen** (total,
      gastado, saldo, estado y barra), después los **detalles** (rubro, descripción,
-     fecha de carga, cotización) y las acciones **Editar ítem** y **Borrar ítem**.
+     fecha de carga, cotización) y tres acciones juntas: **Editar ítem**,
+     **Borrar ítem** y **Registrar un gasto**.
    - Debajo, **Gastos de este ítem**: fecha, monto, descripción, proveedor y
      cotización de cada uno, con **Cotización** (corregirla a mano) y **Anular**.
      Los anulados se ven tachados y con la palabra «Anulado».
-   - **+ Agregar gasto** abre, dentro del ítem, el formulario «Nuevo gasto en
-     «…»»: fecha, monto, moneda (la del ítem), descripción, proveedor y
-     cotización opcional, con **Agregar gasto** y **Cancelar**.
+   - **Registrar un gasto** abre, ahí mismo, el formulario «Nuevo gasto en
+     «…»», ya vinculado al ítem: fecha, monto, moneda (la del ítem), descripción,
+     proveedor y cotización opcional, con **Guardar gasto** y **Cancelar**.
    - **Editar ítem** reemplaza el ítem por un formulario con los valores actuales
      y **Guardar cambios** y **Cancelar**.
    - **Borrar ítem** abre el diálogo de confirmación (R10, R12b).
@@ -295,12 +296,13 @@ dentro de cada ítem (CA-27, CA-29, CA-28 y CA-33).
   90.000, 100.000 o 101.000 *entonces* veo total, gastado y %, con
   🟢 «Dentro del presupuesto», 🟡 «Cerca del límite», 🟡 «Cerca del límite» y
   🔴 «Excedido»; al abrirlo veo sus gastos y el saldo.
-- **F-03-CA-27** — *Dado* un ítem *cuando* toco «+ Agregar gasto» *entonces* se abre
+- **F-03-CA-27** — *Dado* un ítem *cuando* toco «Registrar un gasto» (junto a Editar ítem
+  y Borrar ítem) *entonces* se abre
   dentro del ítem un formulario vacío que lo nombra, con la moneda del ítem
   precargada (se puede cambiar); al guardar, el gasto aparece en ese ítem y se
   actualizan el ítem, el rubro y los totales.
 - **F-03-CA-28** — *Dado* el formulario de gasto sin monto o sin descripción
-  *cuando* toco Agregar gasto *entonces* dice qué falta, no guarda y conserva lo
+  *cuando* toco Guardar gasto *entonces* dice qué falta, no guarda y conserva lo
   escrito.
 - **F-03-CA-29** — *Dado* un gasto *cuando* toco Anular *entonces* un diálogo lo
   nombra; *si* cancelo, no cambia nada; *si* confirmo, se ve tachado («Anulado»),
