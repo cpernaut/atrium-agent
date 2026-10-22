@@ -195,6 +195,11 @@ select pg_temp.ok((select count(*) from public.gastos where descripcion = 'Hierr
 update public.presupuesto_items set anulado = true where id = (select id from item_hierro);
 select pg_temp.ok((select anulado from public.gastos where descripcion = 'Hierro'),
                   'borrar un ítem anula sus gastos, que siguen en la base');
+select pg_temp.falla($$update public.gastos set anulado = false where descripcion = 'Hierro'$$, '23514');
+select pg_temp.falla($$update public.presupuesto_items set anulado = false
+  where id = (select id from item_hierro)$$, '23514');
+select pg_temp.ok((select anulado from public.gastos where descripcion = 'Hierro'),
+                  'anular es definitivo: ni el gasto ni su ítem borrado se reactivan');
 
 -- ----- usuario B: comparte todo con el equipo (D6) -----
 reset role;

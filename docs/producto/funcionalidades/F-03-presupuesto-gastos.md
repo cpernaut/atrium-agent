@@ -163,7 +163,8 @@ siguen).
 - **R13.** Un gasto puede estar en otra moneda que su ítem; para comparar se usa
   la cotización de cada uno. Sin cotización, el ítem avisa «total incompleto».
 - **R14. Anular un gasto** pide confirmación en un diálogo que lo nombra; deja de
-  sumar y queda tachado y guardado.
+  sumar y queda tachado y guardado. Anular es definitivo: ni un gasto ni un ítem anulado
+  vuelven a quedar vigentes (la base lo impide).
 - **R15.** Al agregar un gasto, la moneda arranca en la del ítem y se puede
   cambiar. Los demás campos arrancan vacíos (la fecha, en hoy).
 - **R16. Semáforo.** Cada ítem muestra total, gastado y % consumido. Estado:

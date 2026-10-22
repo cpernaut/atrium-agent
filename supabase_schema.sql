@@ -303,6 +303,30 @@ create trigger presupuesto_items_propaga
     after update of rubro_id, anulado on public.presupuesto_items
     for each row execute function public.item_propaga_a_gastos();
 
+-- Anular es definitivo: un gasto o ítem anulado no vuelve a quedar vigente (así
+-- no reaparecen gastos bajo un ítem borrado). No hay función de «restaurar».
+create or replace function public.anulado_es_definitivo()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+    if old.anulado and not new.anulado then
+        raise exception 'Un registro anulado no se puede volver a activar.' using errcode = '23514';
+    end if;
+    return new;
+end;
+$$;
+
+drop trigger if exists gastos_anulado_definitivo on public.gastos;
+create trigger gastos_anulado_definitivo
+    before update of anulado on public.gastos
+    for each row execute function public.anulado_es_definitivo();
+drop trigger if exists presupuesto_items_anulado_definitivo on public.presupuesto_items;
+create trigger presupuesto_items_anulado_definitivo
+    before update of anulado on public.presupuesto_items
+    for each row execute function public.anulado_es_definitivo();
+
 -- Las obras que todavía no tienen «Imprevistos» (ni vigente ni borrado) lo
 -- reciben: 10 % del presupuesto de la obra (0 si no tiene), en su moneda y en el
 -- rubro Otros. Las obras nuevas lo crea la app al darlas de alta.
