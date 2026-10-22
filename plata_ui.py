@@ -190,6 +190,11 @@ _CSS_TABLA = """
     flex-wrap: nowrap;
 }
 .st-key-tabla_presupuesto [data-testid="stMarkdownContainer"] p { margin: 0; font-size: 0.88rem; }
+/* Streamlit gives text a negative bottom margin (to cancel the paragraph's);
+   without the paragraph margin, the cell would be shorter than its text and a
+   second line (the original currency) would spill over the row's border. */
+.st-key-tabla_presupuesto [data-testid="stMarkdown"],
+.st-key-tabla_presupuesto [data-testid="stMarkdownContainer"] { margin-bottom: 0 !important; }
 .st-key-tabla_presupuesto button p { font-size: 0.88rem; }
 .st-key-tabla_presupuesto [data-testid="stForm"] [data-testid="stHorizontalBlock"] {
     min-width: 0; border-bottom: none;
@@ -440,7 +445,7 @@ def _fila_item(
     )
     nombre = _item_nombre(item)
     original = (
-        f"  \n:gray[{texto_seguro(finanzas.formato_monto(item['monto'], item['moneda']))}]"
+        f"  \n:gray[Cargado: {texto_seguro(finanzas.formato_monto(item['monto'], item['moneda']))}]"
         if item["moneda"] != moneda
         else ""
     )
@@ -540,7 +545,7 @@ def _fila_gasto(supabase, g: dict, moneda: str) -> None:
         original
         if g["moneda"] == moneda
         else f"{_monto(valor, moneda) if valor is not None else 'sin cotización'}  \n"
-        f":gray[{texto_seguro(original)}]"
+        f":gray[Cargado: {texto_seguro(original)}]"
     )
     anulado = bool(g.get("anulado"))
 
