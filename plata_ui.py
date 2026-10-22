@@ -234,9 +234,29 @@ def _abrir(*claves: str) -> None:
     st.session_state.setdefault(_ABIERTOS, set()).update(claves)
 
 
-def _alternar(clave: str) -> None:
+def _alternar(
+    clave: str, items: tuple[int, ...] = (), gastos: tuple[int, ...] = (), rubro=None
+) -> None:
+    """Open or close a row. Closing cancels the forms open inside it: their
+    widgets stop being drawn, Streamlit forgets their values, and reopening
+    must not bring back a half-reset draft (e.g. a gasto in the wrong currency).
+    """
+
     abiertos = st.session_state.setdefault(_ABIERTOS, set())
-    abiertos.symmetric_difference_update({clave})
+    if clave not in abiertos:
+        abiertos.add(clave)
+        return
+    abiertos.discard(clave)
+    if st.session_state.get(_GASTO_ABIERTO) in items:
+        _clear_prefix(_gasto_prefijo(st.session_state.pop(_GASTO_ABIERTO)))
+    if st.session_state.get(_EDITANDO) in items:
+        _clear_prefix(_editar_prefijo(st.session_state.pop(_EDITANDO)))
+    if st.session_state.get(_GASTO_TC) in gastos:
+        st.session_state.pop(f"tc_gasto_{st.session_state.pop(_GASTO_TC)}", None)
+    abierto = st.session_state.get(_NUEVO_ABIERTO)
+    if rubro is not None and abierto is not True and abierto == rubro:
+        st.session_state.pop(_NUEVO_ABIERTO, None)
+        _clear_prefix(_NUEVO)
 
 
 def _monto(valor, moneda: str) -> str:
@@ -341,14 +361,19 @@ def _fila_rubro(
     with st.container(key=f"nivel_rubro_{rubro_id}"):
         cols = st.columns(_ANCHOS, vertical_alignment="center")
         flecha = "▾" if abierta else "▸"
-        if cols[0].button(
+        cols[0].button(
             f"{flecha} **{texto_seguro(nombre)}**",
             key=f"fila_rubro_{rubro_id}",
             type="tertiary",
             help=("Ocultar" if abierta else "Ver") + " los ítems de este rubro",
-        ):
-            _alternar(clave)
-            st.rerun()
+            on_click=_alternar,
+            args=(clave,),
+            kwargs={
+                "items": tuple(i["id"] for i in del_rubro),
+                "gastos": tuple(g["id"] for g in gastos),
+                "rubro": rubro_id,
+            },
+        )
         _celdas(
             cols,
             [
@@ -426,14 +451,15 @@ def _fila_item(
     with st.container(key=f"nivel_item_{item_id}"):
         cols = st.columns(_ANCHOS, vertical_alignment="center")
         flecha = "▾" if abierta else "▸"
-        if cols[0].button(
+        cols[0].button(
             f"{flecha} {texto_seguro(nombre)}",
             key=f"fila_item_{item_id}",
             type="tertiary",
             help=("Ocultar" if abierta else "Ver") + " los gastos de este ítem",
-        ):
-            _alternar(clave)
-            st.rerun()
+            on_click=_alternar,
+            args=(clave,),
+            kwargs={"gastos": tuple(g["id"] for g in gastos)},
+        )
         _celdas(
             cols,
             [

@@ -671,3 +671,24 @@ def test_tabla_7_rubro_desactivado_no_recibe_items(e2e):
     assert boton.help == "Pintura está desactivado: no se le agregan ítems nuevos"
     assert [f["nombre"] for f in tabla_items(at)] == ["Látex"]
     assert not at.exception
+
+
+def test_tabla_8_cerrar_el_rubro_cancela_sus_formularios(e2e):
+    """TABLA-8 (revisión PR #46): cerrar un rubro con un formulario abierto adentro lo
+    cancela; al reabrirlo, el gasto vuelve a arrancar en la moneda del ítem."""
+
+    _obra(e2e)
+    item = _item(e2e, "Honorarios", 1000, moneda="USD", descripcion="Proyecto")
+    at = _plata(e2e).button(key=f"gasto_agregar_{item['id']}").click().run()
+    k = f"nuevo_gasto_{item['id']}_"
+    assert at.radio(key=f"{k}moneda").value == "USD"
+    at.text_input(key=f"{k}descripcion").input("Borrador")
+
+    at = at.button(key=f"fila_rubro_{item['rubro_id']}").click().run()  # cerrar
+    assert not any(w.key and w.key.startswith(k) for w in at.text_input)
+    at = at.button(key=f"fila_rubro_{item['rubro_id']}").click().run()  # reabrir
+    assert not any(w.key and w.key.startswith(k) for w in at.text_input)  # sin borrador
+    at = at.button(key=f"gasto_agregar_{item['id']}").click().run()
+    assert at.radio(key=f"{k}moneda").value == "USD"
+    assert at.text_input(key=f"{k}descripcion").value == ""
+    assert finanzas.list_gastos(e2e.db, 1) == []
