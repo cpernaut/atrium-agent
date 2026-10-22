@@ -156,6 +156,7 @@ def _item_nombre(item: dict) -> str:
     return item.get("descripcion") or "Sin descripción"
 
 
+_RUBROS_ACTIVOS = "presupuesto_rubros_activos"  # options of the new-item form
 _ABIERTOS = "presupuesto_abiertos"  # expanded rows: {"r12", "i34"} (rubro / ítem)
 
 # Columns of the table (#45): same as the old per-rubro table, plus Ítems and
@@ -210,7 +211,11 @@ def _abrir_alta(rubro_id: int | None) -> None:
     if rubro_id is None:
         st.session_state[_NUEVO_ABIERTO] = True
         return
-    st.session_state[f"{_NUEVO}rubro"] = rubro_id
+    if any(
+        r["id"] == rubro_id and r.get("activo", True)
+        for r in st.session_state.get(_RUBROS_ACTIVOS, [])
+    ):
+        st.session_state[f"{_NUEVO}rubro"] = rubro_id  # only an option of the form
     st.session_state[_NUEVO_ABIERTO] = rubro_id
     _abrir(f"r{rubro_id}")
 
@@ -257,6 +262,7 @@ def _render_presupuesto(
 ) -> None:
     st.subheader("Presupuesto de la obra")
     vigentes = [i for i in items if not i.get("anulado")]
+    st.session_state[_RUBROS_ACTIVOS] = activos
 
     if st.session_state.get(_NUEVO_ABIERTO) is True:  # «+ Agregar ítem», sin rubro
         _form_nuevo_item(supabase, obra_id, activos, vigentes)
@@ -350,11 +356,18 @@ def _fila_rubro(
         )
         # Callback: the new-item form may already be on screen (another rubro or the
         # top button), and its widgets can only be preset before they are drawn.
+        activo = rubros_por_id.get(rubro_id, {}).get("activo", True)
         cols[-1].button(
             ":material/add:",
             key=f"rubro_agregar_{rubro_id}",
-            help=f"Agregar un ítem en {nombre}",
+            # R7: a deactivated rubro keeps its items but takes no new ones.
+            help=(
+                f"Agregar un ítem en {nombre}"
+                if activo
+                else f"{nombre} está desactivado: no se le agregan ítems nuevos"
+            ),
             type="tertiary",
+            disabled=not activo,
             on_click=_abrir_alta,
             args=(rubro_id,),
         )

@@ -88,6 +88,7 @@ resultado esperado verificable.
 | TABLA-4 | Presupuesto en una tabla | «+» en el rubro | Alta con ese rubro elegido; el ítem nuevo aparece en el rubro |
 | TABLA-5 | Presupuesto en una tabla | Gasto anulado | Queda en su fila, tachado y con «Anulado», sin acciones |
 | TABLA-6 | Presupuesto en una tabla | Con el alta abierta, tocar el «+» de un rubro y después el de otro | El formulario cambia al rubro tocado, sin errores |
+| TABLA-7 | Presupuesto en una tabla | Rubro desactivado con ítems | Se ven sus ítems; el «+» del rubro está deshabilitado y explica por qué (R7) |
 | F-03-SEG-1 | Descripción con Markdown de imagen o link | Se muestra como texto, no se interpreta (lista de gastos y diálogo) |
 | F-03-SEG-2b | Ítem con Markdown en el formulario de gasto | Se muestra como texto |
 | F-03-SEG-2 | Rubro con Markdown en el aviso «Ítem agregado» | Se muestra como texto, no se interpreta |

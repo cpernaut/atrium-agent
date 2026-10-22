@@ -655,3 +655,19 @@ def test_tabla_6_pasar_de_un_alta_a_otra(e2e):
     at = at.button(key="item_nuevo_cancelar").click().run()
     at = _abrir_nuevo(at)
     assert at.selectbox(key="nuevo_item_rubro").value is None  # el de arriba, vacío
+
+
+def test_tabla_7_rubro_desactivado_no_recibe_items(e2e):
+    """TABLA-7 (R7): un rubro desactivado sigue mostrando sus ítems, pero su «+»
+    está deshabilitado y dice por qué."""
+
+    _obra(e2e)
+    item = _item(e2e, "Pintura", 100, descripcion="Látex")
+    finanzas.set_rubro_activo(e2e.db, item["rubro_id"], False)
+    at = _plata(e2e)
+
+    boton = at.button(key=f"rubro_agregar_{item['rubro_id']}")
+    assert boton.disabled
+    assert boton.help == "Pintura está desactivado: no se le agregan ítems nuevos"
+    assert [f["nombre"] for f in tabla_items(at)] == ["Látex"]
+    assert not at.exception
