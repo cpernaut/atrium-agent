@@ -99,6 +99,18 @@ select pg_temp.falla($$insert into public.rubros (nombre) values ('instalacion  
 update public.rubros set activo = false where nombre = 'Piscina';
 select pg_temp.ok(true, 'rubros: alta, duplicados (mayúsculas, tildes, espacios) rechazados, desactivar');
 
+-- Editar ítems (F-03 R9): solo rubro, descripción, monto, moneda y cotización.
+update public.presupuesto_items set monto = 1500, descripcion = 'editado', moneda = 'USD',
+  tipo_cambio = 1180, tipo_cambio_origen = 'manual';
+select pg_temp.falla($$update public.presupuesto_items set obra_id = obra_id$$, '42501');
+select pg_temp.falla($$update public.presupuesto_items set fecha = fecha - 1$$, '42501');
+select pg_temp.falla($$update public.presupuesto_items set creado_por = null$$, '42501');
+select pg_temp.falla($$update public.presupuesto_items set id = id$$, '428C9');  -- identity: nunca se escribe
+select pg_temp.falla($$update public.gastos set monto = 1$$, '42501');
+select pg_temp.falla($$update public.gastos set obra_id = obra_id$$, '42501');
+select pg_temp.ok((select monto = 1500 and descripcion = 'editado' from public.presupuesto_items),
+                  'editar ítems: campos permitidos sí; obra, fecha, autor e id no; gastos solo cotización y anulado');
+
 -- Anular y corregir cotización (update permitido); borrar, nunca.
 update public.gastos set anulado = true where descripcion = 'Hierro';
 update public.gastos set tipo_cambio = 1180, tipo_cambio_origen = 'manual' where descripcion = 'Hierro';
@@ -127,6 +139,6 @@ select pg_temp.ok((select count(*) from public.rubros) = 0
 select pg_temp.falla($$insert into public.rubros (nombre) values ('Intruso')$$, '42501');
 select pg_temp.falla($$insert into public.gastos (obra_id, rubro_id, descripcion, monto, moneda)
   values (1, 1, 'x', 10, 'ARS')$$, '42501');
-update public.gastos set monto = 1;
+select pg_temp.falla($$update public.gastos set monto = 1$$, '42501');
 reset role;
 select pg_temp.ok((select monto from public.gastos) = 350000, 'anon: no puede crear ni editar');

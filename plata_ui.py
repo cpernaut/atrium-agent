@@ -116,8 +116,7 @@ def render_plata(supabase, lista: list[obras.Obra]) -> None:
     _render_tabla(resumen)
     _render_form_gasto(supabase, obra_id, activos)
     _render_gastos(supabase, gastos, rubros_por_id)
-    with st.expander("Presupuesto de la obra"):
-        _render_presupuesto(supabase, obra_id, items, activos, rubros_por_id)
+    _render_presupuesto(supabase, items, activos, rubros, rubros_por_id, obra_id, moneda)
 
 
 def _render_totales(res: finanzas.Resumen) -> None:
@@ -141,7 +140,7 @@ def _render_totales(res: finanzas.Resumen) -> None:
         st.warning(
             f"⚠️ Total incompleto: {len(res.sin_convertir)} registro(s) sin cotización no se "
             f"pudieron pasar a {m}. Cargá la cotización en «Corregir o anular un gasto» "
-            "o en «Presupuesto de la obra»."
+            "o con «Editar» en el ítem del presupuesto."
         )
 
 
@@ -179,7 +178,14 @@ def _render_tabla(res: finanzas.Resumen) -> None:
 # --------------------------------------------------------------------------- #
 # Gastos
 # --------------------------------------------------------------------------- #
-_GASTO_KEYS = ["gasto_monto", "gasto_descripcion", "gasto_proveedor", "gasto_tc", "gasto_fecha"]
+_GASTO_KEYS = [
+    "gasto_monto",
+    "gasto_rubro",
+    "gasto_descripcion",
+    "gasto_proveedor",
+    "gasto_tc",
+    "gasto_fecha",
+]
 
 
 def _render_form_gasto(supabase, obra_id: int, activos: list[dict]) -> None:
@@ -200,6 +206,8 @@ def _render_form_gasto(supabase, obra_id: int, activos: list[dict]) -> None:
         rubro_id = st.selectbox(
             "Rubro (obligatorio)",
             [r["id"] for r in activos],
+            index=None,  # R8: sin valor por defecto, así nadie clasifica mal por olvido
+            placeholder="Elegí un rubro",
             format_func=lambda i: next(r["nombre"] for r in activos if r["id"] == i),
             key="gasto_rubro",
         )
@@ -334,133 +342,322 @@ def _render_gastos(supabase, gastos: list[dict], rubros_por_id: dict) -> None:
 
 
 # --------------------------------------------------------------------------- #
-# Presupuesto
+# Presupuesto (F-03 R8-R10): lista por rubro, detalle, alta, edición y borrado
 # --------------------------------------------------------------------------- #
-_ITEM_KEYS = ["item_monto", "item_descripcion", "item_tc"]
+_NUEVO_ABIERTO = "item_nuevo_abierto"
+_EDITANDO = "item_editando"
+_A_BORRAR = "item_a_borrar"
+_NUEVO = "nuevo_item_"  # prefix of the new-item form widgets
+
+
+def _editar_prefijo(item_id: int) -> str:
+    return f"editar_item_{item_id}_"
+
+
+def _item_titulo(item: dict) -> str:
+    descripcion = item.get("descripcion") or "Sin descripción"
+    return f"{descripcion} — {finanzas.formato_monto(item['monto'], item['moneda'])}"
 
 
 def _render_presupuesto(
-    supabase, obra_id: int, items: list[dict], activos: list[dict], rubros_por_id: dict
+    supabase,
+    items: list[dict],
+    activos: list[dict],
+    rubros: list[dict],
+    rubros_por_id: dict,
+    obra_id: int,
+    moneda_vista: str,
 ) -> None:
+    st.subheader("Presupuesto de la obra")
     vigentes = [i for i in items if not i.get("anulado")]
-    if vigentes:
-        for i in vigentes:
-            linea = (
-                f"**{texto_seguro(_rubro_nombre(rubros_por_id, i['rubro_id']))}** · "
-                f"{texto_seguro(finanzas.formato_monto(i['monto'], i['moneda']))}"
-            )
-            if i.get("descripcion"):
-                linea += f" · {texto_seguro(i['descripcion'])}"
-            st.markdown(f"{linea}  \n{texto_seguro(_cotizacion_txt(i))}")
-    else:
-        st.caption("Todavía no hay ítems de presupuesto.")
 
-    if st.session_state.pop("item_limpiar", False):
-        _clear(_ITEM_KEYS)
-    with st.form("nuevo_item"):
-        st.markdown("**Agregar un ítem al presupuesto**")
+    if st.session_state.get(_NUEVO_ABIERTO):
+        _form_nuevo_item(supabase, obra_id, activos)
+    elif st.button("+ Agregar ítem", key="item_agregar"):
+        _clear_prefix(_NUEVO)  # R8: siempre vacío al abrir
+        st.session_state[_NUEVO_ABIERTO] = True
+        st.rerun()
+
+    if not vigentes:
+        st.caption("Todavía no hay ítems en el presupuesto de esta obra.")
+        st.session_state.pop(_A_BORRAR, None)
+        return
+
+    orden = {r["id"]: (r.get("orden", 10**6), finanzas.normalizar(r["nombre"])) for r in rubros}
+    grupos: dict[int, list[dict]] = {}
+    for item in vigentes:
+        grupos.setdefault(item["rubro_id"], []).append(item)
+
+    for rubro_id in sorted(grupos, key=lambda r: orden.get(r, (10**6, ""))):
+        del_rubro = grupos[rubro_id]
+        resumen = finanzas.calcular_resumen(del_rubro, [], rubros, moneda_vista)
+        subtotal = finanzas.formato_monto(resumen.presupuestado, moneda_vista)
+        cantidad = f"{len(del_rubro)} ítem" + ("" if len(del_rubro) == 1 else "s")
+        with st.container(border=True):
+            encabezado = (
+                f"**{texto_seguro(_rubro_nombre(rubros_por_id, rubro_id))}** · "
+                f"{texto_seguro(cantidad)} · Subtotal {texto_seguro(subtotal)}"
+            )
+            if resumen.incompleto:
+                encabezado += f" · {len(resumen.sin_convertir)} sin cotización"
+            st.markdown(encabezado)
+            for item in del_rubro:
+                _render_item(supabase, item, activos, rubros_por_id)
+
+    pendiente = st.session_state.get(_A_BORRAR)
+    if pendiente is not None:
+        item = next((i for i in vigentes if i["id"] == pendiente), None)
+        if item is None:
+            st.session_state.pop(_A_BORRAR, None)
+        else:
+            _dialogo_borrar(supabase, item, rubros_por_id)
+
+
+def _render_item(supabase, item: dict, activos: list[dict], rubros_por_id: dict) -> None:
+    item_id = item["id"]
+    editando = st.session_state.get(_EDITANDO) == item_id
+    with st.expander(texto_seguro(_item_titulo(item)), expanded=editando):
+        if editando:
+            _form_editar_item(supabase, item, activos, rubros_por_id)
+            return
+        detalle = [
+            ("Rubro", _rubro_nombre(rubros_por_id, item["rubro_id"])),
+            ("Descripción", item.get("descripcion") or "—"),
+            ("Monto", finanzas.formato_monto(item["monto"], item["moneda"])),
+            ("Fecha de carga", _fecha_txt(item.get("fecha") or "")),
+            ("Cotización", _cotizacion_txt(item)),
+        ]
+        st.markdown("\n".join(f"- **{campo}:** {texto_seguro(valor)}" for campo, valor in detalle))
+        c1, c2 = st.columns(2)
+        if c1.button("Editar", key=f"item_editar_{item_id}", width="stretch"):
+            _clear_prefix(_editar_prefijo(item_id))  # arranca con los valores actuales
+            st.session_state[_EDITANDO] = item_id
+            st.rerun()
+        if c2.button("Borrar", key=f"item_borrar_{item_id}", width="stretch"):
+            st.session_state[_A_BORRAR] = item_id
+            st.rerun()
+
+
+def _faltantes(rubro_id, moneda, monto) -> list[str]:
+    faltan = []
+    if rubro_id is None:
+        faltan.append("elegí un rubro")
+    if not moneda:
+        faltan.append("elegí la moneda")
+    if monto is None:
+        faltan.append("ingresá el monto")
+    return faltan
+
+
+def _form_nuevo_item(supabase, obra_id: int, activos: list[dict]) -> None:
+    with st.form("form_nuevo_item", border=True):
+        st.markdown("**Nuevo ítem del presupuesto**")
         rubro_id = st.selectbox(
             "Rubro (obligatorio)",
             [r["id"] for r in activos],
+            index=None,
+            placeholder="Elegí un rubro",
             format_func=lambda i: next(r["nombre"] for r in activos if r["id"] == i),
-            key="item_rubro",
+            key=f"{_NUEVO}rubro",
         )
-        descripcion = st.text_input("Descripción", max_chars=200, key="item_descripcion")
-        c1, c2 = st.columns([3, 1])
+        descripcion = st.text_input(
+            "Descripción",
+            max_chars=200,
+            placeholder="Ej.: platea de 80 m²",
+            key=f"{_NUEVO}descripcion",
+        )
+        c1, c2 = st.columns([3, 2])
         monto = c1.number_input(
             "Monto (obligatorio)",
             min_value=0.0,
             max_value=_MONTO_MAX,
+            value=None,
             step=1000.0,
             format="%.2f",
-            key="item_monto",
+            placeholder="0,00",
+            key=f"{_NUEVO}monto",
         )
-        moneda = c2.selectbox("Moneda", finanzas.MONEDAS, key="item_moneda")
+        moneda = c2.radio(
+            "Moneda (obligatoria)",
+            finanzas.MONEDAS,
+            index=None,
+            horizontal=True,
+            key=f"{_NUEVO}moneda",
+        )
         tc = st.number_input(
             "Cotización del dólar (opcional)",
             min_value=0.0,
             max_value=_TC_MAX,
+            value=None,
             step=1.0,
             format="%.2f",
-            key="item_tc",
-            help="Dejala en 0 para usar el dólar MEP promedio de hoy, automático.",
+            placeholder="Automática: MEP de hoy",
+            key=f"{_NUEVO}tc",
+            help="Dejala vacía para usar el dólar MEP promedio de hoy.",
         )
-        if st.form_submit_button("Agregar al presupuesto"):
-            try:
-                item, aviso = finanzas.add_presupuesto_item(
-                    supabase,
-                    obra_id,
-                    monto=monto,
-                    moneda=moneda,
-                    rubro_id=rubro_id,
-                    descripcion=descripcion,
-                    tipo_cambio=tc or None,
-                )
-            except finanzas.FinanzasError as exc:
-                st.error(f"No se agregó el ítem: {texto_seguro(exc)}")
-            else:
-                _flash(
-                    "success",
-                    "✅ Ítem agregado: "
-                    + texto_seguro(
-                        f"{_rubro_nombre(rubros_por_id, item['rubro_id'])} · "
-                        f"{finanzas.formato_monto(item['monto'], item['moneda'])}."
-                    ),
-                )
-                if aviso:
-                    _flash("warning", f"⚠️ {texto_seguro(aviso)}")
-                st.session_state["item_limpiar"] = True
-                st.rerun()
+        b1, b2 = st.columns(2)
+        agregar = b1.form_submit_button(
+            "Agregar", type="primary", width="stretch", key="item_nuevo_agregar"
+        )
+        cancelar = b2.form_submit_button("Cancelar", width="stretch", key="item_nuevo_cancelar")
 
-    if not vigentes:
+    if cancelar:
+        st.session_state.pop(_NUEVO_ABIERTO, None)
+        _clear_prefix(_NUEVO)
+        st.rerun()
+    if not agregar:
         return
-    por_id = {i["id"]: i for i in vigentes}
-    if st.session_state.pop("anular_item_limpiar", False):
-        _clear(["tc_item_valor"])
-        _clear_prefix("anular_item_ok_")
-    st.markdown("**Corregir o anular un ítem**")
-    item_id = st.selectbox(
-        "Ítem",
-        list(por_id),
-        format_func=lambda i: (
-            f"{_rubro_nombre(rubros_por_id, por_id[i]['rubro_id'])} · "
-            f"{finanzas.formato_monto(por_id[i]['monto'], por_id[i]['moneda'])}"
-            + (f" · {por_id[i]['descripcion']}" if por_id[i].get("descripcion") else "")
-        ),
-        key="anular_item_id",
+    faltan = _faltantes(rubro_id, moneda, monto)
+    if faltan:
+        st.error("No se agregó el ítem: " + ", ".join(faltan) + ".")
+        return
+    try:
+        item, aviso = finanzas.add_presupuesto_item(
+            supabase,
+            obra_id,
+            monto=monto,
+            moneda=moneda,
+            rubro_id=rubro_id,
+            descripcion=descripcion,
+            tipo_cambio=tc or None,
+        )
+    except finanzas.FinanzasError as exc:
+        st.error(f"No se agregó el ítem: {texto_seguro(exc)}")
+        return
+    rubro = next((r["nombre"] for r in activos if r["id"] == item["rubro_id"]), "")
+    _flash(
+        "success",
+        "✅ Ítem agregado: "
+        + texto_seguro(f"{rubro} · {finanzas.formato_monto(item['monto'], item['moneda'])}."),
     )
-    with st.form("corregir_tc_item"):
-        st.markdown(f"Cotización actual: {texto_seguro(_cotizacion_txt(por_id[item_id]))}")
-        valor = st.number_input(
-            "Nueva cotización del dólar para el ítem (pesos por dólar)",
+    if aviso:
+        _flash("warning", f"⚠️ {texto_seguro(aviso)}")
+    st.session_state.pop(_NUEVO_ABIERTO, None)
+    _clear_prefix(_NUEVO)
+    st.rerun()
+
+
+def _form_editar_item(supabase, item: dict, activos: list[dict], rubros_por_id: dict) -> None:
+    item_id = item["id"]
+    prefijo = _editar_prefijo(item_id)
+    opciones = [r["id"] for r in activos]
+    if item["rubro_id"] not in opciones:  # rubro desactivado después: se puede conservar
+        opciones.insert(0, item["rubro_id"])
+    tc_actual = float(item["tipo_cambio"]) if item.get("tipo_cambio") else None
+
+    with st.form(f"form_editar_item_{item_id}", border=False):
+        st.markdown("**Editar ítem**")
+        rubro_id = st.selectbox(
+            "Rubro (obligatorio)",
+            opciones,
+            index=opciones.index(item["rubro_id"]),
+            format_func=lambda i: _rubro_nombre(rubros_por_id, i),
+            key=f"{prefijo}rubro",
+        )
+        descripcion = st.text_input(
+            "Descripción",
+            value=item.get("descripcion") or "",
+            max_chars=200,
+            key=f"{prefijo}descripcion",
+        )
+        c1, c2 = st.columns([3, 2])
+        monto = c1.number_input(
+            "Monto (obligatorio)",
+            min_value=0.0,
+            max_value=_MONTO_MAX,
+            value=float(item["monto"]),
+            step=1000.0,
+            format="%.2f",
+            key=f"{prefijo}monto",
+        )
+        moneda = c2.radio(
+            "Moneda (obligatoria)",
+            finanzas.MONEDAS,
+            index=list(finanzas.MONEDAS).index(item["moneda"]),
+            horizontal=True,
+            key=f"{prefijo}moneda",
+        )
+        tc = st.number_input(
+            "Cotización del dólar",
             min_value=0.0,
             max_value=_TC_MAX,
+            value=tc_actual,
             step=1.0,
             format="%.2f",
-            key="tc_item_valor",
+            placeholder="Sin cotización",
+            key=f"{prefijo}tc",
+            help="Si la cambiás, queda marcada como corregida a mano.",
         )
-        if st.form_submit_button("Guardar cotización del ítem"):
+        b1, b2 = st.columns(2)
+        guardar = b1.form_submit_button(
+            "Guardar cambios", type="primary", width="stretch", key=f"item_guardar_{item_id}"
+        )
+        cancelar = b2.form_submit_button(
+            "Cancelar", width="stretch", key=f"item_cancelar_{item_id}"
+        )
+
+    if cancelar:
+        st.session_state.pop(_EDITANDO, None)
+        _clear_prefix(prefijo)
+        st.rerun()
+    if not guardar:
+        return
+    faltan = _faltantes(rubro_id, moneda, monto)
+    if faltan:
+        st.error("No se guardaron los cambios: " + ", ".join(faltan) + ".")
+        return
+    try:
+        finanzas.update_presupuesto_item(
+            supabase,
+            item_id,
+            monto=monto,
+            moneda=moneda,
+            rubro_id=rubro_id,
+            descripcion=descripcion,
+            tipo_cambio=tc or None,
+        )
+    except finanzas.FinanzasError as exc:
+        st.error(f"No se guardaron los cambios: {texto_seguro(exc)}")
+        return
+    _flash("success", "✅ Cambios guardados.")
+    st.session_state.pop(_EDITANDO, None)
+    _clear_prefix(prefijo)
+    st.rerun()
+
+
+def _cancelar_borrado() -> None:
+    st.session_state.pop(_A_BORRAR, None)
+
+
+def _dialogo_borrar(supabase, item: dict, rubros_por_id: dict) -> None:
+    """R10: confirm in a dialog that names the item; «Borrar» hides it and keeps it."""
+
+    @st.dialog("¿Borrar este ítem del presupuesto?", on_dismiss=_cancelar_borrado)
+    def dialogo() -> None:
+        rubro = _rubro_nombre(rubros_por_id, item["rubro_id"])
+        st.markdown(
+            f"Vas a borrar **{texto_seguro(item.get('descripcion') or 'Sin descripción')}** "
+            f"de **{texto_seguro(rubro)}** por "
+            f"**{texto_seguro(finanzas.formato_monto(item['monto'], item['moneda']))}**."
+        )
+        st.markdown(
+            "Deja de sumar en el presupuesto y en los totales. Queda guardado en el "
+            "historial de la obra."
+        )
+        c1, c2 = st.columns(2)
+        if c1.button("Cancelar", key="item_borrar_cancelar", width="stretch"):
+            _cancelar_borrado()
+            st.rerun()
+        if c2.button("Borrar ítem", key="item_borrar_confirmar", type="primary", width="stretch"):
             try:
-                finanzas.set_tipo_cambio(supabase, "presupuesto_items", item_id, valor)
+                finanzas.borrar_presupuesto_item(supabase, item["id"])
             except finanzas.FinanzasError as exc:
-                st.error(f"No se guardó la cotización: {texto_seguro(exc)}")
-            else:
-                _flash("success", "✅ Cotización del ítem corregida a mano.")
-                st.session_state["anular_item_limpiar"] = True
-                st.rerun()
-    with st.form("anular_item"):
-        confirmado = st.checkbox(
-            "Confirmo que quiero anular este ítem", key=f"anular_item_ok_{item_id}"
-        )
-        if st.form_submit_button("Anular ítem"):
-            if not confirmado:
-                st.error("Marcá la confirmación para anular el ítem.")
-            else:
-                try:
-                    finanzas.anular_presupuesto_item(supabase, item_id)
-                except finanzas.FinanzasError as exc:
-                    st.error(f"No se anuló el ítem: {texto_seguro(exc)}")
-                else:
-                    _flash("success", "✅ Ítem anulado.")
-                    st.session_state["anular_item_limpiar"] = True
-                    st.rerun()
+                st.error(f"No se borró el ítem: {texto_seguro(exc)}")
+                return
+            if st.session_state.get(_EDITANDO) == item["id"]:
+                st.session_state.pop(_EDITANDO, None)
+            _cancelar_borrado()
+            _flash("success", "✅ Ítem borrado del presupuesto.")
+            st.rerun()
+
+    dialogo()

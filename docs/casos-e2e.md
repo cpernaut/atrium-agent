@@ -51,6 +51,18 @@ resultado esperado verificable.
 | F-03-CA-11b | Rubro inexistente por chat | No guarda nada; el agente pide aclarar |
 | F-03-CA-11c | Rubro ambiguo por chat («Instalación») | No guarda nada; la herramienta exige preguntar |
 | F-03-CA-12 | «¿En qué rubro nos pasamos?» | Responde con desvíos reales por rubro |
+| F-03-CA-14 | Ítems en tres rubros | Lista agrupada por rubro, en orden de obra, con cantidad y subtotal (también en USD) |
+| F-03-CA-15 | Abrir un ítem | Rubro, descripción, monto, fecha de carga, cotización y origen; botones Editar y Borrar |
+| F-03-CA-16 | «+ Agregar ítem» | Formulario vacío al abrir, y otra vez vacío después de guardar o cancelar |
+| F-03-CA-17 | Alta sin rubro, moneda o monto | Dice qué falta, no guarda y conserva lo escrito |
+| F-03-CA-18 | Editar un ítem | Formulario con los valores actuales, Guardar cambios y Cancelar |
+| F-03-CA-19 | Cambiar monto, rubro o cotización y guardar | Ítem y subtotales actualizados; obra y fecha intactas; cotización cambiada queda manual |
+| F-03-CA-20 | Cancelar la edición | Nada se guarda; vuelve el detalle original |
+| F-03-CA-21 | Guardar una edición inválida | Error claro, no guarda, conserva lo escrito |
+| F-03-CA-22 | Borrar un ítem | Diálogo que lo nombra; Cancelar o Esc no cambian nada; confirmar lo saca de la lista y los totales y queda anulado en la base |
+| F-03-CA-23 | Texto con Markdown en ítems y rubros | Lista, detalle, diálogo y avisos lo muestran como texto |
+| F-03-CA-24 | Editar fuera de los campos permitidos | El dominio solo envía campos permitidos (la base lo garantiza: SQL y LIVE-19) |
+| F-03-CA-25 | «Registrar un gasto» | Arranca sin rubro; sin rubro no guarda y conserva lo escrito; tras guardar vuelve sin rubro |
 | F-03-SEG-1 | Descripción con Markdown de imagen o link | Se muestra como texto, no se interpreta |
 | F-03-SEG-2 | Rubro con Markdown en el aviso «Ítem agregado» | Se muestra como texto, no se interpreta |
 | F-03-SEG-3 | Nombres con Markdown en los avisos del chat | Se muestran como texto, también en el historial |
@@ -63,7 +75,9 @@ resultado esperado verificable.
 Aplica `supabase_schema.sql` dos veces en un Postgres 16 limpio y verifica:
 precarga de rubros; defaults; que la base rechace montos ≤ 0, descripciones
 vacías o largas, monedas, fechas futuras, cotizaciones inválidas o sin origen y
-rubros inexistentes; rubros únicos; que nada se pueda borrar; que el equipo
+rubros inexistentes; rubros únicos; qué columnas se pueden editar (un ítem no
+cambia de obra, fecha ni autor; un gasto solo cambia cotización y anulación);
+que nada se pueda borrar; que el equipo
 comparta los datos; y que sin login no se vea ni escriba nada.
 
 ## E2E real — reglas de la base (Supabase)
@@ -88,6 +102,8 @@ comparta los datos; y que sin login no se vea ni escriba nada.
 | LIVE-16 | Gastos | B ve, corrige y anula el gasto de A; borrar | Permitido salvo borrar |
 | LIVE-17 | Rubros | Alta de rubro y duplicado con otras mayúsculas | Se crea; el duplicado se rechaza; no se borra |
 | LIVE-18 | Rubros | «Mamposteria», «MAMPOSTERÍA», «steel   FRAME» salteando la app | La base los rechaza como duplicados |
+| LIVE-19 | Integridad | Mover un ítem de obra, cambiar su fecha o autor, o el monto de un gasto, salteando la app | La base lo rechaza |
+| LIVE-20 | Presupuesto | B edita el ítem de A y lo borra | Se guarda (cotización manual); borrar lo anula y conserva el autor |
 
 ## Cómo correr
 

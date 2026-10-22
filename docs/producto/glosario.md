@@ -29,6 +29,7 @@ Convención: el código (funciones, módulos, docstrings) está en inglés, pero
 | **Presupuesto** | Lo que se prevé gastar en una obra, desglosado en **ítems** por rubro, cada uno con su moneda. | tabla `presupuesto_items` |
 | **Gasto** | Un pago real: fecha, rubro, descripción, monto, moneda y proveedor opcional. | tabla `gastos` |
 | **Anular** | Marcar un gasto o ítem como mal cargado: deja de sumar pero no se borra. | columna `anulado` |
+| **Borrar (ítem de presupuesto)** | Lo que el usuario ve como «Borrar»: el ítem sale de la lista y de los totales, y queda anulado en la base (F-03 R10). | `borrar_presupuesto_item` |
 | **Desvío** | Gastado − presupuestado, por rubro y total, en una misma moneda. Positivo = **Excedido**. | `FilaResumen.desvio` · `estado_desvio` |
 | **Ejecutado** | Gastado ÷ presupuestado. | `FilaResumen.ejecutado` |
 | **Tipo de cambio** | Pesos por dólar usados para convertir: el **MEP promedio** (compra + venta ÷ 2) de la fecha del gasto o ítem. Se trae solo y se puede corregir. | `tipo_cambio` · `tipo_cambio_origen` (`auto`/`manual`) |

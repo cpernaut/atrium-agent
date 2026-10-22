@@ -165,6 +165,8 @@ def parse_tipo_cambio(valor: Any) -> Decimal:
 
 def _moneda(valor: Any) -> str:
     moneda = str(valor or "").strip().upper()
+    if not moneda:
+        raise FinanzasError("Elegí la moneda.")
     if moneda in ("$", "PESOS", "PESO"):
         moneda = "ARS"
     if moneda in ("U$S", "US$", "DOLARES", "DÓLARES", "DOLAR", "DÓLAR"):
@@ -439,11 +441,86 @@ def list_presupuesto(client: Client, obra_id: int) -> list[Fila]:
     return _run_all(build)
 
 
+def get_presupuesto_item(client: Client, item_id: int) -> Fila:
+    filas = _run(client.table("presupuesto_items").select("*").eq("id", int(item_id)).limit(1))
+    if not filas:
+        raise FinanzasError("No se encontró el ítem del presupuesto.")
+    return filas[0]
+
+
+# Only these columns can change after creation (F-03 R9). The database enforces
+# the same list with column privileges, so obra, fecha and author are fixed.
+CAMPOS_EDITABLES_ITEM = (
+    "rubro_id",
+    "descripcion",
+    "monto",
+    "moneda",
+    "tipo_cambio",
+    "tipo_cambio_origen",
+)
+
+
+def update_presupuesto_item(
+    client: Client,
+    item_id: int,
+    *,
+    monto: Any,
+    moneda: str,
+    rubro_id: Any,
+    descripcion: str | None = None,
+    tipo_cambio: Any = None,
+) -> Fila:
+    """Edit a budget item (F-03 R9).
+
+    ``tipo_cambio``: empty keeps the current rate; a different value replaces it
+    and marks it ``manual``. A deleted (anulado) item can't be edited.
+    """
+
+    actual = get_presupuesto_item(client, item_id)
+    if actual.get("anulado"):
+        raise FinanzasError("Este ítem fue borrado: ya no se puede editar.")
+
+    # Keeping a rubro that was deactivated later is allowed (R7); changing to one isn't.
+    if rubro_id is not None and str(rubro_id) == str(actual.get("rubro_id")):
+        rubro = int(actual["rubro_id"])
+    else:
+        rubro = _rubro_activo(client, rubro_id)["id"]
+
+    cambios: Fila = {
+        "rubro_id": rubro,
+        "descripcion": _texto(descripcion, "la descripción", _DESCRIPCION_MAX, False),
+        "monto": str(parse_monto(monto)),
+        "moneda": _moneda(moneda),
+    }
+    if tipo_cambio not in (None, "", 0):
+        nuevo = parse_tipo_cambio(tipo_cambio)
+        previo = actual.get("tipo_cambio")
+        if previo in (None, "") or parse_decimal(previo) != nuevo:
+            cambios["tipo_cambio"] = str(nuevo)
+            cambios["tipo_cambio_origen"] = ORIGEN_MANUAL
+    assert set(cambios) <= set(CAMPOS_EDITABLES_ITEM)
+
+    filas = _run(
+        client.table("presupuesto_items")
+        .update(cambios)
+        .eq("id", int(item_id))
+        .eq("anulado", False)
+    )
+    if not filas:
+        raise FinanzasError("No se pudo guardar: el ítem ya no existe o fue borrado.")
+    return filas[0]
+
+
 def anular_presupuesto_item(client: Client, item_id: int) -> Fila:
+    """«Borrar» an item: hidden from lists and totals, kept in the database (R10)."""
+
     filas = _run(client.table("presupuesto_items").update({"anulado": True}).eq("id", item_id))
     if not filas:
         raise FinanzasError("No se encontró el ítem del presupuesto.")
     return filas[0]
+
+
+borrar_presupuesto_item = anular_presupuesto_item
 
 
 # --------------------------------------------------------------------------- #

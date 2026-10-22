@@ -121,6 +121,20 @@ corregir la cotización). Sin DELETE.
   «sin presupuesto».
 - **R7.** Un rubro desactivado no aparece para cargas nuevas, pero sí en los
   datos históricos.
+- **R8. Sin valores por defecto que induzcan errores.** Los formularios de alta
+  (gasto e ítem de presupuesto) arrancan con el rubro vacío («Elegí un rubro»), y
+  el de ítem de presupuesto arranca **completamente vacío**: rubro, descripción,
+  monto, moneda y cotización. Guardar sin elegir rubro (o moneda) se rechaza con
+  un mensaje claro y el formulario conserva lo escrito.
+- **R9. Edición de ítems de presupuesto.** Se pueden cambiar rubro, descripción,
+  monto, moneda y cotización. Nunca cambian la obra, la fecha de carga ni quién lo
+  cargó (la base lo impide, no solo la app). Si se cambia la cotización, queda con
+  origen `manual`. Valen las mismas validaciones que al crear. Un ítem borrado no
+  se puede editar.
+- **R10. Borrar un ítem de presupuesto = ocultarlo y conservarlo** (decisión
+  D8). Pide confirmación en un diálogo que dice qué ítem se borra y qué efecto
+  tiene; al confirmar, el ítem desaparece de la lista y de los totales, pero queda
+  en la base como `anulado`. Cancelar o cerrar el diálogo no cambia nada.
 
 ## Técnico
 
@@ -140,7 +154,21 @@ En la sección **📋 Obras**, una pestaña nueva **💰 Plata**:
 4. Botón **+ Gasto** con un formulario corto: monto, moneda, rubro y descripción.
    Plegados quedan fecha, proveedor y cotización (precargada, editable).
 5. Últimos gastos con su cotización (✏️ si es manual), con opción de anular.
-6. Carga del presupuesto por ítems, en un desplegable.
+6. **Presupuesto de la obra** (sección visible, no plegada):
+   - Lista de ítems **agrupada por rubro**, en el orden de obra. Cada grupo muestra
+     el nombre del rubro, la cantidad de ítems y el subtotal en la moneda de
+     visualización.
+   - Cada ítem es una fila desplegable titulada con su descripción y monto. Al
+     abrirla se ven **los detalles** (rubro, descripción, monto y moneda, fecha de
+     carga, cotización y su origen) y dos acciones con texto: **Editar** y
+     **Borrar**.
+   - **Editar** reemplaza los detalles por un formulario con los valores actuales,
+     editables, y los botones **Guardar cambios** y **Cancelar**. Hay un solo ítem
+     en edición a la vez.
+   - **Borrar** abre un diálogo de confirmación (R10) con **Cancelar** y
+     **Borrar ítem**.
+   - **+ Agregar ítem** abre el formulario de alta **vacío** (R8), con **Agregar**
+     y **Cancelar**; cada vez que se abre vuelve a estar vacío.
 
 ## Agente
 
@@ -188,6 +216,39 @@ estamos pasando?», «cargá 350 mil pesos de hierro, proveedor Hierros Sur».
 - **F-03-CA-13** — *Dado* un usuario sin login *cuando* consulta gastos,
   presupuestos o rubros *entonces* no ve nada (RLS).
 
+**Presupuesto: lista, detalle, edición y borrado** (issue #9)
+
+- **F-03-CA-14** — *Dado* ítems en tres rubros *cuando* abro 💰 Plata *entonces*
+  veo la lista agrupada por rubro, en orden de obra, con cantidad de ítems y
+  subtotal de cada rubro.
+- **F-03-CA-15** — *Dado* un ítem *cuando* abro su fila *entonces* veo rubro,
+  descripción, monto, moneda, fecha de carga y cotización con su origen, y las
+  acciones Editar y Borrar.
+- **F-03-CA-16** — *Dado* que toco «+ Agregar ítem» *entonces* el formulario aparece
+  vacío; *y* después de guardar un ítem, al volver a abrirlo, aparece vacío otra vez.
+- **F-03-CA-17** — *Dado* el alta sin rubro o sin moneda *cuando* toco Agregar
+  *entonces* veo «Elegí un rubro» (o la moneda), no se guarda nada y lo escrito se
+  conserva.
+- **F-03-CA-18** — *Dado* un ítem *cuando* toco Editar *entonces* aparece el
+  formulario con sus valores actuales, con Guardar cambios y Cancelar.
+- **F-03-CA-19** — *Dado* un ítem en edición *cuando* cambio monto y rubro y
+  guardo *entonces* el ítem y los subtotales se actualizan y el formulario se cierra.
+- **F-03-CA-20** — *Dado* un ítem en edición con cambios *cuando* toco Cancelar
+  *entonces* no se guarda nada y vuelvo a ver los detalles originales.
+- **F-03-CA-21** — *Dado* un ítem en edición *cuando* guardo un monto inválido
+  *entonces* veo el error, no se guarda y el formulario conserva lo escrito.
+- **F-03-CA-22** — *Dado* un ítem *cuando* toco Borrar *entonces* aparece un
+  diálogo que nombra el ítem y pide confirmación; *si* cancelo, no cambia nada;
+  *si* confirmo, desaparece de la lista y de los totales y queda anulado en la base.
+- **F-03-CA-23** — *Dado* un ítem con texto que contiene Markdown *cuando* veo la
+  lista, el detalle, el formulario o el diálogo *entonces* el texto se muestra tal
+  cual, sin interpretarse.
+- **F-03-CA-24** — *Dado* un usuario logueado *cuando* intenta, salteando la app,
+  cambiar la obra, la fecha de carga o el autor de un ítem *entonces* la base lo
+  rechaza.
+- **F-03-CA-25** — *Dado* «Registrar un gasto» *cuando* se abre *entonces* el rubro
+  está vacío; guardar sin rubro muestra «Elegí un rubro» y conserva lo escrito.
+
 ## Implementación
 
 | Pieza | Dónde |
@@ -227,3 +288,4 @@ confirmación explícita.
 | D5 | ¿Ingresos, señas y aportes? | ✅ No en F-03; ficha aparte «Flujo de fondos» |
 | D6 | ¿Quién ve gastos y presupuestos? | ✅ Todo el equipo, como las obras |
 | D7 | ¿Qué cotización usan los ítems de presupuesto? | ✅ La misma regla que los gastos: MEP promedio de su fecha, editable *(derivada de D2 y D3; confirmar)* |
+| D8 | ¿Qué hace «Borrar» en un ítem de presupuesto? | ✅ Lo oculta de la lista y de los totales, pero lo conserva en la base como anulado (22/10/2026) |
