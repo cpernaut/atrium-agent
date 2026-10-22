@@ -154,7 +154,7 @@ create table if not exists public.presupuesto_items (
     obra_id            bigint not null references public.obras (id) on delete cascade,
     rubro_id           bigint not null references public.rubros (id),
     descripcion        text check (descripcion is null or char_length(descripcion) <= 200),
-    monto              numeric(14, 2) not null check (monto > 0),
+    monto              numeric(14, 2) not null check (monto >= 0),
     moneda             text not null check (moneda in ('ARS', 'USD')),
     fecha              date not null default current_date,
     tipo_cambio        numeric(12, 4) check (tipo_cambio is null or tipo_cambio > 0),
@@ -200,6 +200,148 @@ alter table public.bitacora
     alter column fecha set default (now() at time zone 'America/Argentina/Buenos_Aires')::date;
 
 create index if not exists presupuesto_items_obra_idx on public.presupuesto_items (obra_id);
+
+-- --------------------------------------------------------------------------- --
+-- #35 · Gastos por ítem del presupuesto (F-03 R11 a R16)
+-- --------------------------------------------------------------------------- --
+
+-- Un ítem puede valer 0: se listan los ítems y los montos se cargan después (D9).
+-- Los gastos siguen exigiendo monto > 0.
+alter table public.presupuesto_items drop constraint if exists presupuesto_items_monto_check;
+alter table public.presupuesto_items add constraint presupuesto_items_monto_check
+    check (monto >= 0);
+
+-- «Imprevistos»: el ítem al que van los gastos que no tienen otro (R12).
+-- Como mucho uno vigente por obra.
+alter table public.presupuesto_items
+    add column if not exists es_imprevistos boolean not null default false;
+create unique index if not exists presupuesto_items_un_imprevistos
+    on public.presupuesto_items (obra_id) where es_imprevistos and not anulado;
+
+-- Todo gasto pertenece a un ítem (R11). La obra y el rubro del gasto los pone la
+-- base a partir del ítem, así nunca quedan inconsistentes.
+alter table public.gastos
+    add column if not exists presupuesto_item_id bigint references public.presupuesto_items (id);
+-- Gastos cargados antes de #35 (sin ítem): van a un ítem vigente de su misma obra
+-- y rubro; si no hay, a un ítem nuevo «Gastos anteriores» en 0, así conservan el
+-- rubro. Solo toca gastos sin ítem: correrlo de nuevo no cambia nada.
+insert into public.presupuesto_items (obra_id, rubro_id, descripcion, monto, moneda)
+select distinct g.obra_id, g.rubro_id, 'Gastos anteriores', 0, o.moneda
+  from public.gastos g join public.obras o on o.id = g.obra_id
+ where g.presupuesto_item_id is null
+   and not exists (
+        select 1 from public.presupuesto_items i
+         where i.obra_id = g.obra_id and i.rubro_id = g.rubro_id and not i.anulado);
+update public.gastos g
+   set presupuesto_item_id = (
+        select min(i.id) from public.presupuesto_items i
+         where i.obra_id = g.obra_id and i.rubro_id = g.rubro_id and not i.anulado)
+ where g.presupuesto_item_id is null;
+alter table public.gastos alter column presupuesto_item_id set not null;
+create index if not exists gastos_item_idx on public.gastos (presupuesto_item_id);
+
+create or replace function public.gasto_desde_item()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+declare
+    item public.presupuesto_items%rowtype;
+begin
+    -- FOR SHARE: mientras se inserta el gasto, nadie puede cambiar el rubro del
+    -- ítem ni borrarlo; si otro ya lo estaba cambiando, se espera y se lee el
+    -- valor confirmado (así el gasto nunca queda con un rubro viejo o bajo un
+    -- ítem borrado).
+    select * into item from public.presupuesto_items
+     where id = new.presupuesto_item_id
+       for share;
+    if not found then
+        raise exception 'El ítem del presupuesto no existe.' using errcode = '23503';
+    end if;
+    if item.anulado then
+        raise exception 'El ítem del presupuesto fue borrado.' using errcode = '23514';
+    end if;
+    if new.obra_id is not null and new.obra_id <> item.obra_id then
+        raise exception 'El ítem es de otra obra.' using errcode = '23514';
+    end if;
+    new.obra_id := item.obra_id;
+    new.rubro_id := item.rubro_id;
+    return new;
+end;
+$$;
+
+drop trigger if exists gastos_desde_item on public.gastos;
+create trigger gastos_desde_item
+    before insert on public.gastos
+    for each row execute function public.gasto_desde_item();
+
+-- Si cambia el rubro de un ítem, sus gastos lo siguen (CA-35). Si se borra
+-- (anula) un ítem, se anulan sus gastos (R12b). Corre como dueño de la tabla
+-- porque el equipo no puede editar gastos.rubro_id directamente.
+create or replace function public.item_propaga_a_gastos()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+    if new.rubro_id is distinct from old.rubro_id then
+        update public.gastos set rubro_id = new.rubro_id
+         where presupuesto_item_id = new.id;
+    end if;
+    if new.anulado and not old.anulado then
+        update public.gastos set anulado = true
+         where presupuesto_item_id = new.id and not anulado;
+    end if;
+    return new;
+end;
+$$;
+revoke execute on function public.item_propaga_a_gastos() from public, anon, authenticated;
+
+drop trigger if exists presupuesto_items_propaga on public.presupuesto_items;
+create trigger presupuesto_items_propaga
+    after update of rubro_id, anulado on public.presupuesto_items
+    for each row execute function public.item_propaga_a_gastos();
+
+-- Anular es definitivo: un gasto o ítem anulado no vuelve a quedar vigente (así
+-- no reaparecen gastos bajo un ítem borrado). No hay función de «restaurar».
+create or replace function public.anulado_es_definitivo()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+    if old.anulado and not new.anulado then
+        raise exception 'Un registro anulado no se puede volver a activar.' using errcode = '23514';
+    end if;
+    return new;
+end;
+$$;
+
+drop trigger if exists gastos_anulado_definitivo on public.gastos;
+create trigger gastos_anulado_definitivo
+    before update of anulado on public.gastos
+    for each row execute function public.anulado_es_definitivo();
+drop trigger if exists presupuesto_items_anulado_definitivo on public.presupuesto_items;
+create trigger presupuesto_items_anulado_definitivo
+    before update of anulado on public.presupuesto_items
+    for each row execute function public.anulado_es_definitivo();
+
+-- Las obras que todavía no tienen «Imprevistos» (ni vigente ni borrado) lo
+-- reciben: 10 % del presupuesto de la obra (0 si no tiene), en su moneda y en el
+-- rubro Otros. Las obras nuevas lo crea la app al darlas de alta.
+insert into public.presupuesto_items (obra_id, rubro_id, descripcion, monto, moneda, es_imprevistos)
+select o.id,
+       (select r.id from public.rubros r
+         where public.rubro_clave(r.nombre) = 'otros' limit 1),
+       'Imprevistos',
+       round(coalesce(o.presupuesto, 0) * 0.10, 2),
+       o.moneda,
+       true
+  from public.obras o
+ where not exists (
+        select 1 from public.presupuesto_items i
+         where i.obra_id = o.id and i.es_imprevistos);
 create index if not exists gastos_obra_fecha_idx on public.gastos (obra_id, fecha desc);
 
 alter table public.rubros            enable row level security;
@@ -250,3 +392,5 @@ grant update (rubro_id, descripcion, monto, moneda, tipo_cambio, tipo_cambio_ori
 revoke update on public.gastos from authenticated, anon;
 grant update (tipo_cambio, tipo_cambio_origen, anulado)
     on public.gastos to authenticated;
+-- Sin login no se crean gastos (además de RLS): así ni siquiera corre el trigger.
+revoke insert on public.gastos from anon;

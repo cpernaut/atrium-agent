@@ -14,7 +14,7 @@ _DEFAULTS = {
     "obras": {"estado": "Planificación", "moneda": "ARS", "avance": 0},
     "bitacora": {"fecha": date.today().isoformat()},
     "rubros": {"orden": 1000, "activo": True},
-    "presupuesto_items": {"anulado": False},
+    "presupuesto_items": {"anulado": False, "es_imprevistos": False},
     "gastos": {"anulado": False},
 }
 
@@ -42,6 +42,11 @@ class _Query:
 
     def eq(self, col, value):
         self.filters.append(lambda r: r.get(col) == value)
+        return self
+
+    def is_(self, col, value):
+        assert value == "null", "the fake only supports is_(col, 'null')"
+        self.filters.append(lambda r: r.get(col) is None)
         return self
 
     def ilike(self, col, pattern):

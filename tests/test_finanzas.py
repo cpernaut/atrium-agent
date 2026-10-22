@@ -38,15 +38,28 @@ def _rubro(db, nombre):
     return finanzas.find_rubros(db, nombre)[0]["id"]
 
 
+def _item_hierro(db):
+    """The budget item gastos go to by default (#35: every gasto has an item)."""
+
+    existente = [i for i in finanzas.list_presupuesto(db, 1) if i.get("descripcion") == "Hierro"]
+    if existente:
+        return existente[0]["id"]
+    item, _ = finanzas.add_presupuesto_item(
+        db,
+        1,
+        monto="1000000",
+        moneda="ARS",
+        rubro_id=_rubro(db, "Estructura"),
+        descripcion="Hierro",
+    )
+    return item["id"]
+
+
 def _gasto(db, **cambios):
-    datos = {
-        "monto": "350000",
-        "moneda": "ARS",
-        "rubro_id": _rubro(db, "Estructura"),
-        "descripcion": "Hierro",
-    }
+    item = cambios.pop("item", "hierro")
+    datos = {"monto": "350000", "moneda": "ARS", "descripcion": "Hierro"}
     datos.update(cambios)
-    return finanzas.add_gasto(db, 1, **datos)
+    return finanzas.add_gasto(db, _item_hierro(db) if item == "hierro" else item, **datos)
 
 
 # --------------------------------------------------------------------------- #
@@ -93,13 +106,13 @@ def test_crear_rubro_nombre_invalido(db, nombre):
         finanzas.create_rubro(db, nombre)
 
 
-def test_rubro_desactivado_no_se_ofrece_ni_acepta_gastos(db, mep):
+def test_rubro_desactivado_no_se_ofrece_ni_acepta_items(db, mep):
     rubro_id = _rubro(db, "Pintura")
     finanzas.set_rubro_activo(db, rubro_id, False)
     assert "Pintura" not in [r["nombre"] for r in finanzas.list_rubros(db)]
     assert "Pintura" in [r["nombre"] for r in finanzas.list_rubros(db, incluir_inactivos=True)]
     with pytest.raises(finanzas.FinanzasError, match="desactivado"):
-        _gasto(db, rubro_id=rubro_id)
+        finanzas.add_presupuesto_item(db, 1, monto=1, moneda="ARS", rubro_id=rubro_id)
 
 
 def test_buscar_rubro_sin_tildes_y_parcial(db):
@@ -166,8 +179,8 @@ def test_corregir_cotizacion(db, mep):
         ({"descripcion": "x" * 201}, "hasta 200"),
         ({"proveedor": "x" * 121}, "hasta 120"),
         ({"moneda": "EUR"}, "Moneda inválida"),
-        ({"rubro_id": None}, "Elegí un rubro"),
-        ({"rubro_id": 999}, "no existe"),
+        ({"item": None}, "Elegí el ítem"),
+        ({"item": 999}, "No se encontró el ítem"),
         ({"fecha": "ayer"}, "Fecha inválida"),
         ({"tipo_cambio": -1}, "mayor que cero"),
     ],
@@ -285,7 +298,9 @@ def test_rubro_sin_presupuesto():
     fila = res.filas[0]
     assert fila.ejecutado is None
     assert finanzas.formato_porcentaje(fila.ejecutado) == "sin presupuesto"
-    assert finanzas.estado_desvio(fila.desvio, fila.presupuestado) == "Sin presupuesto"
+    # #35 R16: gastar sin presupuesto es excederse; sin gastos, «Sin presupuesto asignado».
+    assert finanzas.estado_desvio(fila.desvio, fila.presupuestado) == "Excedido"
+    assert finanzas.estado(Decimal(0), Decimal(0)) == "Sin presupuesto asignado"
 
 
 def test_presupuesto_usa_mep_del_dia(db, mep):
@@ -337,7 +352,8 @@ def test_resumen_trae_todas_las_paginas(db, mep, monkeypatch):
 
     assert len(finanzas.list_gastos(db, 1)) == 10
     res = finanzas.resumen(db, 1, "ARS")
-    assert (res.gastado, res.presupuestado) == (Decimal("1000"), Decimal("500"))
+    # 10 ítems de 50 + el ítem «Hierro» de 1.000.000 al que van los gastos.
+    assert (res.gastado, res.presupuestado) == (Decimal("1000"), Decimal("1000500"))
     assert len(finanzas.list_rubros(db)) == len(finanzas.RUBROS_INICIALES)
     assert len(finanzas.list_gastos(db, 1, limit=2)) == 2
 
@@ -442,7 +458,7 @@ def test_editar_item_sin_cotizacion_la_agrega_manual(db, mep):
 @pytest.mark.parametrize(
     "cambio, mensaje",
     [
-        ({"monto": 0}, "mayor que cero"),
+        ({"monto": -5}, "no puede ser negativo"),
         ({"moneda": ""}, "Elegí la moneda"),
         ({"moneda": "EUR"}, "Moneda inválida"),
         ({"rubro_id": None}, "Elegí un rubro"),
@@ -478,3 +494,217 @@ def test_rubro_desactivado_se_conserva_pero_no_se_elige(db, mep):
 def test_editar_item_inexistente(db, mep):
     with pytest.raises(finanzas.FinanzasError, match="No se encontró"):
         finanzas.update_presupuesto_item(db, 999, monto=1, moneda="ARS", rubro_id=1)
+
+
+# --------------------------------------------------------------------------- #
+# #35 · Gastos por ítem, «Imprevistos», monto 0 y semáforo
+# --------------------------------------------------------------------------- #
+def test_gasto_toma_obra_y_rubro_del_item(db, mep):
+    """#35 R11: el gasto pertenece al ítem; obra y rubro salen del ítem."""
+
+    item = _item_db(db, rubro_id=_rubro(db, "Carpinterías"), descripcion="Mesada")
+    gasto, _ = finanzas.add_gasto(db, item["id"], monto=10, moneda="ARS", descripcion="Seña")
+    assert gasto["presupuesto_item_id"] == item["id"]
+    assert (gasto["obra_id"], gasto["rubro_id"]) == (1, item["rubro_id"])
+
+
+def test_no_se_agregan_gastos_a_un_item_borrado(db, mep):
+    item = _item_db(db)
+    finanzas.borrar_presupuesto_item(db, item["id"])
+    with pytest.raises(finanzas.FinanzasError, match="fue borrado"):
+        finanzas.add_gasto(db, item["id"], monto=10, moneda="ARS", descripcion="x")
+
+
+def test_borrar_item_borra_sus_gastos(db, mep):
+    """#35 R12b: borrar un ítem anula el ítem y sus gastos; otros ítems no se tocan."""
+
+    item = _item_db(db)
+    otro = _item_db(db, descripcion="Otro")
+    for monto in (10, 20):
+        finanzas.add_gasto(db, item["id"], monto=monto, moneda="USD", descripcion="g")
+    ajeno, _ = finanzas.add_gasto(db, otro["id"], monto=5, moneda="USD", descripcion="h")
+
+    finanzas.borrar_presupuesto_item(db, item["id"])
+
+    gastos = {g["id"]: g for g in finanzas.list_gastos(db, 1)}
+    assert len(gastos) == 3  # nada se borra de la base
+    assert [g["anulado"] for g in gastos.values() if g["presupuesto_item_id"] == item["id"]] == [
+        True,
+        True,
+    ]
+    assert gastos[ajeno["id"]]["anulado"] is False
+
+
+@pytest.mark.parametrize("monto", [0, "0", "", None, "0,00"])
+def test_item_puede_valer_cero(db, mep, monto):
+    """#35 D9: se listan ítems y los montos se cargan después."""
+
+    item = _item_db(db, monto=monto)
+    assert item["monto"] == "0.00"
+    editado = _editar(db, item, monto="1.500")
+    assert editado["monto"] == "1500.00"
+    assert _editar(db, editado, monto=0)["monto"] == "0.00"
+
+
+def test_item_en_cero_no_necesita_cotizacion(db, mep):
+    mep["valor"] = None
+    _item_db(db, monto=0, moneda="USD")
+    res = finanzas.resumen(db, 1, "ARS")
+    assert not res.incompleto and res.presupuestado == 0
+
+
+@pytest.mark.parametrize(
+    "presupuesto, moneda, esperado",
+    [("50000000", "ARS", "5000000.00"), ("37000", "USD", "3700.00"), (None, "ARS", "0.00")],
+)
+def test_crear_imprevistos(db, mep, presupuesto, moneda, esperado):
+    """#35 R12: 10 % del presupuesto de la obra, en su moneda, rubro Otros."""
+
+    obra = {"id": 1, "presupuesto": presupuesto, "moneda": moneda}
+    item, aviso = finanzas.crear_imprevistos(db, obra)
+    assert aviso is None
+    assert (item["monto"], item["moneda"], item["descripcion"]) == (esperado, moneda, "Imprevistos")
+    assert item["rubro_id"] == _rubro(db, "Otros") and item["es_imprevistos"] is True
+    assert ("tipo_cambio" in item) == (esperado != "0.00")
+    assert finanzas.imprevistos_vigente(finanzas.list_presupuesto(db, 1))["id"] == item["id"]
+
+
+def test_un_solo_imprevistos_vigente(db, mep):
+    item, _ = finanzas.crear_imprevistos(db, {"id": 1, "presupuesto": None, "moneda": "ARS"})
+    with pytest.raises(finanzas.FinanzasError, match="ya tiene un ítem de imprevistos"):
+        _item_db(db, es_imprevistos=True)
+    finanzas.borrar_presupuesto_item(db, item["id"])
+    nuevo = _item_db(db, es_imprevistos=True, descripcion="Imprevistos")
+    assert nuevo["es_imprevistos"] is True
+
+
+def test_completar_cotizacion_de_imprevistos_de_la_migracion(db, mep):
+    """Los «Imprevistos» que crea la migración (sin MEP) lo completan al mostrarse."""
+
+    db.table("presupuesto_items").insert(
+        {
+            "obra_id": 1,
+            "rubro_id": _rubro(db, "Otros"),
+            "monto": "3700.00",
+            "moneda": "USD",
+            "fecha": finanzas.hoy().isoformat(),
+            "es_imprevistos": True,
+        }
+    ).execute()
+    _item_db(db, monto=10)  # otro ítem: no se toca
+    items = finanzas.completar_cotizacion_imprevistos(db, finanzas.list_presupuesto(db, 1))
+    imprevistos = finanzas.imprevistos_vigente(items)
+    assert (imprevistos["tipo_cambio"], imprevistos["tipo_cambio_origen"]) == ("1200.0000", "auto")
+    mep["error"] = "caído"
+    assert finanzas.completar_cotizacion_imprevistos(db, items) == items  # nunca falla
+
+
+def test_resumen_por_item(db, mep):
+    """#35 CA-26/31: total, gastado, saldo y % por ítem, cada gasto con su cotización."""
+
+    item = _item_db(db, monto="1000000", moneda="ARS", descripcion="Hierro del 8")
+    finanzas.add_gasto(db, item["id"], monto="500", moneda="USD", descripcion="a")  # 600.000
+    finanzas.add_gasto(db, item["id"], monto="100000", moneda="ARS", descripcion="b")
+    anulado, _ = finanzas.add_gasto(db, item["id"], monto="5", moneda="ARS", descripcion="c")
+    finanzas.anular_gasto(db, anulado["id"])
+
+    fila = finanzas.resumen(db, 1, "ARS").items[item["id"]]
+    assert (fila.presupuestado, fila.gastado, fila.saldo) == (
+        Decimal("1000000"),
+        Decimal("700000"),
+        Decimal("300000"),
+    )
+    assert fila.ejecutado == Decimal("0.7") and len(fila.gastos) == 3
+    assert len(fila.gastos_vigentes) == 2
+
+
+def test_gasto_en_otra_moneda_sin_cotizacion_marca_el_item_incompleto(db, mep):
+    item = _item_db(db, monto="1000", moneda="ARS")
+    mep["valor"] = None
+    finanzas.add_gasto(db, item["id"], monto="10", moneda="USD", descripcion="x")
+    res = finanzas.resumen(db, 1, "ARS")
+    assert res.items[item["id"]].sin_convertir and res.incompleto
+
+
+def test_cambiar_rubro_del_item_mueve_sus_gastos(db, mep):
+    """#35 CA-35: el resumen por rubro sigue al ítem."""
+
+    item = _item_db(db, monto="100", moneda="ARS", rubro_id=_rubro(db, "Pintura"))
+    finanzas.add_gasto(db, item["id"], monto="40", moneda="ARS", descripcion="x")
+    _editar(db, item, rubro_id=_rubro(db, "Revoques"))
+    filas = {f.rubro: f for f in finanzas.resumen(db, 1, "ARS").filas}
+    assert "Pintura" not in filas
+    assert (filas["Revoques"].presupuestado, filas["Revoques"].gastado) == (100, 40)
+
+
+@pytest.mark.parametrize(
+    "gastado, presupuestado, esperado",
+    [
+        ("0", "100", "Dentro del presupuesto"),
+        ("89.99", "100", "Dentro del presupuesto"),
+        ("90", "100", "Cerca del límite"),
+        ("100", "100", "Cerca del límite"),
+        ("100.01", "100", "Excedido"),
+        ("1", "0", "Excedido"),
+        ("0", "0", "Sin presupuesto asignado"),
+    ],
+)
+def test_semaforo(gastado, presupuestado, esperado):
+    """#35 R16: verde < 90 %, amarillo 90-100 %, rojo > 100 %, siempre en palabras."""
+
+    assert finanzas.estado(Decimal(gastado), Decimal(presupuestado)) == esperado
+    assert finanzas.estado_con_icono(Decimal(gastado), Decimal(presupuestado)).endswith(esperado)
+
+
+def test_describe_resumen_incluye_items(db, mep):
+    item = _item_db(db, monto="1000", moneda="ARS", descripcion="Mesada")
+    finanzas.add_gasto(db, item["id"], monto="950", moneda="ARS", descripcion="x")
+    texto = finanzas.describe_resumen(finanzas.resumen(db, 1, "ARS"), "Casa")
+    assert "- Mesada: total ARS 1.000, gastado ARS 950 (95%), saldo ARS 50, 1 gasto(s)" in texto
+    assert "(Cerca del límite)" in texto
+
+
+def test_completar_cotizacion_no_pisa_una_manual_concurrente(db, mep, monkeypatch):
+    """Revisión PR #38 / R4: si alguien guarda una cotización manual entre la lectura
+    y la escritura, la automática no la reemplaza."""
+
+    db.table("presupuesto_items").insert(
+        {
+            "obra_id": 1,
+            "rubro_id": _rubro(db, "Otros"),
+            "monto": "3700.00",
+            "moneda": "USD",
+            "fecha": finanzas.hoy().isoformat(),
+            "es_imprevistos": True,
+        }
+    ).execute()
+    leidos = finanzas.list_presupuesto(db, 1)  # lectura sin cotización
+    item_id = leidos[0]["id"]
+    real = finanzas.cotizar
+
+    def cotizar_mientras_otro_corrige(fecha):
+        finanzas.set_tipo_cambio(db, "presupuesto_items", item_id, "1111")
+        return real(fecha)
+
+    monkeypatch.setattr(finanzas, "cotizar", cotizar_mientras_otro_corrige)
+    resultado = finanzas.completar_cotizacion_imprevistos(db, leidos)
+
+    guardado = finanzas.get_presupuesto_item(db, item_id)
+    assert (guardado["tipo_cambio"], guardado["tipo_cambio_origen"]) == ("1111.0000", "manual")
+    assert resultado[0]["tipo_cambio_origen"] == "manual"  # devuelve el valor vigente
+
+
+def test_item_con_rubro_desactivado_no_acepta_gastos_nuevos(db, mep):
+    """Revisión PR #38 / R7: un rubro desactivado no recibe cargas nuevas, tampoco
+    gastos en ítems que ya lo tenían; el historial se conserva."""
+
+    item = _item_db(db, rubro_id=_rubro(db, "Pintura"))
+    viejo, _ = finanzas.add_gasto(db, item["id"], monto=10, moneda="USD", descripcion="antes")
+    finanzas.set_rubro_activo(db, item["rubro_id"], False)
+
+    with pytest.raises(finanzas.FinanzasError, match="desactivado"):
+        finanzas.add_gasto(db, item["id"], monto=10, moneda="USD", descripcion="después")
+    assert [g["id"] for g in finanzas.list_gastos(db, 1)] == [viejo["id"]]
+    otro = _rubro(db, "Revoques")
+    _editar(db, item, rubro_id=otro)  # lo pasa a un rubro activo...
+    finanzas.add_gasto(db, item["id"], monto=10, moneda="USD", descripcion="después")  # ...y sí

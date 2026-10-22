@@ -103,6 +103,8 @@ def _run(query) -> list[Fila]:
         return query.execute().data or []
     except Exception as exc:  # noqa: BLE001 - wrap the provider error
         mensaje = str(exc)
+        if "presupuesto_items_un_imprevistos" in mensaje:
+            raise FinanzasError("Esta obra ya tiene un ítem de imprevistos.") from exc
         if "rubros_nombre_clave_unico" in mensaje or "duplicate key" in mensaje:
             raise FinanzasError("Ya existe un rubro con ese nombre.") from exc
         raise FinanzasError(mensaje) from exc
@@ -141,22 +143,37 @@ def parse_decimal(valor: Any) -> Decimal:
     return numero
 
 
-def _en_rango(valor: Any, paso: Decimal, maximo: Decimal, que: str) -> Decimal:
-    """Round to ``paso`` only after checking the range (huge values can't be rounded)."""
+def _en_rango(valor: Any, paso: Decimal, maximo: Decimal, que: str, cero: bool = False) -> Decimal:
+    """Round to ``paso`` only after checking the range (huge values can't be rounded).
+
+    ``cero``: zero is allowed (budget items, #35 D9); negatives never are.
+    """
 
     numero = parse_decimal(valor)
-    if numero <= 0:
-        raise FinanzasError(f"{que} tiene que ser mayor que cero.")
+    if numero < 0 or (numero == 0 and not cero):
+        raise FinanzasError(
+            f"{que} no puede ser negativo." if cero else f"{que} tiene que ser mayor que cero."
+        )
     if numero > maximo:
         raise FinanzasError(f"{que} es demasiado grande.")
     redondeado = numero.quantize(paso, rounding=ROUND_HALF_UP)
-    if redondeado <= 0:
+    if redondeado <= 0 and not cero:
         raise FinanzasError(f"{que} tiene que ser mayor que cero.")
     return redondeado
 
 
 def parse_monto(valor: Any) -> Decimal:
+    """Amount of a gasto: always greater than zero."""
+
     return _en_rango(valor, _CENTAVOS, _MONTO_MAX, "El monto")
+
+
+def parse_monto_item(valor: Any) -> Decimal:
+    """Amount of a budget item: zero or empty is fine, values come later (#35 D9)."""
+
+    if valor is None or (isinstance(valor, str) and not valor.strip()):
+        return Decimal("0.00")
+    return _en_rango(valor, _CENTAVOS, _MONTO_MAX, "El monto", cero=True)
 
 
 def parse_tipo_cambio(valor: Any) -> Decimal:
@@ -345,27 +362,45 @@ def set_tipo_cambio(client: Client, tabla: str, fila_id: int, valor: Any) -> Fil
 # --------------------------------------------------------------------------- #
 def add_gasto(
     client: Client,
-    obra_id: int,
+    presupuesto_item_id: Any,
     *,
     monto: Any,
     moneda: str,
-    rubro_id: Any,
     descripcion: str,
     fecha: date | str | None = None,
     proveedor: str | None = None,
     tipo_cambio: Any = None,
 ) -> tuple[Fila, str | None]:
-    """Insert a gasto. Returns (row, aviso); ``aviso`` is set when no rate was found."""
+    """Insert a gasto of a budget item (#35 R11). Returns (row, aviso).
 
+    The obra and the rubro come from the item (the database enforces it too);
+    ``aviso`` is set when no rate was found.
+    """
+
+    try:
+        item_id = int(presupuesto_item_id)
+    except (TypeError, ValueError) as exc:
+        raise FinanzasError("Elegí el ítem del presupuesto.") from exc
+    item = get_presupuesto_item(client, item_id)
+    if item.get("anulado"):
+        raise FinanzasError("Este ítem fue borrado: no se le pueden agregar gastos.")
+    rubros = _run(client.table("rubros").select("*").eq("id", int(item["rubro_id"])).limit(1))
+    if rubros and not rubros[0].get("activo", True):
+        # R7: a deactivated rubro takes no new loads; the item's history stays.
+        raise FinanzasError(
+            f"El rubro «{rubros[0]['nombre']}» está desactivado: para cargarle gastos, "
+            "cambiá el ítem a un rubro activo con «Editar ítem»."
+        )
     fecha_gasto = _fecha(fecha)
     if fecha_gasto > hoy():
         raise FinanzasError("La fecha del gasto no puede ser futura.")
     fila: Fila = {
-        "obra_id": int(obra_id),
+        "presupuesto_item_id": item_id,
+        "obra_id": int(item["obra_id"]),
+        "rubro_id": int(item["rubro_id"]),
         "fecha": fecha_gasto.isoformat(),
         "monto": str(parse_monto(monto)),
         "moneda": _moneda(moneda),
-        "rubro_id": _rubro_activo(client, rubro_id)["id"],
         "descripcion": _texto(descripcion, "la descripción", _DESCRIPCION_MAX, True),
         "proveedor": _texto(proveedor, "el proveedor", _PROVEEDOR_MAX, False),
     }
@@ -411,18 +446,26 @@ def add_presupuesto_item(
     rubro_id: Any,
     descripcion: str | None = None,
     tipo_cambio: Any = None,
+    es_imprevistos: bool = False,
 ) -> tuple[Fila, str | None]:
-    """Insert a budget item dated today, with today's MEP (F-03 D7)."""
+    """Insert a budget item dated today, with today's MEP (F-03 D7).
+
+    ``monto`` may be empty or zero: items can be listed first and priced later.
+    """
 
     fecha = hoy()
     fila: Fila = {
         "obra_id": int(obra_id),
         "fecha": fecha.isoformat(),
-        "monto": str(parse_monto(monto)),
+        "monto": str(parse_monto_item(monto)),
         "moneda": _moneda(moneda),
         "rubro_id": _rubro_activo(client, rubro_id)["id"],
         "descripcion": _texto(descripcion, "la descripción", _DESCRIPCION_MAX, False),
     }
+    if es_imprevistos:
+        if imprevistos_vigente(list_presupuesto(client, int(obra_id))):
+            raise FinanzasError("Esta obra ya tiene un ítem de imprevistos.")
+        fila["es_imprevistos"] = True
     aviso = _con_cotizacion(fila, fecha, tipo_cambio)
     filas = _run(client.table("presupuesto_items").insert(fila))
     return (filas[0] if filas else fila), aviso
@@ -439,6 +482,109 @@ def list_presupuesto(client: Client, obra_id: int) -> list[Fila]:
         )
 
     return _run_all(build)
+
+
+IMPREVISTOS = "Imprevistos"
+PORCENTAJE_IMPREVISTOS = Decimal("0.10")
+
+
+def imprevistos_vigente(items: Iterable[Fila]) -> Fila | None:
+    return next((i for i in items if i.get("es_imprevistos") and not i.get("anulado")), None)
+
+
+def _rubro_otros(client: Client) -> Fila:
+    for rubro in list_rubros(client, incluir_inactivos=True):
+        if normalizar(rubro["nombre"]) == "otros":
+            return rubro
+    raise FinanzasError("No existe el rubro «Otros».")
+
+
+def crear_imprevistos(client: Client, obra: Fila) -> tuple[Fila, str | None]:
+    """The «Imprevistos» item of a new obra (#35 R12).
+
+    10 % of the obra's budget (0 without one), in the obra's currency, rubro Otros.
+    Computed once: later changes to the obra's budget don't touch it.
+    """
+
+    base = obra.get("presupuesto")
+    monto = Decimal(0) if base in (None, "") else parse_decimal(base) * PORCENTAJE_IMPREVISTOS
+    monto = max(monto, Decimal(0)).quantize(_CENTAVOS, rounding=ROUND_HALF_UP)
+    fila = {
+        "obra_id": int(obra["id"]),
+        "fecha": hoy().isoformat(),
+        "monto": str(monto),
+        "moneda": _moneda(obra.get("moneda") or "ARS"),
+        "rubro_id": _rubro_otros(client)["id"],
+        "descripcion": IMPREVISTOS,
+        "es_imprevistos": True,
+    }
+    aviso = _con_cotizacion(fila, hoy(), None) if monto > 0 else None
+    filas = _run(client.table("presupuesto_items").insert(fila))
+    return (filas[0] if filas else fila), aviso
+
+
+def completar_cotizacion_imprevistos(client: Client, items: list[Fila]) -> list[Fila]:
+    """Fill the MEP of «Imprevistos» items the database created without one.
+
+    The migration (supabase_schema.sql) can't query the MEP; the first time the
+    budget is shown, the app completes it as ``auto``. Never raises.
+    """
+
+    resultado = []
+    for item in items:
+        pendiente = (
+            item.get("es_imprevistos")
+            and not item.get("anulado")
+            and item.get("tipo_cambio") in (None, "")
+            and parse_decimal(item.get("monto") or 0) > 0
+        )
+        if pendiente:
+            try:
+                tc, origen, _ = cotizar(_fecha(item.get("fecha")))
+                if tc is not None:
+                    cambios = {"tipo_cambio": str(tc), "tipo_cambio_origen": origen}
+                    # Only if it is still empty: never overwrite a manual rate saved
+                    # meanwhile by someone else (R4).
+                    filas = _run(
+                        client.table("presupuesto_items")
+                        .update(cambios)
+                        .eq("id", item["id"])
+                        .eq("anulado", False)
+                        .is_("tipo_cambio", "null")
+                    )
+                    item = filas[0] if filas else get_presupuesto_item(client, item["id"])
+            except FinanzasError:
+                pass
+        resultado.append(item)
+    return resultado
+
+
+def find_items(client: Client, obra_id: int, texto: str, rubro: str | None = None) -> list[Fila]:
+    """Vigent budget items of the obra matching ``texto`` (for the agent).
+
+    Exact description first, else partial; if no description matches, items
+    whose rubro matches. ``rubro`` narrows the result when given.
+    """
+
+    buscado = normalizar(texto or "")
+    if not buscado:
+        return []
+    rubros = {r["id"]: normalizar(r["nombre"]) for r in list_rubros(client, incluir_inactivos=True)}
+    vigentes = [i for i in list_presupuesto(client, int(obra_id)) if not i.get("anulado")]
+    if rubro and normalizar(rubro):
+        filtro = normalizar(rubro)
+        vigentes = [i for i in vigentes if filtro in rubros.get(i["rubro_id"], "")]
+
+    def desc(i: Fila) -> str:
+        return normalizar(i.get("descripcion") or "")
+
+    exactos = [i for i in vigentes if desc(i) == buscado]
+    if exactos:
+        return exactos
+    parciales = [i for i in vigentes if buscado in desc(i)]
+    if parciales:
+        return parciales
+    return [i for i in vigentes if buscado in rubros.get(i["rubro_id"], "")]
 
 
 def get_presupuesto_item(client: Client, item_id: int) -> Fila:
@@ -489,7 +635,7 @@ def update_presupuesto_item(
     cambios: Fila = {
         "rubro_id": rubro,
         "descripcion": _texto(descripcion, "la descripción", _DESCRIPCION_MAX, False),
-        "monto": str(parse_monto(monto)),
+        "monto": str(parse_monto_item(monto)),
         "moneda": _moneda(moneda),
     }
     if tipo_cambio not in (None, "", 0):
@@ -512,11 +658,22 @@ def update_presupuesto_item(
 
 
 def anular_presupuesto_item(client: Client, item_id: int) -> Fila:
-    """«Borrar» an item: hidden from lists and totals, kept in the database (R10)."""
+    """«Borrar» an item and its gastos: hidden from lists and totals, kept in the
+    database (R10, #35 R12b).
+
+    The database cancels the gastos too (trigger ``presupuesto_items_propaga``);
+    doing it here as well keeps both paths consistent.
+    """
 
     filas = _run(client.table("presupuesto_items").update({"anulado": True}).eq("id", item_id))
     if not filas:
         raise FinanzasError("No se encontró el ítem del presupuesto.")
+    _run(
+        client.table("gastos")
+        .update({"anulado": True})
+        .eq("presupuesto_item_id", int(item_id))
+        .eq("anulado", False)
+    )
     return filas[0]
 
 
@@ -561,9 +718,34 @@ class FilaResumen:
 
 
 @dataclass
+class FilaItem:
+    """One budget item with its gastos, in the summary's currency (#35)."""
+
+    item: Fila
+    presupuestado: Decimal = Decimal(0)
+    gastado: Decimal = Decimal(0)
+    gastos: list[Fila] = field(default_factory=list)  # all of them, cancelled too
+    sin_convertir: list[Fila] = field(default_factory=list)
+
+    @property
+    def saldo(self) -> Decimal:
+        return self.presupuestado - self.gastado
+
+    @property
+    def ejecutado(self) -> Decimal | None:
+        return self.gastado / self.presupuestado if self.presupuestado > 0 else None
+
+    @property
+    def gastos_vigentes(self) -> list[Fila]:
+        return [g for g in self.gastos if not g.get("anulado")]
+
+
+@dataclass
 class Resumen:
     moneda: str
     filas: list[FilaResumen] = field(default_factory=list)
+    # Vigent items with their gastos, by id (#35).
+    items: dict[int, FilaItem] = field(default_factory=dict)
     # Rows that count but have no rate to convert into ``moneda``.
     sin_convertir: list[Fila] = field(default_factory=list)
 
@@ -600,23 +782,49 @@ def calcular_resumen(
     info = {r["id"]: r for r in rubros}
     filas: dict[int, FilaResumen] = {}
     resumen = Resumen(moneda=moneda)
+    items = list(items)
+    # A gasto's rubro is its item's (the database keeps them in sync, CA-35).
+    rubro_de_item = {i["id"]: i["rubro_id"] for i in items if "id" in i}
+    resumen.items = {i["id"]: FilaItem(i) for i in items if "id" in i and not i.get("anulado")}
 
-    def acumular(fila: Fila, campo: str) -> None:
-        if fila.get("anulado"):
-            return
-        valor = convertir(fila["monto"], fila["moneda"], fila.get("tipo_cambio"), moneda)
+    def acumular(fila: Fila, campo: str, rubro_id: int) -> Decimal | None:
+        if parse_decimal(fila["monto"]) == 0:
+            valor = Decimal(0)  # zero needs no rate in any currency
+        else:
+            valor = convertir(fila["monto"], fila["moneda"], fila.get("tipo_cambio"), moneda)
         if valor is None:
             resumen.sin_convertir.append(fila)
-            return
-        rubro_id = fila["rubro_id"]
+            return None
         nombre = info.get(rubro_id, {}).get("nombre", f"Rubro #{rubro_id}")
         destino = filas.setdefault(rubro_id, FilaResumen(rubro_id, nombre))
         setattr(destino, campo, getattr(destino, campo) + valor)
+        return valor
 
     for item in items:
-        acumular(item, "presupuestado")
+        if item.get("anulado"):
+            continue
+        valor = acumular(item, "presupuestado", item["rubro_id"])
+        del_item = resumen.items.get(item.get("id"))
+        if del_item is None:
+            continue
+        if valor is None:
+            del_item.sin_convertir.append(item)
+        else:
+            del_item.presupuestado = valor
     for gasto in gastos:
-        acumular(gasto, "gastado")
+        del_item = resumen.items.get(gasto.get("presupuesto_item_id"))
+        if del_item is not None:
+            del_item.gastos.append(gasto)
+        if gasto.get("anulado"):
+            continue
+        rubro_id = rubro_de_item.get(gasto.get("presupuesto_item_id"), gasto["rubro_id"])
+        valor = acumular(gasto, "gastado", rubro_id)
+        if del_item is None:
+            continue
+        if valor is None:
+            del_item.sin_convertir.append(gasto)
+        else:
+            del_item.gastado += valor
 
     resumen.filas = sorted(
         filas.values(),
@@ -659,14 +867,41 @@ def formato_porcentaje(fraccion: Decimal | None) -> str:
     return f"{formato_numero((fraccion * 100).quantize(Decimal(1)), 0)}%"
 
 
-def estado_desvio(desvio: Decimal, presupuestado: Decimal) -> str:
-    """Plain-language status, so meaning never depends on color alone."""
+DENTRO = "Dentro del presupuesto"
+CERCA = "Cerca del límite"
+EXCEDIDO = "Excedido"
+SIN_PRESUPUESTO = "Sin presupuesto asignado"
+ICONOS = {DENTRO: "🟢", CERCA: "🟡", EXCEDIDO: "🔴", SIN_PRESUPUESTO: "⚪"}
+_LIMITE_CERCA = Decimal("0.9")
+
+
+def estado(gastado: Decimal, presupuestado: Decimal) -> str:
+    """Traffic light in words (#35 R16): green < 90 %, yellow 90-100 %, red > 100 %.
+
+    Without budget: «Excedido» if something was spent, else «Sin presupuesto asignado».
+    """
 
     if presupuestado <= 0:
-        return "Sin presupuesto"
-    if desvio > 0:
-        return "Excedido"
-    return "Dentro del presupuesto"
+        return EXCEDIDO if gastado > 0 else SIN_PRESUPUESTO
+    proporcion = gastado / presupuestado
+    if proporcion > 1:
+        return EXCEDIDO
+    if proporcion >= _LIMITE_CERCA:
+        return CERCA
+    return DENTRO
+
+
+def estado_con_icono(gastado: Decimal, presupuestado: Decimal) -> str:
+    """Icon plus words, so meaning never depends on color alone."""
+
+    texto = estado(gastado, presupuestado)
+    return f"{ICONOS[texto]} {texto}"
+
+
+def estado_desvio(desvio: Decimal, presupuestado: Decimal) -> str:
+    """Status from the desvío (gastado − presupuestado); same scale as ``estado``."""
+
+    return estado(desvio + presupuestado, presupuestado)
 
 
 def describe_resumen(res: Resumen, nombre_obra: str) -> str:
@@ -690,6 +925,16 @@ def describe_resumen(res: Resumen, nombre_obra: str) -> str:
         )
     if not res.filas:
         lineas.append("- (no hay presupuesto ni gastos cargados)")
+    if res.items:
+        lineas.append("Por ítem del presupuesto:")
+        for fi in res.items.values():
+            nombre = fi.item.get("descripcion") or "Sin descripción"
+            lineas.append(
+                f"- {nombre}: total {formato_monto(fi.presupuestado, m)}, gastado "
+                f"{formato_monto(fi.gastado, m)} ({formato_porcentaje(fi.ejecutado)}), saldo "
+                f"{formato_monto(fi.saldo, m)}, {len(fi.gastos_vigentes)} gasto(s) "
+                f"({estado(fi.gastado, fi.presupuestado)})"
+            )
     if res.incompleto:
         lineas.append(
             f"ATENCIÓN: {len(res.sin_convertir)} registro(s) sin cotización no se pudieron "

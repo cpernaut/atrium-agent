@@ -48,11 +48,19 @@ def _markdown(at) -> str:
 def _grupos(at) -> list[str]:
     """Group headers of the budget list, as the user reads them."""
 
-    return [m.replace("\\", "") for m in (x.value for x in _tab(at).markdown) if "· Subtotal" in m]
+    return [
+        m.replace("\\", "").split(" · Gastado")[0]
+        for m in (x.value for x in _tab(at).markdown)
+        if "· Subtotal" in m
+    ]
 
 
 def _expanders(at) -> list[str]:
-    return [e.label.replace("\\", "") for e in _tab(at).expander if " — " in e.label]
+    """Item titles up to the total (gastado and estado are checked in test_plata_flows)."""
+
+    return [
+        e.label.replace("\\", "").split(" · ")[0] for e in _tab(at).expander if " — " in e.label
+    ]
 
 
 def _vigentes(e2e):
@@ -124,13 +132,13 @@ def test_f03_ca_15_detalle_del_item(e2e):
     for linea in (
         "- **Rubro:** Estructura",
         "- **Descripción:** Hierro del 8",
-        "- **Monto:** ARS 3.200.000",
         f"- **Fecha de carga:** {hoy:%d/%m/%Y}",
         "- **Cotización:** MEP 1.200,00 (automática)",
     ):
         assert linea in detalle, linea
-    assert at.button(key=f"item_editar_{item['id']}").label == "Editar"
-    assert at.button(key=f"item_borrar_{item['id']}").label == "Borrar"
+    assert "**Total:** ARS 3.200.000" in detalle
+    assert at.button(key=f"item_editar_{item['id']}").label == "Editar ítem"
+    assert at.button(key=f"item_borrar_{item['id']}").label == "Borrar ítem"
 
 
 def test_f03_ca_15b_sin_items(e2e):
@@ -200,13 +208,12 @@ def test_f03_ca_16b_cancelar_alta(e2e):
     [
         (None, "ARS", 1000.0, "elegí un rubro"),
         ("Pintura", None, 1000.0, "elegí la moneda"),
-        ("Pintura", "ARS", None, "ingresá el monto"),
-        (None, None, None, "elegí un rubro, elegí la moneda, ingresá el monto"),
+        (None, None, None, "elegí un rubro, elegí la moneda"),
     ],
 )
 def test_f03_ca_17_alta_incompleta_no_guarda_y_conserva(e2e, rubro, moneda, monto, falta):
-    """F-03-CA-17: sin rubro, moneda o monto no se guarda, el mensaje dice qué
-    falta y lo escrito se conserva."""
+    """F-03-CA-17: sin rubro o moneda no se guarda, el mensaje dice qué falta y lo
+    escrito se conserva. El monto ya no es obligatorio (#35 D9)."""
 
     _obra(e2e)
     at = _abrir_nuevo(_plata(e2e))
@@ -224,17 +231,15 @@ def test_f03_ca_17_alta_incompleta_no_guarda_y_conserva(e2e, rubro, moneda, mont
     assert at.text_input(key="nuevo_item_descripcion").value == "Látex exterior"
 
 
-def test_f03_ca_17b_monto_cero_no_guarda(e2e):
-    """F-03-CA-17: el monto 0 se rechaza con el mensaje del dominio."""
+def test_f03_ca_17b_monto_negativo_no_se_puede(e2e):
+    """F-03-CA-17 / D9: el monto puede ser 0, pero nunca negativo (el campo no lo
+    permite y el dominio tampoco)."""
 
     _obra(e2e)
     at = _abrir_nuevo(_plata(e2e))
-    at.selectbox(key="nuevo_item_rubro").set_value(_rubro(e2e, "Pintura"))
-    at.number_input(key="nuevo_item_monto").set_value(0.0)
-    at.radio(key="nuevo_item_moneda").set_value("ARS")
-    at = at.button(key="item_nuevo_agregar").click().run()
-    assert "No se agregó el ítem: El monto tiene que ser mayor que cero." in texts(at)
-    assert finanzas.list_presupuesto(e2e.db, 1) == []
+    assert at.number_input(key="nuevo_item_monto").proto.min == 0.0
+    with pytest.raises(finanzas.FinanzasError, match="negativo"):
+        finanzas.parse_monto_item(-1)
 
 
 # --------------------------------------------------------------------------- #
@@ -316,19 +321,24 @@ def test_f03_ca_20_cancelar_edicion(e2e):
     assert at.number_input(key=f"{k}monto").value == 800_000.0
 
 
-def test_f03_ca_21_edicion_invalida_conserva_lo_escrito(e2e):
-    """F-03-CA-21: guardar un monto inválido muestra el error, no guarda y el
-    formulario conserva lo escrito."""
+def test_f03_ca_21_edicion_invalida_conserva_lo_escrito(e2e, monkeypatch):
+    """F-03-CA-21: si guardar falla, muestra el error, no guarda y el formulario
+    conserva lo escrito."""
 
     _obra(e2e)
     item = _item(e2e, "Pintura", 800_000, descripcion="Látex")
     at = _abrir_edicion(_plata(e2e), item["id"])
     k = f"editar_item_{item['id']}_"
     at.text_input(key=f"{k}descripcion").input("Látex exterior")
-    at.number_input(key=f"{k}monto").set_value(0.0)
+    at.number_input(key=f"{k}monto").set_value(1.0)
+
+    def falla(*_, **__):
+        raise finanzas.FinanzasError("El monto es demasiado grande.")
+
+    monkeypatch.setattr(finanzas, "update_presupuesto_item", falla)
     at = at.button(key=f"item_guardar_{item['id']}").click().run()
 
-    assert "No se guardaron los cambios: El monto tiene que ser mayor que cero." in texts(at)
+    assert "No se guardaron los cambios: El monto es demasiado grande." in texts(at)
     assert Decimal(finanzas.get_presupuesto_item(e2e.db, item["id"])["monto"]) == 800_000
     assert at.text_input(key=f"{k}descripcion").value == "Látex exterior"
     assert any(b.label == "Guardar cambios" for b in _tab(at).button)
@@ -471,7 +481,7 @@ def test_f03_ca_23c_campos_con_etiqueta(e2e):
     for c in propios:
         assert c.label and c.label.strip(), c.key
     obligatorios = {c.key.split("_item_")[-1] for c in propios if "obligatori" in c.label}
-    assert {"rubro", "monto", "moneda"} <= {k.split("_")[-1] for k in obligatorios}
+    assert {k.split("_")[-1] for k in obligatorios} == {"rubro", "moneda"}  # monto: D9
     for b in tab.button:
         assert b.label.strip(), b.key
 
@@ -509,35 +519,3 @@ def test_f03_ca_24_no_se_puede_mover_un_item_de_obra(e2e):
     assert llamadas and all(
         set(payload) <= set(finanzas.CAMPOS_EDITABLES_ITEM) for _, payload in llamadas
     )
-
-
-def test_f03_ca_25_gasto_arranca_sin_rubro(e2e):
-    """F-03-CA-25 (issue #9): «Registrar un gasto» arranca sin rubro; guardar sin
-    rubro dice «Elegí un rubro» y conserva lo escrito."""
-
-    _obra(e2e)
-    at = _plata(e2e)
-    assert at.selectbox(key="gasto_rubro").value is None
-
-    at.number_input(key="gasto_monto").set_value(1000.0)
-    at.text_input(key="gasto_descripcion").input("Clavos")
-    at = click(at, "Guardar gasto")
-
-    assert "No se guardó el gasto: Elegí un rubro." in texts(at)
-    assert finanzas.list_gastos(e2e.db, 1) == []
-    assert at.text_input(key="gasto_descripcion").value == "Clavos"
-    assert at.number_input(key="gasto_monto").value == 1000.0
-
-
-def test_f03_ca_25b_gasto_vuelve_a_quedar_sin_rubro(e2e):
-    """F-03-CA-25: después de guardar un gasto, el formulario vuelve sin rubro."""
-
-    _obra(e2e)
-    at = _plata(e2e)
-    at.number_input(key="gasto_monto").set_value(1000.0)
-    at.selectbox(key="gasto_rubro").set_value(_rubro(e2e, "Pintura"))
-    at.text_input(key="gasto_descripcion").input("Rodillos")
-    at = click(at, "Guardar gasto")
-
-    assert len(finanzas.list_gastos(e2e.db, 1)) == 1
-    assert at.selectbox(key="gasto_rubro").value is None

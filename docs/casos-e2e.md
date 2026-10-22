@@ -30,55 +30,77 @@ resultado esperado verificable.
 | E2E-16 | Historial | Una pregunta en el chat | Pregunta y respuesta guardadas para el usuario |
 | E2E-17 | Marca | Abrir la app | Nombre «Atrium Studio» con la etiqueta «Versión beta»; logo en el login y arriba a la izquierda; isotipo como favicon |
 
-## E2E simulado — F-03 Presupuesto y gastos (`tests/e2e/test_plata_flows.py`)
+## E2E simulado — F-03 Presupuesto y gastos (`tests/e2e/test_plata_flows.py` y `test_presupuesto_flows.py`)
 
 | ID | Caso | Resultado esperado |
 |---|---|---|
 | F-03-CA-1 | Cargar presupuesto en tres rubros | Resumen por rubro, en orden de obra, y total |
-| F-03-CA-2 | Registrar un gasto | Aparece en «Últimos gastos» y suma en su rubro y en el total |
 | F-03-CA-3 | Gasto de hoy con MEP 1190/1210 | Se guarda cotización 1200, automática |
 | F-03-CA-4 | Gasto de un sábado | Toma la cotización del viernes anterior |
-| F-03-CA-5 | Fuente de cotizaciones caída | Se guarda sin cotización, con aviso y opción de cargarla a mano |
-| F-03-CA-6 | Corregir la cotización a 1180 | Queda «corregida a mano» y el resumen la usa |
+| F-03-CA-5 | Fuente de cotizaciones caída | Se guarda sin cotización, con aviso y botón «Cotización» para cargarla a mano |
+| F-03-CA-6 | Corregir la cotización de un gasto a 1180 | Queda «corregida a mano» y el resumen la usa |
 | F-03-CA-6b | Ítem de presupuesto sin cotización, corregido a mano | Queda manual y el total deja de estar incompleto |
 | F-03-CA-7 | USD 1.000 + ARS 600.000 a 1200 | ARS 1.800.000 o USD 1.500 |
 | F-03-CA-8 | Gasto en USD sin cotización, vista en ARS | No suma y avisa «Total incompleto» |
-| F-03-CA-9 | Anular un gasto | Pide confirmación; deja de sumar, tachado y «Anulado», sigue en la base |
-| F-03-CA-9b | Confirmar un gasto y elegir otro | El segundo no se anula sin su propia confirmación |
 | F-03-CA-9c | Anular un ítem de presupuesto | Confirmación propia de cada ítem; deja de sumar |
-| F-03-CA-10 | Monto 0 o sin descripción | Mensaje claro, nada guardado, el formulario conserva lo escrito |
-| F-03-CA-11 | «Cargá 350 mil pesos de hierro» por chat | Gasto en Estructura con cotización del día; aviso; se ve en 💰 Plata |
-| F-03-CA-11b | Rubro inexistente por chat | No guarda nada; el agente pide aclarar |
-| F-03-CA-11c | Rubro ambiguo por chat («Instalación») | No guarda nada; la herramienta exige preguntar |
-| F-03-CA-12 | «¿En qué rubro nos pasamos?» | Responde con desvíos reales por rubro |
+| F-03-CA-12 | «¿En qué rubro nos pasamos?» | Responde con desvíos reales por rubro y el detalle por ítem |
 | F-03-CA-14 | Ítems en tres rubros | Lista agrupada por rubro, en orden de obra, con cantidad y subtotal (también en USD) |
-| F-03-CA-15 | Abrir un ítem | Rubro, descripción, monto, fecha de carga, cotización y origen; botones Editar y Borrar |
+| F-03-CA-15 | Abrir un ítem | Total, rubro, descripción, fecha de carga, cotización y origen; botones Editar ítem y Borrar ítem |
 | F-03-CA-16 | «+ Agregar ítem» | Formulario vacío al abrir, y otra vez vacío después de guardar o cancelar |
-| F-03-CA-17 | Alta sin rubro, moneda o monto | Dice qué falta, no guarda y conserva lo escrito |
+| F-03-CA-17 | Alta sin rubro o moneda | Dice qué falta, no guarda y conserva lo escrito (el monto es opcional) |
+| F-03-CA-17b | Monto negativo | El campo no lo permite y el dominio lo rechaza |
 | F-03-CA-18 | Editar un ítem | Formulario con los valores actuales, Guardar cambios y Cancelar |
 | F-03-CA-19 | Cambiar monto, rubro o cotización y guardar | Ítem y subtotales actualizados; obra y fecha intactas; cotización cambiada queda manual |
 | F-03-CA-20 | Cancelar la edición | Nada se guarda; vuelve el detalle original |
-| F-03-CA-21 | Guardar una edición inválida | Error claro, no guarda, conserva lo escrito |
+| F-03-CA-21 | Guardar una edición que falla | Error claro, no guarda, conserva lo escrito |
 | F-03-CA-22 | Borrar un ítem | Diálogo que lo nombra; Cancelar o Esc no cambian nada; confirmar lo saca de la lista y los totales y queda anulado en la base |
 | F-03-CA-23 | Texto con Markdown en ítems y rubros | Lista, detalle, diálogo y avisos lo muestran como texto |
 | F-03-CA-24 | Editar fuera de los campos permitidos | El dominio solo envía campos permitidos (la base lo garantiza: SQL y LIVE-19) |
-| F-03-CA-25 | «Registrar un gasto» | Arranca sin rubro; sin rubro no guarda y conserva lo escrito; tras guardar vuelve sin rubro |
-| F-03-SEG-1 | Descripción con Markdown de imagen o link | Se muestra como texto, no se interpreta |
+| F-03-CA-26 | Ítem de 100.000 con 89.000, 90.000, 100.000 y 101.000 gastados | Total, gastado y %, con 🟢 Dentro del presupuesto / 🟡 Cerca del límite / 🟡 / 🔴 Excedido |
+| F-03-CA-26b | Abrir un ítem con gastos | Sus gastos (solo los suyos), gastado, % y saldo |
+| F-03-CA-27 | «+ Agregar gasto» en un ítem | Gasto en ese ítem; ítem, rubro y totales actualizados; formulario cerrado y vacío al reabrir |
+| F-03-CA-27b | Formulario de gasto | Nombra el ítem; moneda precargada con la del ítem y editable |
+| F-03-CA-27c | Cancelar el gasto | No guarda nada |
+| F-03-CA-28 | Gasto sin monto o sin descripción | Dice qué falta, no guarda y conserva lo escrito |
+| F-03-CA-29 | Anular un gasto | Diálogo que lo nombra; Cancelar no cambia nada; confirmar lo tacha («Anulado»), deja de sumar y sigue en la base |
+| F-03-CA-29b | Cerrar el diálogo de anulación | Equivale a cancelar |
+| F-03-CA-30 | Borrar un ítem con gastos | Avisa cuántos gastos y por qué monto; «Borrar ítem y gastos» anula ambos |
+| F-03-CA-30b | Crear una obra con presupuesto USD 85.000 | Trae «Imprevistos» por USD 8.500 en Otros |
+| F-03-CA-30c | Obra sin «Imprevistos» | El alta ofrece «Es el ítem de imprevistos»; con uno vigente, no |
+| F-03-CA-30d | Alta de ítem sin monto | Se guarda en 0 con «Sin presupuesto asignado» |
+| F-03-CA-31 | Gasto en USD en un ítem en ARS | Se convierte con su cotización; sin cotización, «total incompleto» |
+| F-03-CA-32 | Abrir 💰 Plata | No hay formulario de gasto suelto ni «Últimos gastos» |
+| F-03-CA-33 | «Cargá 350 mil de hierro» por chat con un ítem que coincide | Gasto en ese ítem con la cotización del día; aviso visible |
+| F-03-CA-33b | Ningún ítem coincide | No guarda; pregunta y ofrece «Imprevistos» |
+| F-03-CA-33c | Varios ítems coinciden | No guarda; la herramienta exige preguntar |
+| F-03-CA-35 | Cambiar el rubro de un ítem con gastos | Los gastos pasan a ese rubro en el resumen |
+| F-03-SEG-1 | Descripción con Markdown de imagen o link | Se muestra como texto, no se interpreta (lista de gastos y diálogo) |
+| F-03-SEG-2b | Ítem con Markdown en el formulario de gasto | Se muestra como texto |
 | F-03-SEG-2 | Rubro con Markdown en el aviso «Ítem agregado» | Se muestra como texto, no se interpreta |
 | F-03-SEG-3 | Nombres con Markdown en los avisos del chat | Se muestran como texto, también en el historial |
 | F-03-SEG-4 | Respuesta del agente con una imagen (cualquier variante de Markdown) | No se carga ninguna imagen; el resto del formato se mantiene |
-| F-03-A11Y-1 | Campos de la pestaña | Todos con etiqueta visible; los obligatorios lo dicen |
+| F-03-A11Y-1 | Campos del formulario de gasto | Todos con etiqueta visible; los obligatorios lo dicen |
 | F-03-A11Y-2 | Rubro excedido | El estado se lee en palabras, no solo por color |
 
 ## Esquema y seguridad en Postgres (`tests/sql/`, en cada PR)
 
-Aplica `supabase_schema.sql` dos veces en un Postgres 16 limpio y verifica:
+Aplica `supabase_schema.sql` dos veces en un Postgres 16 limpio, y también
+sobre el esquema anterior a #35 con datos (`tests/sql/esquema_antes_35.sql` y
+`datos_antes_35.sql`: los gastos sin ítem se migran), y verifica:
 precarga de rubros; defaults; que la base rechace montos ≤ 0, descripciones
 vacías o largas, monedas, fechas futuras, cotizaciones inválidas o sin origen y
 rubros inexistentes; rubros únicos; qué columnas se pueden editar (un ítem no
 cambia de obra, fecha ni autor; un gasto solo cambia cotización y anulación);
 que nada se pueda borrar; que el equipo
-comparta los datos; y que sin login no se vea ni escriba nada.
+comparta los datos; y que sin login no se vea ni escriba nada. Desde #35, también:
+que todo gasto tenga un ítem vigente de la misma obra (obra y rubro los pone la
+base), que no se pueda mover de ítem, que el cambio de rubro y el borrado del
+ítem lleguen a sus gastos, que un ítem pueda valer 0 pero no negativo, que haya
+un solo «Imprevistos» vigente por obra y que la migración se lo cree a las obras
+existentes (10 % del presupuesto, en su moneda). Con dos conexiones a la vez
+(`tests/sql/test_concurrencia.sh`): cargar un gasto mientras su ítem cambia de
+rubro o se borra nunca deja un gasto con el rubro viejo ni vigente bajo un ítem
+borrado.
 
 ## E2E real — reglas de la base (Supabase)
 
@@ -102,8 +124,11 @@ comparta los datos; y que sin login no se vea ni escriba nada.
 | LIVE-16 | Gastos | B ve, corrige y anula el gasto de A; borrar | Permitido salvo borrar |
 | LIVE-17 | Rubros | Alta de rubro y duplicado con otras mayúsculas | Se crea; el duplicado se rechaza; no se borra |
 | LIVE-18 | Rubros | «Mamposteria», «MAMPOSTERÍA», «steel   FRAME» salteando la app | La base los rechaza como duplicados |
-| LIVE-19 | Integridad | Mover un ítem de obra, cambiar su fecha o autor, o el monto de un gasto, salteando la app | La base lo rechaza |
+| LIVE-19 | Integridad | Mover un ítem de obra, cambiar su fecha o autor, o el monto, el ítem o el rubro de un gasto, salteando la app | La base lo rechaza |
 | LIVE-20 | Presupuesto | B edita el ítem de A y lo borra | Se guarda (cotización manual); borrar lo anula y conserva el autor |
+| LIVE-21 | Integridad | Gasto sin ítem, con ítem de otra obra o borrado, salteando la app | La base lo rechaza; obra y rubro salen del ítem |
+| LIVE-22 | Presupuesto | B cambia el rubro del ítem de A y lo borra, salteando la app | El gasto sigue el rubro y queda anulado |
+| LIVE-23 | Presupuesto | Ítem en 0, ítem negativo, dos «Imprevistos» | 0 sí; negativo y segundo «Imprevistos» rechazados; se puede recrear tras borrarlo |
 
 ## Cómo correr
 

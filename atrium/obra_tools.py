@@ -108,50 +108,63 @@ def build_obra_tools(
         acciones.append(f"✏️ «{encontrada['nombre']}» actualizada: {detalle}")
         return f"Obra {encontrada['nombre']} actualizada: {detalle}."
 
-    def _rubro(texto: str) -> tuple[dict | None, str | None]:
-        matches = finanzas.find_rubros(client, texto)
+    def _item(obra: obras.Obra, texto: str, rubro: str | None) -> tuple[dict | None, str | None]:
+        """(item, None) on a unique match, else (None, message asking the user)."""
+
+        matches = finanzas.find_items(client, obra["id"], texto, rubro)
         if len(matches) == 1:
             return matches[0], None
-        disponibles = ", ".join(r["nombre"] for r in finanzas.list_rubros(client))
+        vigentes = [
+            i for i in finanzas.list_presupuesto(client, obra["id"]) if not i.get("anulado")
+        ]
         if not matches:
+            disponibles = ", ".join(_nombre_item(i) for i in vigentes) or "(no hay ítems)"
+            imprevistos = finanzas.imprevistos_vigente(vigentes)
+            sugerencia = " o si va a «Imprevistos»" if imprevistos else ""
             return None, (
-                f"No hay un rubro «{texto}». Elegí el más adecuado entre: {disponibles}. "
-                "Si ninguno corresponde, preguntale al usuario."
+                f"No registré el gasto: no hay ningún ítem del presupuesto que coincida con "
+                f"«{texto}». Ítems de la obra: {disponibles}. Preguntale al usuario a qué ítem "
+                f"va{sugerencia}. Nunca crees ítems por tu cuenta."
             )
-        # F-03: with an ambiguous rubro the agent must ask, never pick one itself.
+        # #35: with several possible items the agent must ask, never pick one itself.
         return None, (
-            "No registré el gasto: hay varios rubros que coinciden ("
-            + ", ".join(r["nombre"] for r in matches)
+            "No registré el gasto: hay varios ítems que coinciden ("
+            + ", ".join(_nombre_item(i) for i in matches)
             + "). Preguntale al usuario cuál corresponde antes de volver a intentarlo."
         )
+
+    def _nombre_item(item: dict) -> str:
+        return f"«{item.get('descripcion') or 'Sin descripción'}»"
 
     def registrar_gasto(
         monto: float,
         descripcion: str,
-        rubro: str,
-        moneda: str = "ARS",
+        item: str,
+        moneda: str | None = None,
+        rubro: str | None = None,
         obra: str | None = None,
         fecha: str | None = None,
         proveedor: str | None = None,
     ) -> str:
-        """Registra un gasto de una obra. Usala SOLO si el usuario pide explícitamente
-        cargar o registrar un gasto. `monto` es un número (350 mil = 350000). `moneda`
-        es ARS o USD. `rubro` es el nombre de un rubro existente (por ejemplo, el hierro
-        va en Estructura). `fecha` en formato AAAA-MM-DD (vacío = hoy). La cotización
-        del dólar MEP se completa sola."""
+        """Registra un gasto en un ítem del presupuesto de una obra. Usala SOLO si el
+        usuario pide explícitamente cargar o registrar un gasto. Todo gasto va a un
+        ítem: `item` es la descripción (o parte) del ítem, por ejemplo «hierro» o
+        «imprevistos»; `rubro` opcional ayuda a desambiguar. `monto` es un número
+        (350 mil = 350000). `moneda` es ARS o USD (vacío = la del ítem). `fecha` en
+        formato AAAA-MM-DD (vacío = hoy). La cotización del dólar MEP se completa sola.
+        Si hay varios ítems posibles o ninguno, no guarda nada y hay que preguntar."""
         try:
             encontrada, problema = _resolver(obra)
             if problema:
                 return problema
-            elegido, problema = _rubro(rubro)
+            elegido, problema = _item(encontrada, item, rubro)
             if problema:
                 return problema
             gasto, aviso = finanzas.add_gasto(
                 client,
-                encontrada["id"],
+                elegido["id"],
                 monto=monto,
-                moneda=moneda,
-                rubro_id=elegido["id"],
+                moneda=moneda or elegido["moneda"],
                 descripcion=descripcion,
                 fecha=fecha or None,
                 proveedor=proveedor,
@@ -159,12 +172,11 @@ def build_obra_tools(
         except (obras.ObrasError, finanzas.FinanzasError) as exc:
             return f"No se pudo registrar el gasto: {exc}"
         monto_txt = finanzas.formato_monto(gasto["monto"], gasto["moneda"])
-        acciones.append(
-            f"💸 Gasto registrado en «{encontrada['nombre']}»: {monto_txt} · {elegido['nombre']}"
-        )
+        nombre = elegido.get("descripcion") or "Sin descripción"
+        acciones.append(f"💸 Gasto registrado en «{encontrada['nombre']}»: {monto_txt} · {nombre}")
         texto = (
-            f"Gasto registrado en {encontrada['nombre']}: {monto_txt}, rubro "
-            f"{elegido['nombre']}, fecha {gasto['fecha']}"
+            f"Gasto registrado en {encontrada['nombre']}: {monto_txt}, ítem {nombre}, "
+            f"fecha {gasto['fecha']}"
         )
         if gasto.get("tipo_cambio"):
             texto += f", cotización MEP {finanzas.formato_numero(gasto['tipo_cambio'], 2)}."
@@ -173,8 +185,9 @@ def build_obra_tools(
         return texto
 
     def resumen_plata(obra: str | None = None, moneda: str = "ARS") -> str:
-        """Muestra presupuestado, gastado y desvío por rubro de una obra, en ARS o USD
-        (dólar MEP). Usala para preguntas sobre plata, gastos, presupuesto o desvíos."""
+        """Muestra presupuestado, gastado y desvío por rubro y por ítem del presupuesto de
+        una obra, en ARS o USD (dólar MEP). Usala para preguntas sobre plata, gastos,
+        presupuesto, saldos o desvíos."""
         try:
             encontrada, problema = _resolver(obra)
             if problema:
