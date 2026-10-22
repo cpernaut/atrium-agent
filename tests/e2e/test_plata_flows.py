@@ -12,7 +12,7 @@ import pytest
 from langchain_core.messages import AIMessage
 
 from atrium import finanzas, obras
-from tests.e2e.conftest import click, texts
+from tests.e2e.conftest import abrir_presupuesto, click, tabla_items, tabla_rubros, texts
 from tests.fakes import tool_call
 
 PLATA = 3  # index of the «💰 Plata» tab inside 📋 Obras
@@ -40,8 +40,10 @@ def _item(e2e, rubro, monto=0, moneda="ARS", descripcion=None, **extra):
 
 
 def _plata(e2e, obra_id=1):
+    """💰 Plata of the obra, with every rubro and ítem of the table expanded."""
+
     at = e2e.go_to_obras(e2e.login())
-    return e2e.elegir_obra(at, obra_id)
+    return abrir_presupuesto(e2e.elegir_obra(at, obra_id), e2e.db)
 
 
 def visible(at) -> str:
@@ -54,16 +56,37 @@ def _metricas(at):
     return {m.label: m.value for m in at.tabs[PLATA].metric}
 
 
-def _tabla(at):
-    """The per-rubro table of the Plata tab, indexed by rubro."""
+class _Tabla:
+    """Rubro rows of the budget table, read like the old dataframe: .loc[rubro, col]."""
 
-    return at.tabs[PLATA].dataframe[0].value.set_index("Rubro")
+    def __init__(self, filas):
+        self.filas = filas
+        self.index = list(filas)
+        self.loc = self
+
+    def __getitem__(self, clave):
+        rubro, columna = clave
+        return self.filas[rubro][columna]
+
+
+def _tabla(at):
+    """The rubro rows of the budget table (#45), indexed by rubro."""
+
+    return _Tabla(tabla_rubros(at))
 
 
 def _titulos(at) -> list[str]:
-    """Collapsed items as the user reads them."""
+    """Ítem rows as one line: «name — presupuestado · gastado X · % · estado»."""
 
-    return [e.label.replace("\\", "") for e in at.tabs[PLATA].expander if " — " in e.label]
+    lineas = []
+    for f in tabla_items(at):
+        partes = [f"{f['nombre']} — {f['Presupuestado'].split(':gray')[0].strip()}"]
+        partes.append(f"gastado {f['Gastado']}")
+        if f["% consumido"] != "sin presupuesto":
+            partes.append(f["% consumido"])
+        partes.append(f["Estado"])
+        lineas.append(" · ".join(partes))
+    return lineas
 
 
 def _abrir_gasto(at, item_id):
@@ -136,7 +159,7 @@ def test_f03_ca_27_agregar_gasto_en_un_item(e2e):
     assert _titulos(at) == [
         "Hierro del 8 — ARS 1.000.000 · gastado ARS 350.000 · 35% · 🟢 Dentro del presupuesto"
     ]
-    assert "**Saldo:** ARS 650.000" in pantalla
+    assert "Saldo: ARS 650.000" in pantalla
     assert _tabla(at).loc["Estructura", "Gastado"] == "ARS 350.000"
     assert _metricas(at)["Gastado"] == "ARS 350.000"
     assert _metricas(at)["Desvío"] == "−ARS 650.000"
@@ -176,7 +199,7 @@ def test_f03_ca_27c_cancelar_no_guarda(e2e):
 
     assert finanzas.list_gastos(e2e.db, 1) == []
     boton = at.button(key=f"gasto_agregar_{item['id']}")
-    assert boton.label == "Registrar un gasto" and not boton.disabled
+    assert boton.help == "Registrar un gasto en Ítem de Pintura" and not boton.disabled
 
 
 def test_f03_ca_28_datos_faltantes_no_se_guardan(e2e):
@@ -243,7 +266,9 @@ def test_f03_ca_5_fuente_caida_guarda_sin_cotizacion(e2e):
     assert "tipo_cambio" not in gasto
     assert "No se pudo consultar el dólar MEP" in visible(at)
     assert "sin cotización" in texts(at)
-    assert at.button(key=f"gasto_cotizacion_{gasto['id']}").label == "Cotización"
+    assert at.button(key=f"gasto_cotizacion_{gasto['id']}").help == (
+        "Corregir la cotización de este gasto"
+    )
 
 
 def test_f03_ca_6_corregir_cotizacion_a_mano(e2e):
@@ -304,7 +329,7 @@ def test_f03_ca_31_gasto_en_otra_moneda_que_su_item(e2e):
     _seed_gasto(e2e, 100, "USD", "Carpinterías", item=item)
     at = _plata(e2e)
     assert _titulos(at)[0].endswith("· total incompleto")
-    assert "1 gasto(s) en otra moneda sin cotización" in texts(at)
+    assert "1 registro(s) en otra moneda sin cotización" in texts(at)
 
 
 @pytest.mark.parametrize(
@@ -328,7 +353,8 @@ def test_f03_ca_26_semaforo_por_item(e2e, gastado, porcentaje, estado):
     titulo = _titulos(at)[0]
     assert titulo.startswith("Látex — ARS 100.000 · gastado ARS ")
     assert f"· {porcentaje} · {estado}" in titulo
-    assert f"**Estado:** {estado}" in visible(at)
+    estado_item = tabla_items(at)[0]["Estado"]
+    assert estado_item == estado  # en palabras, no solo el color
 
 
 def test_f03_ca_26b_gastos_del_item_y_saldo(e2e):
@@ -341,10 +367,13 @@ def test_f03_ca_26b_gastos_del_item_y_saldo(e2e):
     _seed_gasto(e2e, 5, "ARS", "", tipo_cambio=1200, item=otro, descripcion="De otro ítem")
     at = _plata(e2e)
 
-    pantalla = visible(at)
-    assert "**Total:** ARS 9.000.000" in pantalla
-    assert "**Gastado:** ARS 2.000.000 (22%)" in pantalla
-    assert "**Saldo:** ARS 7.000.000" in pantalla
+    hierro = next(f for f in tabla_items(at) if f["nombre"] == "Hierro")
+    assert (hierro["Presupuestado"], hierro["Gastado"], hierro["% consumido"]) == (
+        "ARS 9.000.000",
+        "ARS 2.000.000",
+        "22%",
+    )
+    assert "Saldo: ARS 7.000.000" in visible(at)
     entrega = [m.value for m in at.tabs[PLATA].markdown if "Entrega 1" in m.value]
     assert len(entrega) == 1  # aparece solo dentro de su ítem
 
@@ -479,8 +508,9 @@ def test_f03_ca_30b_obra_nueva_trae_imprevistos(e2e):
     item = finanzas.list_presupuesto(e2e.db, 1)[0]
     assert (item["descripcion"], item["monto"], item["moneda"]) == ("Imprevistos", "8500.00", "USD")
     assert item["es_imprevistos"] and item["rubro_id"] == _rubro(e2e, "Otros")
-    at = e2e.elegir_obra(at.run(), 1)
-    assert _titulos(at)[0].startswith("Imprevistos — USD 8.500")
+    at = abrir_presupuesto(e2e.elegir_obra(at.run(), 1), e2e.db)
+    fila = tabla_items(at)[0]
+    assert fila["nombre"] == "Imprevistos" and "USD 8.500" in fila["Presupuestado"]
 
 
 def test_f03_ca_30c_imprevistos_se_puede_recrear(e2e):
@@ -706,18 +736,19 @@ def test_f03_seg_4_respuesta_del_agente_no_carga_imagenes(e2e):
 
 
 def test_f03_ca_27d_registrar_un_gasto_junto_a_editar_y_borrar(e2e):
-    """F-03-CA-27: cada ítem tiene «Registrar un gasto» junto a «Editar ítem» y
-    «Borrar ítem»; abre el formulario ahí mismo, ya vinculado al ítem, y no hay
-    ningún formulario de gasto fuera de los ítems."""
+    """F-03-CA-27 / #45: en la fila de cada ítem están los íconos para registrar un
+    gasto, editar y borrar; el gasto se carga ahí mismo, ya vinculado al ítem, y no
+    hay ningún formulario de gasto fuera de los ítems."""
 
     _obra(e2e)
     item = _item(e2e, "Pintura", 100, descripcion="Látex")
     at = _plata(e2e)
     acciones = [b.key for b in at.tabs[PLATA].button if b.key and b.key.endswith(f"_{item['id']}")]
-    assert acciones[:3] == [
+    assert acciones == [
+        f"fila_item_{item['id']}",
+        f"gasto_agregar_{item['id']}",
         f"item_editar_{item['id']}",
         f"item_borrar_{item['id']}",
-        f"gasto_agregar_{item['id']}",
     ]
     assert "Registrar un gasto" not in [s.value for s in at.tabs[PLATA].subheader]
     assert not [

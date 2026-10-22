@@ -82,6 +82,15 @@ resultado esperado verificable.
 | F-03-CA-33b | Ningún ítem coincide | No guarda; pregunta y ofrece «Imprevistos» |
 | F-03-CA-33c | Varios ítems coinciden | No guarda; la herramienta exige preguntar |
 | F-03-CA-35 | Cambiar el rubro de un ítem con gastos | Los gastos pasan a ese rubro en el resumen |
+| TABLA-1 | Presupuesto en una tabla (#45) | Abrir 💰 Plata | Una sola tabla con Ítems y % consumido; rubros cerrados; sin lista aparte |
+| TABLA-2 | Presupuesto en una tabla | Expandir rubro, ítem y volver a cerrar | Aparecen sus ítems y después sus gastos; al cerrar se ocultan |
+| TABLA-3 | Presupuesto en una tabla | Íconos por fila | Rubro: agregar ítem. Ítem: registrar gasto, editar, borrar. Gasto: cotización, anular. Todos con descripción |
+| TABLA-4 | Presupuesto en una tabla | «+» en el rubro | Alta con ese rubro elegido; el ítem nuevo aparece en el rubro |
+| TABLA-5 | Presupuesto en una tabla | Gasto anulado | Queda en su fila, tachado y con «Anulado», sin acciones |
+| TABLA-6 | Presupuesto en una tabla | Con el alta abierta, tocar el «+» de un rubro y después el de otro | El formulario cambia al rubro tocado, sin errores |
+| TABLA-7 | Presupuesto en una tabla | Rubro desactivado con ítems | Se ven sus ítems; el «+» del rubro está deshabilitado y explica por qué (R7) |
+| TABLA-8 | Presupuesto en una tabla | Cerrar un rubro con un formulario abierto adentro | Se cancela; al reabrir, el gasto arranca otra vez en la moneda del ítem |
+| TABLA-9 | Seguridad | Rubro e ítem con Markdown de imagen o link | Las ayudas de los íconos los muestran como texto |
 | F-03-SEG-1 | Descripción con Markdown de imagen o link | Se muestra como texto, no se interpreta (lista de gastos y diálogo) |
 | F-03-SEG-2b | Ítem con Markdown en el formulario de gasto | Se muestra como texto |
 | F-03-SEG-2 | Rubro con Markdown en el aviso «Ítem agregado» | Se muestra como texto, no se interpreta |

@@ -47,7 +47,13 @@ FAVICON = str(ASSETS / "favicon.png")
 NOMBRE_APP = "Atrium Studio"
 ETIQUETA_BETA = "Versión beta"
 
-st.set_page_config(page_title=f"{NOMBRE_APP} · Beta", page_icon=FAVICON)
+# Wide: the budget table (#45) needs the room; on phones it scrolls sideways.
+st.set_page_config(
+    page_title=f"{NOMBRE_APP} · Beta",
+    page_icon=FAVICON,
+    layout="wide",
+    initial_sidebar_state="collapsed",
+)
 # Arriba a la izquierda va solo el isotipo: el texto del logo no se lee a ese tamaño.
 st.logo(ISOTIPO_CHICO, size="large", icon_image=ISOTIPO_CHICO)
 

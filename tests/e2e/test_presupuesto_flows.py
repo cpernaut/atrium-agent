@@ -9,7 +9,7 @@ from decimal import Decimal
 import pytest
 
 from atrium import finanzas, obras
-from tests.e2e.conftest import click, texts
+from tests.e2e.conftest import abrir_presupuesto, click, tabla_items, tabla_rubros, texts
 
 PLATA = 3  # «💰 Plata» tab inside 📋 Obras
 
@@ -33,8 +33,10 @@ def _item(e2e, rubro, monto, moneda="ARS", descripcion=None):
 
 
 def _plata(e2e):
+    """💰 Plata with every rubro and ítem of the table expanded."""
+
     at = e2e.go_to_obras(e2e.login())
-    return e2e.elegir_obra(at, 1)
+    return abrir_presupuesto(e2e.elegir_obra(at, 1), e2e.db)
 
 
 def _tab(at):
@@ -46,20 +48,22 @@ def _markdown(at) -> str:
 
 
 def _grupos(at) -> list[str]:
-    """Group headers of the budget list, as the user reads them."""
+    """Rubro rows as «**Rubro** · N ítem(s) · Subtotal X», in table order."""
 
-    return [
-        m.replace("\\", "").split(" · Gastado")[0]
-        for m in (x.value for x in _tab(at).markdown)
-        if "· Subtotal" in m
-    ]
+    filas = []
+    for nombre, f in tabla_rubros(at).items():
+        n = int(f["Ítems"])
+        filas.append(
+            f"**{nombre}** · {n} ítem{'' if n == 1 else 's'} · Subtotal {f['Presupuestado']}"
+        )
+    return filas
 
 
 def _expanders(at) -> list[str]:
-    """Item titles up to the total (gastado and estado are checked in test_plata_flows)."""
+    """Ítem rows as «name — presupuestado» (gastado and estado: see test_plata_flows)."""
 
     return [
-        e.label.replace("\\", "").split(" · ")[0] for e in _tab(at).expander if " — " in e.label
+        f"{f['nombre']} — {f['Presupuestado'].split(':gray')[0].strip()}" for f in tabla_items(at)
     ]
 
 
@@ -120,25 +124,21 @@ def test_f03_ca_14b_subtotales_en_la_moneda_de_vista(e2e):
 
 
 def test_f03_ca_15_detalle_del_item(e2e):
-    """F-03-CA-15: el detalle muestra rubro, descripción, monto, moneda, fecha de
-    carga y cotización con su origen, y las acciones Editar y Borrar."""
+    """F-03-CA-15 / #45: la fila del ítem muestra el monto y, al abrirla, la fecha de
+    carga y la cotización con su origen; las acciones son íconos con descripción."""
 
     _obra(e2e)
     item = _item(e2e, "Estructura", 3_200_000, descripcion="Hierro del 8")
     at = _plata(e2e)
 
-    detalle = _markdown(at).replace("\\", "")
+    assert _expanders(at) == ["Hierro del 8 — ARS 3.200.000"]
+    assert _grupos(at) == ["**Estructura** · 1 ítem · Subtotal ARS 3.200.000"]
+    detalle = texts(at)
     hoy = finanzas.hoy()
-    for linea in (
-        "- **Rubro:** Estructura",
-        "- **Descripción:** Hierro del 8",
-        f"- **Fecha de carga:** {hoy:%d/%m/%Y}",
-        "- **Cotización:** MEP 1.200,00 (automática)",
-    ):
-        assert linea in detalle, linea
-    assert "**Total:** ARS 3.200.000" in detalle
-    assert at.button(key=f"item_editar_{item['id']}").label == "Editar ítem"
-    assert at.button(key=f"item_borrar_{item['id']}").label == "Borrar ítem"
+    assert f"Fecha de carga: {hoy:%d/%m/%Y}" in detalle
+    assert "Cotización: MEP 1.200,00 (automática)" in detalle
+    assert at.button(key=f"item_editar_{item['id']}").help == "Editar el ítem Hierro del 8"
+    assert at.button(key=f"item_borrar_{item['id']}").help == "Borrar el ítem Hierro del 8"
 
 
 def test_f03_ca_15b_sin_items(e2e):
@@ -299,7 +299,7 @@ def test_f03_ca_19b_cotizacion_editada_queda_manual(e2e):
 
     guardado = finanzas.get_presupuesto_item(e2e.db, item["id"])
     assert (guardado["tipo_cambio"], guardado["tipo_cambio_origen"]) == ("1150.0000", "manual")
-    assert "MEP 1.150,00 (corregida a mano)" in _markdown(at).replace("\\", "")
+    assert "MEP 1.150,00 (corregida a mano)" in texts(at)
 
 
 def test_f03_ca_20_cancelar_edicion(e2e):
@@ -314,7 +314,7 @@ def test_f03_ca_20_cancelar_edicion(e2e):
     at = at.button(key=f"item_cancelar_{item['id']}").click().run()
 
     assert finanzas.get_presupuesto_item(e2e.db, item["id"])["descripcion"] == "Látex"
-    assert "- **Descripción:** Látex" in _markdown(at).replace("\\", "")
+    assert _expanders(at) == ["Látex — ARS 800.000"]
     # Reabrir la edición muestra otra vez los valores guardados, no los descartados.
     at = _abrir_edicion(at, item["id"])
     assert at.text_input(key=f"{k}descripcion").value == "Látex"
@@ -519,3 +519,194 @@ def test_f03_ca_24_no_se_puede_mover_un_item_de_obra(e2e):
     assert llamadas and all(
         set(payload) <= set(finanzas.CAMPOS_EDITABLES_ITEM) for _, payload in llamadas
     )
+
+
+# --------------------------------------------------------------------------- #
+# #45 · Una sola tabla expandible: rubro → ítem → gasto
+# --------------------------------------------------------------------------- #
+def _gasto(e2e, item, monto, descripcion):
+    gasto, _ = finanzas.add_gasto(
+        e2e.db, item["id"], monto=monto, moneda=item["moneda"], descripcion=descripcion
+    )
+    return gasto
+
+
+def test_tabla_1_columnas_y_rubros_cerrados(e2e):
+    """TABLA-1: una sola tabla con Ítems y % consumido; arranca con los rubros
+    cerrados y sin la lista de ítems aparte."""
+
+    from plata_ui import COLUMNAS
+
+    _obra(e2e)
+    item = _item(e2e, "Estructura", 1_000_000, descripcion="Hierro")
+    _gasto(e2e, item, 250_000, "Entrega")
+    at = e2e.elegir_obra(e2e.go_to_obras(e2e.login()), 1)
+
+    cabecera = [m.value for m in _tab(at).markdown if m.value.startswith("**")][: len(COLUMNAS)]
+    assert cabecera == [f"**{c}**" for c in COLUMNAS]
+    assert "% consumido" in COLUMNAS and "Ítems" in COLUMNAS
+    assert tabla_rubros(at)["Estructura"] | {} == {
+        "Rubro / ítem / gasto": "▸ **Estructura**",
+        "Ítems": "1",
+        "Presupuestado": "ARS 1.000.000",
+        "Gastado": "ARS 250.000",
+        "Desvío": "−ARS 750.000",
+        "% consumido": "25%",
+        "Estado": "Dentro del presupuesto",
+        "Acciones": ":material/add:",
+    }
+    assert tabla_items(at) == []  # el rubro está cerrado
+    assert not _tab(at).expander and not _tab(at).dataframe  # ni lista aparte ni tabla vieja
+
+
+def test_tabla_2_expandir_rubro_item_y_gastos(e2e):
+    """TABLA-2: se expande el rubro y aparecen sus ítems; se expande el ítem y
+    aparecen sus gastos; se vuelven a cerrar."""
+
+    _obra(e2e)
+    item = _item(e2e, "Estructura", 1_000_000, descripcion="Hierro")
+    gasto = _gasto(e2e, item, 250_000, "Primera entrega")
+    at = e2e.elegir_obra(e2e.go_to_obras(e2e.login()), 1)
+
+    at = at.button(key=f"fila_rubro_{item['rubro_id']}").click().run()
+    assert [f["nombre"] for f in tabla_items(at)] == ["Hierro"]
+    assert f"gasto_anular_{gasto['id']}" not in [b.key for b in at.button]
+
+    at = at.button(key=f"fila_item_{item['id']}").click().run()
+    assert "Primera entrega" in texts(at)
+    assert at.button(key=f"gasto_anular_{gasto['id']}").help == "Anular este gasto"
+
+    at = at.button(key=f"fila_rubro_{item['rubro_id']}").click().run()
+    assert tabla_items(at) == [] and "Primera entrega" not in texts(at)
+
+
+def test_tabla_3_iconos_segun_el_nivel(e2e):
+    """TABLA-3: el rubro tiene «agregar ítem»; el ítem, «registrar gasto», «editar» y
+    «borrar»; el gasto, «corregir cotización» y «anular»; todos con descripción."""
+
+    _obra(e2e)
+    item = _item(e2e, "Pintura", 100, descripcion="Látex")
+    gasto = _gasto(e2e, item, 10, "Rodillo")
+    at = _plata(e2e)
+
+    ayudas = {b.key: b.help for b in _tab(at).button if b.key}
+    assert ayudas[f"rubro_agregar_{item['rubro_id']}"] == "Agregar un ítem en Pintura"
+    assert ayudas[f"gasto_agregar_{item['id']}"] == "Registrar un gasto en Látex"
+    assert ayudas[f"item_editar_{item['id']}"] == "Editar el ítem Látex"
+    assert ayudas[f"item_borrar_{item['id']}"] == "Borrar el ítem Látex"
+    assert ayudas[f"gasto_cotizacion_{gasto['id']}"] == "Corregir la cotización de este gasto"
+    assert ayudas[f"gasto_anular_{gasto['id']}"] == "Anular este gasto"
+    for b in _tab(at).button:
+        assert b.label.strip() and (b.help or not b.label.startswith(":material")), b.key
+
+
+def test_tabla_4_agregar_item_desde_el_rubro(e2e):
+    """TABLA-4: el «+» del rubro abre el alta con ese rubro elegido; al guardar, el
+    ítem aparece en ese rubro."""
+
+    _obra(e2e)
+    item = _item(e2e, "Pintura", 100, descripcion="Látex")
+    at = _plata(e2e).button(key=f"rubro_agregar_{item['rubro_id']}").click().run()
+
+    assert at.selectbox(key="nuevo_item_rubro").value == item["rubro_id"]
+    assert at.text_input(key="nuevo_item_descripcion").value == ""
+    at.text_input(key="nuevo_item_descripcion").input("Esmalte")
+    at.radio(key="nuevo_item_moneda").set_value("ARS")
+    at = at.button(key="item_nuevo_agregar").click().run()
+
+    assert not at.exception
+    assert [f["nombre"] for f in tabla_items(at)] == ["Látex", "Esmalte"]
+    assert tabla_rubros(at)["Pintura"]["Ítems"] == "2"
+
+
+def test_tabla_5_gasto_anulado_tachado_en_su_fila(e2e):
+    """TABLA-5: un gasto anulado queda en su fila, tachado y con la palabra
+    «Anulado», sin acciones."""
+
+    _obra(e2e)
+    item = _item(e2e, "Pintura", 100, descripcion="Látex")
+    gasto = _gasto(e2e, item, 10, "Rodillo")
+    finanzas.anular_gasto(e2e.db, gasto["id"])
+    at = _plata(e2e)
+
+    tachados = [m.value for m in _tab(at).markdown if m.value.startswith("~~")]
+    assert tachados and "Rodillo" in tachados[0] and tachados[0].endswith("**Anulado**")
+    assert f"gasto_anular_{gasto['id']}" not in [b.key for b in at.button]
+
+
+def test_tabla_6_pasar_de_un_alta_a_otra(e2e):
+    """TABLA-6 (revisión PR #46): con el alta abierta, tocar el «+» de un rubro (o de
+    otro rubro) cambia el formulario a ese rubro sin errores."""
+
+    _obra(e2e)
+    pintura = _item(e2e, "Pintura", 100, descripcion="Látex")
+    revoques = _item(e2e, "Revoques", 100, descripcion="Grueso")
+    at = _abrir_nuevo(_plata(e2e))  # «+ Agregar ítem», vacío
+
+    at = at.button(key=f"rubro_agregar_{pintura['rubro_id']}").click().run()
+    assert not at.exception
+    assert at.selectbox(key="nuevo_item_rubro").value == pintura["rubro_id"]
+
+    at = at.button(key=f"rubro_agregar_{revoques['rubro_id']}").click().run()
+    assert not at.exception
+    assert at.selectbox(key="nuevo_item_rubro").value == revoques["rubro_id"]
+    assert len([f for f in at.selectbox if f.key == "nuevo_item_rubro"]) == 1
+
+    at = at.button(key="item_nuevo_cancelar").click().run()
+    at = _abrir_nuevo(at)
+    assert at.selectbox(key="nuevo_item_rubro").value is None  # el de arriba, vacío
+
+
+def test_tabla_7_rubro_desactivado_no_recibe_items(e2e):
+    """TABLA-7 (R7): un rubro desactivado sigue mostrando sus ítems, pero su «+»
+    está deshabilitado y dice por qué."""
+
+    _obra(e2e)
+    item = _item(e2e, "Pintura", 100, descripcion="Látex")
+    finanzas.set_rubro_activo(e2e.db, item["rubro_id"], False)
+    at = _plata(e2e)
+
+    boton = at.button(key=f"rubro_agregar_{item['rubro_id']}")
+    assert boton.disabled
+    assert boton.help == "Pintura está desactivado: no se le agregan ítems nuevos"
+    assert [f["nombre"] for f in tabla_items(at)] == ["Látex"]
+    assert not at.exception
+
+
+def test_tabla_8_cerrar_el_rubro_cancela_sus_formularios(e2e):
+    """TABLA-8 (revisión PR #46): cerrar un rubro con un formulario abierto adentro lo
+    cancela; al reabrirlo, el gasto vuelve a arrancar en la moneda del ítem."""
+
+    _obra(e2e)
+    item = _item(e2e, "Honorarios", 1000, moneda="USD", descripcion="Proyecto")
+    at = _plata(e2e).button(key=f"gasto_agregar_{item['id']}").click().run()
+    k = f"nuevo_gasto_{item['id']}_"
+    assert at.radio(key=f"{k}moneda").value == "USD"
+    at.text_input(key=f"{k}descripcion").input("Borrador")
+
+    at = at.button(key=f"fila_rubro_{item['rubro_id']}").click().run()  # cerrar
+    assert not any(w.key and w.key.startswith(k) for w in at.text_input)
+    at = at.button(key=f"fila_rubro_{item['rubro_id']}").click().run()  # reabrir
+    assert not any(w.key and w.key.startswith(k) for w in at.text_input)  # sin borrador
+    at = at.button(key=f"gasto_agregar_{item['id']}").click().run()
+    assert at.radio(key=f"{k}moneda").value == "USD"
+    assert at.text_input(key=f"{k}descripcion").value == ""
+    assert finanzas.list_gastos(e2e.db, 1) == []
+
+
+def test_tabla_9_ayudas_de_los_iconos_no_interpretan_markdown(e2e):
+    """TABLA-9 (seguridad): los textos de ayuda de los íconos muestran los nombres de
+    rubros e ítems como texto, sin cargar imágenes ni links externos."""
+
+    _obra(e2e)
+    malo = e2e.db.table("rubros").insert({"nombre": MALICIOSO, "orden": 5}).execute().data[0]
+    item, _ = finanzas.add_presupuesto_item(
+        e2e.db, 1, monto=10, moneda="ARS", rubro_id=malo["id"], descripcion=MALICIOSO
+    )
+    at = _plata(e2e)
+
+    ayudas = [b.help for b in _tab(at).button if b.help]
+    propias = [a for a in ayudas if "evil" in a]
+    assert len(propias) >= 4  # agregar ítem, registrar gasto, editar y borrar
+    for ayuda in propias:
+        assert "](https://" not in ayuda and "![" not in ayuda, ayuda

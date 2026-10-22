@@ -10,7 +10,6 @@ formatting with their currency, and user text is escaped before rendering.
 
 from __future__ import annotations
 
-import pandas as pd
 import streamlit as st
 
 from atrium import finanzas
@@ -107,7 +106,6 @@ def render_plata(supabase, obra_id: int | None) -> None:
     resumen = finanzas.calcular_resumen(items, gastos, rubros, moneda)
 
     _render_totales(resumen)
-    _render_tabla(resumen)
     _render_presupuesto(supabase, items, gastos, activos, rubros, rubros_por_id, obra_id, moneda)
 
 
@@ -129,40 +127,9 @@ def _render_totales(res: finanzas.Resumen) -> None:
     if res.incompleto:
         st.warning(
             f"⚠️ Total incompleto: {len(res.sin_convertir)} registro(s) sin cotización no se "
-            f"pudieron pasar a {m}. Cargá la cotización con «Cotización» en el gasto o con "
-            "«Editar» en el ítem del presupuesto."
+            f"pudieron pasar a {m}. Cargá la cotización con el lápiz ✏️ del gasto o del "
+            "ítem en la tabla del presupuesto."
         )
-
-
-def _render_tabla(res: finanzas.Resumen) -> None:
-    if not res.filas:
-        st.info("Todavía no hay presupuesto ni gastos en esta obra.")
-        return
-    m = res.moneda
-    df = pd.DataFrame(
-        [
-            {
-                # Estado right after Rubro: on a phone it stays visible without scrolling.
-                "Rubro": f.rubro,
-                "Estado": finanzas.estado(f.gastado, f.presupuestado),
-                "Presupuestado": finanzas.formato_monto(f.presupuestado, m),
-                "Gastado": finanzas.formato_monto(f.gastado, m),
-                "Desvío": finanzas.formato_monto(f.desvio, m),
-                "Ejecutado": None if f.ejecutado is None else float(f.ejecutado * 100),
-            }
-            for f in res.filas
-        ]
-    )
-    st.dataframe(
-        df,
-        hide_index=True,
-        width="stretch",
-        column_config={
-            "Ejecutado": st.column_config.ProgressColumn(
-                "Ejecutado", min_value=0, max_value=100, format="%.0f%%"
-            ),
-        },
-    )
 
 
 # --------------------------------------------------------------------------- #
@@ -189,20 +156,124 @@ def _item_nombre(item: dict) -> str:
     return item.get("descripcion") or "Sin descripción"
 
 
-def _item_titulo(item: dict, fila: finanzas.FilaItem) -> str:
-    """Collapsed item: total, gastado, % and status in words (#35 R16)."""
+_RUBROS_ACTIVOS = "presupuesto_rubros_activos"  # options of the new-item form
+_ABIERTOS = "presupuesto_abiertos"  # expanded rows: {"r12", "i34"} (rubro / ítem)
 
-    m = item["moneda"]
-    partes = [
-        f"{_item_nombre(item)} — {finanzas.formato_monto(item['monto'], m)}",
-        f"gastado {finanzas.formato_monto(fila.gastado, m)}",
-    ]
-    if fila.ejecutado is not None:
-        partes.append(finanzas.formato_porcentaje(fila.ejecutado))
-    partes.append(finanzas.estado_con_icono(fila.gastado, fila.presupuestado))
-    if fila.sin_convertir:
-        partes.append("total incompleto")
-    return " · ".join(partes)
+# Columns of the table (#45): same as the old per-rubro table, plus Ítems and
+# % consumido, and the actions of each row.
+COLUMNAS = (
+    "Rubro / ítem / gasto",
+    "Ítems",
+    "Presupuestado",
+    "Gastado",
+    "Desvío",
+    "% consumido",
+    "Estado",
+    "Acciones",
+)
+_ANCHOS = [3.0, 0.6, 1.6, 1.6, 1.5, 1.0, 1.9, 1.4]
+
+_CSS_TABLA = """
+<style>
+/* One row = one horizontal block; on phones the table scrolls sideways
+   instead of stacking the columns. */
+.st-key-tabla_presupuesto { overflow-x: auto; }
+.st-key-tabla_presupuesto [data-testid="stHorizontalBlock"] {
+    flex-wrap: nowrap; min-width: 860px; gap: 0.5rem; align-items: center;
+    border-bottom: 1px solid #E4E8EC; padding: 0.15rem 0;
+}
+.st-key-tabla_presupuesto [data-testid="stColumn"] { min-width: 0; }
+/* The action icons are a horizontal block too: no row width, no row border. */
+.st-key-tabla_presupuesto [class*="st-key-acciones_"],
+.st-key-tabla_presupuesto [class*="st-key-acciones_"] [data-testid="stHorizontalBlock"] {
+    min-width: 0 !important; border-bottom: none !important; padding: 0 !important;
+    flex-wrap: nowrap;
+}
+.st-key-tabla_presupuesto [data-testid="stMarkdownContainer"] p { margin: 0; font-size: 0.88rem; }
+.st-key-tabla_presupuesto button p { font-size: 0.88rem; }
+.st-key-tabla_presupuesto [data-testid="stForm"] [data-testid="stHorizontalBlock"] {
+    min-width: 0; border-bottom: none;
+}
+.st-key-tabla_cabecera p { font-size: 0.78rem !important; color: #52606D; }
+/* Indent only the first column, so the value columns stay aligned. */
+[class*="st-key-nivel_item_"] [data-testid="stColumn"]:first-child { padding-left: 1.25rem; }
+[class*="st-key-nivel_gasto_"] [data-testid="stColumn"]:first-child { padding-left: 2.5rem; }
+[class*="st-key-nivel_gasto_detalle_"] { padding-left: 2.5rem; }
+[class*="st-key-nivel_rubro_"] { background: #F3F5F7; border-radius: 6px; }
+/* Small icon buttons for the row actions. */
+.st-key-tabla_presupuesto button[kind="tertiary"] { padding: 0 0.25rem; min-height: 1.8rem; }
+</style>
+"""
+
+
+def _abrir_alta(rubro_id: int | None) -> None:
+    """Open the new-item form: empty (R8), or with ``rubro_id`` chosen (row «＋»).
+
+    Runs as a button callback, before any widget is drawn, so switching from one
+    open form to another can preset its fields.
+    """
+
+    _clear_prefix(_NUEVO)
+    if rubro_id is None:
+        st.session_state[_NUEVO_ABIERTO] = True
+        return
+    if any(
+        r["id"] == rubro_id and r.get("activo", True)
+        for r in st.session_state.get(_RUBROS_ACTIVOS, [])
+    ):
+        st.session_state[f"{_NUEVO}rubro"] = rubro_id  # only an option of the form
+    st.session_state[_NUEVO_ABIERTO] = rubro_id
+    _abrir(f"r{rubro_id}")
+
+
+def _abierta(clave: str) -> bool:
+    return clave in st.session_state.get(_ABIERTOS, set())
+
+
+def _abrir(*claves: str) -> None:
+    st.session_state.setdefault(_ABIERTOS, set()).update(claves)
+
+
+def _alternar(
+    clave: str, items: tuple[int, ...] = (), gastos: tuple[int, ...] = (), rubro=None
+) -> None:
+    """Open or close a row. Closing cancels the forms open inside it: their
+    widgets stop being drawn, Streamlit forgets their values, and reopening
+    must not bring back a half-reset draft (e.g. a gasto in the wrong currency).
+    """
+
+    abiertos = st.session_state.setdefault(_ABIERTOS, set())
+    if clave not in abiertos:
+        abiertos.add(clave)
+        return
+    abiertos.discard(clave)
+    if st.session_state.get(_GASTO_ABIERTO) in items:
+        _clear_prefix(_gasto_prefijo(st.session_state.pop(_GASTO_ABIERTO)))
+    if st.session_state.get(_EDITANDO) in items:
+        _clear_prefix(_editar_prefijo(st.session_state.pop(_EDITANDO)))
+    if st.session_state.get(_GASTO_TC) in gastos:
+        st.session_state.pop(f"tc_gasto_{st.session_state.pop(_GASTO_TC)}", None)
+    abierto = st.session_state.get(_NUEVO_ABIERTO)
+    if rubro is not None and abierto is not True and abierto == rubro:
+        st.session_state.pop(_NUEVO_ABIERTO, None)
+        _clear_prefix(_NUEVO)
+
+
+def _monto(valor, moneda: str) -> str:
+    return "—" if valor is None else finanzas.formato_monto(valor, moneda)
+
+
+def _icono(col, icono: str, key: str, ayuda: str, disabled: bool = False) -> bool:
+    """A small icon button; ``ayuda`` is its accessible description and tooltip."""
+
+    return col.button(icono, key=key, help=ayuda, type="tertiary", disabled=disabled)
+
+
+def _celdas(cols, valores: list[str]) -> None:
+    """Fill the value columns (all but the first and the last)."""
+
+    for col, valor in zip(cols[1:-1], valores, strict=True):
+        col.markdown(valor)
 
 
 def _render_presupuesto(
@@ -217,13 +288,12 @@ def _render_presupuesto(
 ) -> None:
     st.subheader("Presupuesto de la obra")
     vigentes = [i for i in items if not i.get("anulado")]
+    st.session_state[_RUBROS_ACTIVOS] = activos
 
-    if st.session_state.get(_NUEVO_ABIERTO):
+    if st.session_state.get(_NUEVO_ABIERTO) is True:  # «+ Agregar ítem», sin rubro
         _form_nuevo_item(supabase, obra_id, activos, vigentes)
-    elif st.button("+ Agregar ítem", key="item_agregar"):
-        _clear_prefix(_NUEVO)  # R8: siempre vacío al abrir
-        st.session_state[_NUEVO_ABIERTO] = True
-        st.rerun()
+    else:
+        st.button("+ Agregar ítem", key="item_agregar", on_click=_abrir_alta, args=(None,))
 
     if not vigentes:
         st.caption("Todavía no hay ítems en el presupuesto de esta obra.")
@@ -239,34 +309,267 @@ def _render_presupuesto(
     for gasto in gastos:
         gastos_por_item.setdefault(gasto.get("presupuesto_item_id"), []).append(gasto)
 
-    for rubro_id in sorted(grupos, key=lambda r: orden.get(r, (10**6, ""))):
-        del_rubro = grupos[rubro_id]
-        de_sus_items = [g for i in del_rubro for g in gastos_por_item.get(i["id"], [])]
-        resumen = finanzas.calcular_resumen(del_rubro, de_sus_items, rubros, moneda_vista)
-        subtotal = finanzas.formato_monto(resumen.presupuestado, moneda_vista)
-        gastado = finanzas.formato_monto(resumen.gastado, moneda_vista)
-        cantidad = f"{len(del_rubro)} ítem" + ("" if len(del_rubro) == 1 else "s")
-        with st.container(border=True):
-            encabezado = (
-                f"**{texto_seguro(_rubro_nombre(rubros_por_id, rubro_id))}** · "
-                f"{texto_seguro(cantidad)} · Subtotal {texto_seguro(subtotal)} · "
-                f"Gastado {texto_seguro(gastado)} · "
-                f"{finanzas.estado_con_icono(resumen.gastado, resumen.presupuestado)}"
+    st.html(_CSS_TABLA)
+    with st.container(key="tabla_presupuesto"):
+        with st.container(key="tabla_cabecera"):
+            for col, titulo in zip(st.columns(_ANCHOS), COLUMNAS, strict=True):
+                col.markdown(f"**{titulo}**")
+        for rubro_id in sorted(grupos, key=lambda r: orden.get(r, (10**6, ""))):
+            del_rubro = grupos[rubro_id]
+            de_sus_items = [g for i in del_rubro for g in gastos_por_item.get(i["id"], [])]
+            _fila_rubro(
+                supabase,
+                rubro_id,
+                del_rubro,
+                de_sus_items,
+                gastos_por_item,
+                activos,
+                rubros,
+                rubros_por_id,
+                obra_id,
+                vigentes,
+                moneda_vista,
             )
-            if resumen.incompleto:
-                encabezado += f" · {len(resumen.sin_convertir)} sin cotización"
-            st.markdown(encabezado)
-            for item in del_rubro:
-                _render_item(
-                    supabase,
-                    item,
-                    gastos_por_item.get(item["id"], []),
-                    activos,
-                    rubros,
-                    rubros_por_id,
-                )
 
     _dialogos(supabase, vigentes, gastos, rubros_por_id)
+
+
+def _fila_rubro(
+    supabase,
+    rubro_id: int,
+    del_rubro: list[dict],
+    gastos: list[dict],
+    gastos_por_item: dict,
+    activos: list[dict],
+    rubros: list[dict],
+    rubros_por_id: dict,
+    obra_id: int,
+    vigentes: list[dict],
+    moneda: str,
+) -> None:
+    res = finanzas.calcular_resumen(del_rubro, gastos, rubros, moneda)
+    fila = next((f for f in res.filas if f.rubro_id == rubro_id), None)
+    presupuestado = fila.presupuestado if fila else res.presupuestado
+    gastado = fila.gastado if fila else res.gastado
+    nombre = _rubro_nombre(rubros_por_id, rubro_id)
+    clave = f"r{rubro_id}"
+    abierta = _abierta(clave)
+    estado = finanzas.estado_con_icono(gastado, presupuestado)
+    if res.incompleto:
+        estado += f" · {len(res.sin_convertir)} sin cotización"
+
+    with st.container(key=f"nivel_rubro_{rubro_id}"):
+        cols = st.columns(_ANCHOS, vertical_alignment="center")
+        flecha = "▾" if abierta else "▸"
+        cols[0].button(
+            f"{flecha} **{texto_seguro(nombre)}**",
+            key=f"fila_rubro_{rubro_id}",
+            type="tertiary",
+            help=("Ocultar" if abierta else "Ver") + " los ítems de este rubro",
+            on_click=_alternar,
+            args=(clave,),
+            kwargs={
+                "items": tuple(i["id"] for i in del_rubro),
+                "gastos": tuple(g["id"] for g in gastos),
+                "rubro": rubro_id,
+            },
+        )
+        _celdas(
+            cols,
+            [
+                str(len(del_rubro)),
+                _monto(presupuestado, moneda),
+                _monto(gastado, moneda),
+                _monto(gastado - presupuestado, moneda),
+                finanzas.formato_porcentaje(fila.ejecutado if fila else None),
+                estado,
+            ],
+        )
+        # Callback: the new-item form may already be on screen (another rubro or the
+        # top button), and its widgets can only be preset before they are drawn.
+        activo = rubros_por_id.get(rubro_id, {}).get("activo", True)
+        cols[-1].button(
+            ":material/add:",
+            key=f"rubro_agregar_{rubro_id}",
+            # R7: a deactivated rubro keeps its items but takes no new ones.
+            help=(
+                f"Agregar un ítem en {texto_seguro(nombre)}"
+                if activo
+                else f"{texto_seguro(nombre)} está desactivado: no se le agregan ítems nuevos"
+            ),
+            type="tertiary",
+            disabled=not activo,
+            on_click=_abrir_alta,
+            args=(rubro_id,),
+        )
+
+    abierto = st.session_state.get(_NUEVO_ABIERTO)
+    if abierto is not True and abierto == rubro_id:  # True == 1: compare identity first
+        _form_nuevo_item(supabase, obra_id, activos, vigentes)
+    if not abierta:
+        return
+    for item in del_rubro:
+        _fila_item(
+            supabase,
+            item,
+            gastos_por_item.get(item["id"], []),
+            activos,
+            rubros,
+            rubros_por_id,
+            moneda,
+        )
+
+
+def _fila_item(
+    supabase,
+    item: dict,
+    gastos: list[dict],
+    activos: list[dict],
+    rubros: list[dict],
+    rubros_por_id: dict,
+    moneda: str,
+) -> None:
+    item_id = item["id"]
+    editando = st.session_state.get(_EDITANDO) == item_id
+    cargando = st.session_state.get(_GASTO_ABIERTO) == item_id
+    clave = f"i{item_id}"
+    abierta = _abierta(clave)
+    fila = finanzas.calcular_resumen([item], gastos, rubros, moneda).items[item_id]
+    presupuestado = (
+        None if fila.sin_convertir and item in fila.sin_convertir else fila.presupuestado
+    )
+    nombre = _item_nombre(item)
+    original = (
+        f"  \n:gray[{texto_seguro(finanzas.formato_monto(item['monto'], item['moneda']))}]"
+        if item["moneda"] != moneda
+        else ""
+    )
+    estado = finanzas.estado_con_icono(fila.gastado, fila.presupuestado)
+    if fila.sin_convertir:
+        estado += " · total incompleto"
+
+    with st.container(key=f"nivel_item_{item_id}"):
+        cols = st.columns(_ANCHOS, vertical_alignment="center")
+        flecha = "▾" if abierta else "▸"
+        cols[0].button(
+            f"{flecha} {texto_seguro(nombre)}",
+            key=f"fila_item_{item_id}",
+            type="tertiary",
+            help=("Ocultar" if abierta else "Ver") + " los gastos de este ítem",
+            on_click=_alternar,
+            args=(clave,),
+            kwargs={"gastos": tuple(g["id"] for g in gastos)},
+        )
+        _celdas(
+            cols,
+            [
+                "",
+                _monto(presupuestado, moneda) + original,
+                _monto(fila.gastado, moneda),
+                _monto(fila.gastado - fila.presupuestado, moneda),
+                finanzas.formato_porcentaje(fila.ejecutado),
+                estado,
+            ],
+        )
+        acciones = cols[-1].container(horizontal=True, gap="small", key=f"acciones_i{item_id}")
+        a1 = a2 = a3 = acciones
+        if _icono(
+            a1,
+            ":material/add:",
+            f"gasto_agregar_{item_id}",
+            f"Registrar un gasto en {texto_seguro(nombre)}",
+            disabled=cargando,
+        ):
+            prefijo = _gasto_prefijo(item_id)
+            _clear_prefix(prefijo)  # vacío al abrir...
+            st.session_state[f"{prefijo}moneda"] = item["moneda"]  # ...salvo la moneda (R15)
+            st.session_state[_GASTO_ABIERTO] = item_id
+            _abrir(clave)
+            st.rerun()
+        if _icono(
+            a2,
+            ":material/edit:",
+            f"item_editar_{item_id}",
+            f"Editar el ítem {texto_seguro(nombre)}",
+        ):
+            _clear_prefix(_editar_prefijo(item_id))  # arranca con los valores actuales
+            st.session_state[_EDITANDO] = item_id
+            st.rerun()
+        if _icono(
+            a3,
+            ":material/delete:",
+            f"item_borrar_{item_id}",
+            f"Borrar el ítem {texto_seguro(nombre)}",
+        ):
+            st.session_state.pop(_GASTO_A_ANULAR, None)
+            st.session_state[_A_BORRAR] = item_id
+            st.rerun()
+
+    if editando:
+        _form_editar_item(supabase, item, activos, rubros_por_id)
+    if cargando:
+        _form_nuevo_gasto(supabase, item)
+    if not abierta:
+        return
+
+    with st.container(key=f"nivel_gasto_detalle_{item_id}"):
+        detalle = [
+            f"Fecha de carga: {_fecha_txt(item.get('fecha') or '')}",
+            f"Cotización: {_cotizacion_txt(item)}",
+            f"Saldo: {_monto(fila.saldo, moneda)}",
+        ]
+        st.caption(texto_seguro(" · ".join(detalle)))
+        if fila.sin_convertir:
+            st.caption(
+                f"⚠️ Total incompleto: {len(fila.sin_convertir)} registro(s) en otra moneda "
+                "sin cotización. Cargala con el lápiz del gasto o del ítem."
+            )
+        if not fila.gastos:
+            st.caption("Todavía no hay gastos en este ítem.")
+    for gasto in sorted(fila.gastos, key=lambda x: (x.get("fecha") or "", x["id"]), reverse=True):
+        _fila_gasto(supabase, gasto, moneda)
+
+
+def _fila_gasto(supabase, g: dict, moneda: str) -> None:
+    texto = f"{_fecha_txt(g['fecha'])} · {g['descripcion']}"
+    if g.get("proveedor"):
+        texto += f" · {g['proveedor']}"
+    valor = finanzas.convertir(g["monto"], g["moneda"], g.get("tipo_cambio"), moneda)
+    original = finanzas.formato_monto(g["monto"], g["moneda"])
+    gastado = (
+        original
+        if g["moneda"] == moneda
+        else f"{_monto(valor, moneda) if valor is not None else 'sin cotización'}  \n"
+        f":gray[{texto_seguro(original)}]"
+    )
+    anulado = bool(g.get("anulado"))
+
+    with st.container(key=f"nivel_gasto_{g['id']}"):
+        cols = st.columns(_ANCHOS, vertical_alignment="center")
+        if anulado:
+            cols[0].markdown(f"~~{texto_seguro(texto)}~~ — **Anulado**")
+        else:
+            cols[0].markdown(f"{texto_seguro(texto)}  \n:gray[{texto_seguro(_cotizacion_txt(g))}]")
+        _celdas(cols, ["", "", f"~~{gastado}~~" if anulado else gastado, "", "", ""])
+        if anulado:
+            return
+        acciones = cols[-1].container(horizontal=True, gap="small", key=f"acciones_g{g['id']}")
+        a1 = a2 = acciones
+        if _icono(
+            a1,
+            ":material/edit:",
+            f"gasto_cotizacion_{g['id']}",
+            "Corregir la cotización de este gasto",
+        ):
+            st.session_state.pop(f"tc_gasto_{g['id']}", None)
+            st.session_state[_GASTO_TC] = g["id"]
+            st.rerun()
+        if _icono(a2, ":material/delete:", f"gasto_anular_{g['id']}", "Anular este gasto"):
+            st.session_state.pop(_A_BORRAR, None)
+            st.session_state[_GASTO_A_ANULAR] = g["id"]
+            st.rerun()
+    if st.session_state.get(_GASTO_TC) == g["id"]:
+        _form_cotizacion_gasto(supabase, g)
 
 
 def _dialogos(supabase, vigentes: list[dict], gastos: list[dict], rubros_por_id: dict) -> None:
@@ -289,120 +592,6 @@ def _dialogos(supabase, vigentes: list[dict], gastos: list[dict], rubros_por_id:
         else:
             item = next((i for i in vigentes if i["id"] == gasto.get("presupuesto_item_id")), {})
             _dialogo_anular_gasto(supabase, gasto, item)
-
-
-def _render_item(
-    supabase,
-    item: dict,
-    gastos: list[dict],
-    activos: list[dict],
-    rubros: list[dict],
-    rubros_por_id: dict,
-) -> None:
-    item_id = item["id"]
-    editando = st.session_state.get(_EDITANDO) == item_id
-    cargando = st.session_state.get(_GASTO_ABIERTO) == item_id
-    corrigiendo = any(g["id"] == st.session_state.get(_GASTO_TC) for g in gastos)
-    # Totals in the item's own currency, with each gasto's rate.
-    fila = finanzas.calcular_resumen([item], gastos, rubros, item["moneda"]).items[item_id]
-
-    with st.expander(
-        texto_seguro(_item_titulo(item, fila)), expanded=editando or cargando or corrigiendo
-    ):
-        if editando:
-            _form_editar_item(supabase, item, activos, rubros_por_id)
-            return
-        _render_resumen_item(item, fila)
-        detalle = [
-            ("Rubro", _rubro_nombre(rubros_por_id, item["rubro_id"])),
-            ("Descripción", item.get("descripcion") or "—"),
-            ("Fecha de carga", _fecha_txt(item.get("fecha") or "")),
-            ("Cotización", _cotizacion_txt(item)),
-        ]
-        st.markdown("\n".join(f"- **{campo}:** {texto_seguro(valor)}" for campo, valor in detalle))
-        # Las tres acciones del ítem, juntas: editarlo, borrarlo y registrarle un gasto.
-        c1, c2, c3 = st.columns(3)
-        if c1.button("Editar ítem", key=f"item_editar_{item_id}", width="stretch"):
-            _clear_prefix(_editar_prefijo(item_id))  # arranca con los valores actuales
-            st.session_state[_EDITANDO] = item_id
-            st.rerun()
-        if c2.button("Borrar ítem", key=f"item_borrar_{item_id}", width="stretch"):
-            st.session_state.pop(_GASTO_A_ANULAR, None)
-            st.session_state[_A_BORRAR] = item_id
-            st.rerun()
-        if c3.button(
-            "Registrar un gasto",
-            key=f"gasto_agregar_{item_id}",
-            type="primary",
-            width="stretch",
-            disabled=cargando,
-        ):
-            prefijo = _gasto_prefijo(item_id)
-            _clear_prefix(prefijo)  # vacío al abrir...
-            st.session_state[f"{prefijo}moneda"] = item["moneda"]  # ...salvo la moneda (R15)
-            st.session_state[_GASTO_ABIERTO] = item_id
-            st.rerun()
-        if cargando:
-            _form_nuevo_gasto(supabase, item)
-
-        st.markdown("**Gastos de este ítem**")
-        _render_gastos_item(supabase, fila.gastos)
-
-
-def _render_resumen_item(item: dict, fila: finanzas.FilaItem) -> None:
-    m = item["moneda"]
-    lineas = [
-        f"**Total:** {texto_seguro(finanzas.formato_monto(item['monto'], m))}",
-        f"**Gastado:** {texto_seguro(finanzas.formato_monto(fila.gastado, m))}"
-        + (
-            f" ({finanzas.formato_porcentaje(fila.ejecutado)})"
-            if fila.ejecutado is not None
-            else ""
-        ),
-        f"**Saldo:** {texto_seguro(finanzas.formato_monto(fila.saldo, m))}",
-        f"**Estado:** {finanzas.estado_con_icono(fila.gastado, fila.presupuestado)}",
-    ]
-    st.markdown("  \n".join(lineas))
-    if fila.ejecutado is not None:
-        st.progress(
-            min(float(fila.ejecutado), 1.0),
-            text=f"{finanzas.formato_porcentaje(fila.ejecutado)} consumido",
-        )
-    if fila.sin_convertir:
-        st.caption(
-            f"⚠️ Total incompleto: {len(fila.sin_convertir)} gasto(s) en otra moneda sin "
-            "cotización. Cargala con «Cotización»."
-        )
-
-
-def _render_gastos_item(supabase, gastos: list[dict]) -> None:
-    if not gastos:
-        st.caption("Todavía no hay gastos en este ítem.")
-        return
-    for g in sorted(gastos, key=lambda x: (x.get("fecha") or "", x["id"]), reverse=True):
-        linea = (
-            f"{texto_seguro(_fecha_txt(g['fecha']))} · "
-            f"**{texto_seguro(finanzas.formato_monto(g['monto'], g['moneda']))}** · "
-            f"{texto_seguro(g['descripcion'])}"
-        )
-        if g.get("proveedor"):
-            linea += f" · {texto_seguro(g['proveedor'])}"
-        if g.get("anulado"):
-            st.markdown(f"~~{linea}~~ — **Anulado**")
-            continue
-        st.markdown(f"{linea}  \n{texto_seguro(_cotizacion_txt(g))}")
-        if st.session_state.get(_GASTO_TC) == g["id"]:
-            _form_cotizacion_gasto(supabase, g)
-            continue
-        c1, c2 = st.columns(2)
-        if c1.button("Cotización", key=f"gasto_cotizacion_{g['id']}", width="stretch"):
-            st.session_state.pop(f"tc_gasto_{g['id']}", None)
-            st.session_state[_GASTO_TC] = g["id"]
-            st.rerun()
-        if c2.button("Anular", key=f"gasto_anular_{g['id']}", width="stretch"):
-            st.session_state.pop(_A_BORRAR, None)
-            st.session_state[_GASTO_A_ANULAR] = g["id"]
-            st.rerun()
 
 
 def _form_cotizacion_gasto(supabase, gasto: dict) -> None:
@@ -649,6 +838,7 @@ def _form_nuevo_item(supabase, obra_id: int, activos: list[dict], vigentes: list
         _flash("warning", f"⚠️ {texto_seguro(aviso)}")
     st.session_state.pop(_NUEVO_ABIERTO, None)
     _clear_prefix(_NUEVO)
+    _abrir(f"r{item['rubro_id']}")  # que se vea el ítem nuevo
     st.rerun()
 
 

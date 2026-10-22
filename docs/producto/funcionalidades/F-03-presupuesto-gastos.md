@@ -188,25 +188,21 @@ En la sección **📋 Obras**, la pestaña **💰 Plata**:
 1. Selector de obra y de moneda de visualización (ARS / USD MEP).
 2. Tres números arriba: presupuestado, gastado y desvío, con el estado en palabras.
 3. Tabla por rubro con barra de ejecución.
-4. **Presupuesto de la obra** (sección visible, no plegada):
-   - Lista de ítems **agrupada por rubro**, en el orden de obra. Cada grupo muestra
-     el rubro, la cantidad de ítems, el subtotal, lo gastado y el estado.
-   - Cada ítem es una fila desplegable titulada con descripción, total, gastado,
-     % consumido y estado (R16). Al abrirla se ve primero el **resumen** (total,
-     gastado, saldo, estado y barra), después los **detalles** (rubro, descripción,
-     fecha de carga, cotización) y tres acciones juntas: **Editar ítem**,
-     **Borrar ítem** y **Registrar un gasto**.
-   - Debajo, **Gastos de este ítem**: fecha, monto, descripción, proveedor y
-     cotización de cada uno, con **Cotización** (corregirla a mano) y **Anular**.
-     Los anulados se ven tachados y con la palabra «Anulado».
-   - **Registrar un gasto** abre, ahí mismo, el formulario «Nuevo gasto en
-     «…»», ya vinculado al ítem: fecha, monto, moneda (la del ítem), descripción,
-     proveedor y cotización opcional, con **Guardar gasto** y **Cancelar**.
-   - **Editar ítem** reemplaza el ítem por un formulario con los valores actuales
-     y **Guardar cambios** y **Cancelar**.
-   - **Borrar ítem** abre el diálogo de confirmación (R10, R12b).
-   - **+ Agregar ítem** abre el formulario de alta **vacío** (R8), con **Agregar**
-     y **Cancelar**.
+4. **Presupuesto de la obra**: **una sola tabla expandible** (#45) con las columnas
+   Rubro / ítem / gasto · Ítems · Presupuestado · Gastado · Desvío · % consumido ·
+   Estado · Acciones, en la moneda de visualización.
+   - **Rubro** (cerrado al entrar): se expande y muestra sus ítems. Acción: **＋**
+     agregar un ítem en ese rubro.
+   - **Ítem**: se expande y muestra la fecha de carga, la cotización, el saldo y sus
+     gastos. Acciones: **＋** registrar un gasto, **✏️** editar, **🗑️** borrar (R10,
+     R12b). Si está en otra moneda, debajo del monto va el original.
+   - **Gasto**: fecha, descripción, proveedor y cotización. Acciones: **✏️**
+     corregir la cotización, **🗑️** anular (R14). Los anulados quedan tachados con
+     «Anulado».
+   - Los íconos tienen descripción (tooltip y lector de pantalla). Los formularios
+     se abren debajo de la fila; las confirmaciones, en un diálogo.
+   - **+ Agregar ítem** arriba de la tabla abre el alta **vacía** (R8).
+   - En el celular, la tabla se desliza de costado.
 
 ## Agente
 
