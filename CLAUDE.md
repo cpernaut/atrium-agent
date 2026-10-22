@@ -1,4 +1,4 @@
-# CLAUDE.md — Atrium Agent
+# CLAUDE.md — Atrium Studio (repo `atrium-agent`)
 
 Instrucciones para Claude al trabajar en este repo. Qué construimos y por qué:
 [`docs/producto/`](docs/producto/README.md). Leé la ficha de la funcionalidad

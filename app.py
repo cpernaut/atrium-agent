@@ -23,7 +23,9 @@ except Exception:  # noqa: BLE001 - no secrets file configured yet
     _secrets = {}
 apply_env(_secrets)
 
+import base64  # noqa: E402
 import uuid  # noqa: E402
+from pathlib import Path  # noqa: E402
 
 from langgraph.checkpoint.memory import MemorySaver  # noqa: E402
 from supabase import AuthApiError  # noqa: E402
@@ -37,7 +39,41 @@ from ui_utils import respuesta_segura, texto_seguro  # noqa: E402
 
 observability.refresh_env_cache()
 
-st.set_page_config(page_title="Atrium Agent", page_icon="🏗️")
+ASSETS = Path(__file__).resolve().parent / "assets"
+LOGO = ASSETS / "atrium-logo.svg"  # isotipo + «ATRIUM STUDIO», para el login
+ISOTIPO_CHICO = str(ASSETS / "atrium-favicon.svg")  # trazo grueso: se lee en tamaños chicos
+FAVICON = str(ASSETS / "favicon.png")
+
+NOMBRE_APP = "Atrium Studio"
+ETIQUETA_BETA = "Versión beta"
+
+st.set_page_config(page_title=f"{NOMBRE_APP} · Beta", page_icon=FAVICON)
+# Arriba a la izquierda va solo el isotipo: el texto del logo no se lee a ese tamaño.
+st.logo(ISOTIPO_CHICO, size="large", icon_image=ISOTIPO_CHICO)
+
+
+def titulo() -> None:
+    """App name with a visible beta label (text, not only color)."""
+
+    st.title(NOMBRE_APP)
+    st.badge(
+        ETIQUETA_BETA,
+        icon=":material/science:",
+        color="orange",
+        help="La app está en prueba: puede cambiar y tener errores. Contanos lo que encuentres.",
+    )
+
+
+def logo_centrado(max_px: int = 220) -> None:
+    """Full logo, centered, with alt text. Static asset only (no user content)."""
+
+    datos = base64.b64encode(LOGO.read_bytes()).decode("ascii")
+    st.markdown(
+        f'<div style="text-align:center;margin:0.5rem 0 1rem">'
+        f'<img src="data:image/svg+xml;base64,{datos}" alt="Atrium Studio" '
+        f'style="width:60%;max-width:{max_px}px;height:auto"></div>',
+        unsafe_allow_html=True,
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -67,7 +103,9 @@ def require_login(supabase):
     if st.session_state.get("user"):
         return st.session_state.user
 
-    st.title("🏗️ Atrium Agent")
+    logo_centrado()
+    titulo()
+    st.caption("Ingresá con tu cuenta del equipo.")
     with st.form("login"):
         email = st.text_input("Email", key="login_email")
         password = st.text_input("Contraseña", type="password", key="login_password")
@@ -238,7 +276,7 @@ if seccion == SECCION_OBRAS:
     render_obras_page(supabase, user)
     st.stop()
 
-st.title("🏗️ Atrium Agent")
+titulo()
 st.caption("Normativa de obra y seguimiento de tus obras")
 
 render_history()

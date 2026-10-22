@@ -45,7 +45,8 @@ def test_e2e_02_login_valido_muestra_agente(e2e):
     at = e2e.login()
 
     assert not at.exception
-    assert "🏗️ Atrium Agent" in texts(at)
+    assert "Atrium Studio" in [t.value for t in at.title]
+    assert any("Versión beta" in m.value for m in at.markdown), "falta la etiqueta beta"
     assert EMAIL in "\n".join(m.value for m in at.sidebar.markdown)
     assert at.chat_input
 
@@ -270,3 +271,37 @@ def test_e2e_16_historial_se_guarda(e2e):
         ("assistant", "La altura máxima es de 9 m."),
     ]
     assert {f["user_id"] for f in filas} == {f"id-{EMAIL}"}
+
+
+def test_e2e_17_login_y_app_muestran_el_logo(e2e, monkeypatch):
+    """E2E-17: el login muestra el logo de Atrium; la app usa el isotipo como favicon
+    y el logo arriba a la izquierda."""
+
+    import streamlit
+
+    llamadas = {}
+    real_config, real_logo = streamlit.set_page_config, streamlit.logo
+
+    def config(**kwargs):
+        llamadas["config"] = kwargs
+        return real_config(**kwargs)
+
+    def logo(image, **kwargs):
+        llamadas["logo"] = (image, kwargs)
+        return real_logo(image, **kwargs)
+
+    monkeypatch.setattr(streamlit, "set_page_config", config)
+    monkeypatch.setattr(streamlit, "logo", logo)
+
+    at = e2e.open()
+
+    assert not at.exception
+    assert "Atrium Studio" in [x.value for x in at.title]
+    assert any("Versión beta" in m.value for m in at.markdown)
+    assert llamadas["config"]["page_title"] == "Atrium Studio · Beta"
+    logos = [m.value for m in at.markdown if 'alt="Atrium Studio"' in m.value]
+    assert logos and "data:image/svg+xml;base64," in logos[0], "el login no muestra el logo"
+    assert llamadas["config"]["page_icon"].endswith("assets/favicon.png")
+    imagen, opciones = llamadas["logo"]
+    assert imagen.endswith("assets/atrium-favicon.svg")
+    assert opciones["icon_image"].endswith("assets/atrium-favicon.svg")

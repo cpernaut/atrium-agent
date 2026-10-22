@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" width="415" height="415" viewBox="432.5 223.7 415 415" xml:space="preserve">
+<title>Atrium</title>
+<defs>
+</defs>
+<g transform="matrix(1 0 0 1 640 512)" id="background-logo"  >
+<rect style="stroke: none; stroke-width: 0; stroke-dasharray: none; stroke-linecap: butt; stroke-dashoffset: 0; stroke-linejoin: miter; stroke-miterlimit: 4; fill: rgb(255,255,255); fill-opacity: 0; fill-rule: nonzero; opacity: 1;"  paint-order="stroke"  x="-640" y="-512" rx="0" ry="0" width="1280" height="1024" />
+</g>
+<g transform="matrix(1.9211538461538462 0 0 1.9211538461538462 640 431.2096913354528)" id="logo-logo"  >
+<g style=""  paint-order="stroke"   >
+		<g transform="matrix(0.5638888215422301 0 0 0.5638888215422301 -15.050192646962103 23.87505270409804)"  >
+<path style="stroke: none; stroke-width: 1; stroke-dasharray: none; stroke-linecap: butt; stroke-dashoffset: 0; stroke-linejoin: miter; stroke-miterlimit: 4; fill: rgb(229,229,229); fill-rule: nonzero; opacity: 1;"  paint-order="stroke"  transform=" translate(-347.625, -360.75)" d="M 237.2 255.75 L 343.07 255.75 L 343.07 465.75 L 237.2 465.75 L 237.2 255.75 z M 370.05 339.77 L 370.05 425.77 L 458.05 425.77 L 458.05 339.77 L 370.05 339.77 z" stroke-linecap="round" />
+</g>
+		<g transform="matrix(0.5638888215422301 0 0 0.5638888215422301 0 0)"  >
+<path style="stroke: rgb(141,141,141); stroke-width: 5; stroke-dasharray: none; stroke-linecap: round; stroke-dashoffset: 0; stroke-linejoin: miter; stroke-miterlimit: 10; fill: none; fill-rule: nonzero; opacity: 1;"  paint-order="stroke"  transform=" translate(-374.31499999999994, -318.40999999999997)" d="M 547.28 394.89 L 201.35 158.47 M 318.74 238.7 L 318.74 313.95 M 201.35 238.7 L 318.74 238.7 M 201.35 478.35 L 201.35 238.7 M 318.74 478.35 L 201.35 478.35 M 318.74 353.21 L 318.74 478.34999999999997 M 284.82 295.09 L 284.82 381.64 M 400.31 381.63 L 284.82 381.63 M 400.31 294.45 L 400.31 381.64 M 284.82 295.09 L 400.31 294.45 M 499.91 364.61 L 360 364.61 M 499.91 473.67 L 499.91 364.61 M 358.9 473.67 L 499.90999999999997 473.67 M 358.9 430.06 L 358.9 473.67 M 360 409.58 L 360 364.61 M 384.89 381.63 L 384.89 451.86 M 384.89 451.86 L 301.25 450.53000000000003 M 301.25 381.63 L 301.25 450.53" stroke-linecap="round" />
+</g>
+</g>
+</g>
+
+</svg>

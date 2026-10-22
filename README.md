@@ -1,4 +1,6 @@
-# Atrium Agent
+# Atrium Studio (beta)
+
+> Repositorio `atrium-agent`. La app se muestra como **Atrium Studio**, con la etiqueta «Versión beta».
 
 Asistente de consultas sobre normativa de obra (códigos de edificación
 municipales) y tracker de obras del equipo. RAG con LangGraph + Chroma, chat en
