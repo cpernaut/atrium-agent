@@ -105,8 +105,10 @@ ruff check . && ruff format --check .
   ni los logs. `.env` y `.streamlit/secrets.toml` están en `.gitignore`.
 - Antes de exponer datos nuevos, preguntarse: ¿los ve alguien sin login? La
   respuesta tiene que ser no, y tiene que haber un test `live` que lo pruebe.
-- Texto cargado por usuarios dentro de `st.markdown`: siempre con
-  `texto_seguro()` (evita links e imágenes externas inyectadas).
+- Texto cargado por usuarios dentro de `st.markdown`, `st.caption`, avisos y
+  errores: siempre con `texto_seguro()` (evita links e imágenes externas
+  inyectadas). Respuestas del agente: con `respuesta_segura()` (mantiene el
+  formato pero nunca carga imágenes).
 - Llamadas a internet solo a URLs fijas en `Settings`, con timeout, y
   validando la respuesta como dato no confiable.
 

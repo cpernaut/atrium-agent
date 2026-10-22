@@ -14,6 +14,7 @@ Nothing touches the network, so the suite is fast, free and deterministic.
 
 from __future__ import annotations
 
+import re
 from datetime import date, timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -113,7 +114,9 @@ def texts(at: AppTest) -> str:
     parts = []
     for kind in ("markdown", "caption", "error", "success", "info", "warning", "title"):
         parts += [str(el.value) for el in getattr(at, kind)]
-    return "\n".join(parts)
+    # Markdown escapes (from texto_seguro) removed: this is what the user reads.
+    # Security tests inspect the raw element values instead.
+    return re.sub(r"\\([!-/:-@\[-`{-~])", r"\1", "\n".join(parts))
 
 
 @pytest.fixture

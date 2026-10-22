@@ -33,6 +33,7 @@ from atrium.config import ConfigError, settings  # noqa: E402
 from atrium.rag import build_graph  # noqa: E402
 from atrium.vectorstore import collection_size  # noqa: E402
 from obras_ui import render_obras_page, select_obra_activa  # noqa: E402
+from ui_utils import respuesta_segura, texto_seguro  # noqa: E402
 
 observability.refresh_env_cache()
 
@@ -172,9 +173,9 @@ def _has_openai_key() -> bool:
 def render_history() -> None:
     for message in st.session_state.history:
         with st.chat_message(message["role"]):
-            st.markdown(message["content"])
+            st.markdown(respuesta_segura(message["content"]))
             for accion in message.get("acciones", []):
-                st.caption(accion)
+                st.caption(texto_seguro(accion))
             if message.get("context"):
                 with st.expander("📄 Contexto recuperado"):
                     st.markdown(message["context"])
@@ -206,9 +207,9 @@ def handle_prompt(supabase, user, prompt: str) -> None:
         answer = result["mensajes"][-1]
         context = result.get("context", "")
         acciones = result.get("acciones") or []
-        st.markdown(answer)
+        st.markdown(respuesta_segura(answer))
         for accion in acciones:
-            st.caption(accion)
+            st.caption(texto_seguro(accion))
         with st.expander("📄 Contexto recuperado"):
             st.markdown(context or "_(vacío)_")
         if run_url:
