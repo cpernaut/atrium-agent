@@ -138,15 +138,25 @@ def test_live_18_rubros_casi_duplicados(users, nombre):
         ("presupuesto_items", {"obra_id": 1}),
         ("presupuesto_items", {"fecha": "2020-01-01"}),
         ("presupuesto_items", {"creado_por": None}),
-        ("gastos", {"monto": "1"}),
-        ("gastos", {"presupuesto_item_id": 1}),
+        ("gastos", {"obra_id": 1}),
+        ("gastos", {"creado_por": None}),
         ("gastos", {"rubro_id": 1}),
+        ("gastos", {"editado_por": None}),
     ],
-    ids=["item-obra", "item-fecha", "item-autor", "gasto-monto", "gasto-item", "gasto-rubro"],
+    ids=[
+        "item-obra",
+        "item-fecha",
+        "item-autor",
+        "gasto-obra",
+        "gasto-autor",
+        "gasto-rubro",
+        "gasto-editado-por",
+    ],
 )
 def test_live_19_columnas_que_no_se_editan(users, obra_de_a, estructura, item, tabla, cambio):
     """LIVE-19 (F-03-CA-24): salteando la app no se puede mover un ítem de obra ni
-    cambiar su fecha o autor, ni el monto de un gasto."""
+    cambiar su fecha o autor, ni la obra, el autor, el rubro o el registro de edición
+    de un gasto."""
 
     if tabla == "gastos":
         fila = _add_gasto(users.a.client, item)
@@ -267,3 +277,32 @@ def test_live_23_items_en_cero_e_imprevistos(users, obra_de_a, estructura):
     finanzas.borrar_presupuesto_item(cliente, imprevistos["id"])
     otro, _ = finanzas.crear_imprevistos(cliente, {**obra_de_a, "presupuesto": "1000"})
     assert otro["es_imprevistos"] is True and Decimal(str(otro["monto"])) == 100
+
+
+def test_live_24_editar_gasto(users, obra_de_a, item, estructura):
+    """LIVE-24 (#25): B edita todos los datos del gasto de A y lo mueve de ítem; queda
+    registrado quién lo editó; un gasto anulado ya no se edita."""
+
+    gasto = _add_gasto(users.a.client, item, monto="100", descripcion=f"{PREFIX} original")
+    otro, _ = finanzas.add_presupuesto_item(
+        users.a.client, obra_de_a["id"], monto=0, moneda="ARS", rubro_id=estructura
+    )
+    editado, _ = finanzas.update_gasto(
+        users.b.client,
+        gasto["id"],
+        presupuesto_item_id=otro["id"],
+        fecha=finanzas.hoy() - timedelta(days=1),
+        monto="250",
+        moneda="USD",
+        descripcion=f"{PREFIX} editado",
+        proveedor="Prov",
+        tipo_cambio="1300",
+    )
+    leido = users.a.client.table("gastos").select("*").eq("id", gasto["id"]).execute().data[0]
+    assert leido["presupuesto_item_id"] == otro["id"] and leido["moneda"] == "USD"
+    assert leido["creado_por"] == users.a.id and leido["editado_por"] == users.b.id
+    assert leido["editado_en"] is not None and leido["tipo_cambio_origen"] == "manual"
+
+    finanzas.anular_gasto(users.a.client, gasto["id"])
+    with pytest.raises(APIError):  # salteando la app: la base no deja editar un anulado
+        users.b.client.table("gastos").update({"descripcion": "x"}).eq("id", gasto["id"]).execute()

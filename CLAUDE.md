@@ -70,7 +70,9 @@ supabase_schema.sql  todo el esquema, idempotente
   distintas sin tipo de cambio explícito. Cálculos con `Decimal`, nunca `float`.
 - Qué columnas se pueden editar se fija en la base con permisos por columna
   (`revoke update` + `grant update (…)`), además de la lista en el dominio
-  (p. ej. `CAMPOS_EDITABLES_ITEM`). Nunca se edita la obra, la fecha ni el autor.
+  (p. ej. `CAMPOS_EDITABLES_ITEM`, `CAMPOS_EDITABLES_GASTO`). Nunca se edita la
+  obra, el autor ni la fecha de carga de un registro; la fecha de un gasto (la
+  del pago) sí se edita (#25).
 - «Borrar» en la interfaz es siempre anular: confirmación en `st.dialog`
   controlado por `session_state` (así se puede testear) con `on_dismiss`.
 - Cada tabla nueva suma sus chequeos de RLS e integridad en `tests/sql/`

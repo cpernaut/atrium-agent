@@ -427,6 +427,108 @@ def list_gastos(client: Client, obra_id: int, limit: int | None = None) -> list[
     return _run_all(build)
 
 
+def get_gasto(client: Client, gasto_id: int) -> Fila:
+    filas = _run(client.table("gastos").select("*").eq("id", int(gasto_id)).limit(1))
+    if not filas:
+        raise FinanzasError("No se encontró el gasto.")
+    return filas[0]
+
+
+# Only these columns of a gasto can change (#25). The database enforces the same
+# list with column privileges: obra, author and creation date never change.
+CAMPOS_EDITABLES_GASTO = (
+    "presupuesto_item_id",
+    "fecha",
+    "descripcion",
+    "proveedor",
+    "monto",
+    "moneda",
+    "tipo_cambio",
+    "tipo_cambio_origen",
+)
+
+
+def update_gasto(
+    client: Client,
+    gasto_id: int,
+    *,
+    presupuesto_item_id: Any,
+    fecha: date | str | None,
+    monto: Any,
+    moneda: str,
+    descripcion: str,
+    proveedor: str | None = None,
+    tipo_cambio: Any = None,
+) -> tuple[Fila, str | None]:
+    """Edit every field of a gasto (#25). Returns (row, aviso).
+
+    - It can move to another vigent item of the same obra (rubro follows the item).
+    - ``tipo_cambio``: a different value replaces the rate and marks it ``manual``.
+      Otherwise a manual rate is kept, and an automatic one (or none) is looked up
+      again for the new date when the date changes (or when there was none).
+    - A cancelled (anulado) gasto can't be edited.
+    """
+
+    actual = get_gasto(client, gasto_id)
+    if actual.get("anulado"):
+        raise FinanzasError("Este gasto está anulado: ya no se puede editar.")
+    try:
+        item_id = int(presupuesto_item_id)
+    except (TypeError, ValueError) as exc:
+        raise FinanzasError("Elegí el ítem del presupuesto.") from exc
+    item = get_presupuesto_item(client, item_id)
+    if item_id != actual.get("presupuesto_item_id"):
+        if item.get("anulado"):
+            raise FinanzasError("Ese ítem fue borrado: elegí otro.")
+        if int(item["obra_id"]) != int(actual["obra_id"]):
+            raise FinanzasError("Ese ítem es de otra obra.")
+        rubros = _run(client.table("rubros").select("*").eq("id", int(item["rubro_id"])).limit(1))
+        if rubros and not rubros[0].get("activo", True):
+            raise FinanzasError(
+                f"El rubro «{rubros[0]['nombre']}» está desactivado: elegí un ítem de otro rubro."
+            )
+    fecha_gasto = _fecha(fecha)
+    if fecha_gasto > hoy():
+        raise FinanzasError("La fecha del gasto no puede ser futura.")
+
+    cambios: Fila = {
+        "presupuesto_item_id": item_id,
+        "fecha": fecha_gasto.isoformat(),
+        "monto": str(parse_monto(monto)),
+        "moneda": _moneda(moneda),
+        "descripcion": _texto(descripcion, "la descripción", _DESCRIPCION_MAX, True),
+        "proveedor": _texto(proveedor, "el proveedor", _PROVEEDOR_MAX, False),
+    }
+    aviso = None
+    previo = actual.get("tipo_cambio")
+    if tipo_cambio is not None and not (isinstance(tipo_cambio, str) and not tipo_cambio.strip()):
+        parse_tipo_cambio(tipo_cambio)  # an explicit 0 or negative is an error, not «empty»
+    if tipo_cambio not in (None, "", 0) and (
+        previo in (None, "") or parse_decimal(previo) != parse_tipo_cambio(tipo_cambio)
+    ):
+        cambios["tipo_cambio"] = str(parse_tipo_cambio(tipo_cambio))
+        cambios["tipo_cambio_origen"] = ORIGEN_MANUAL
+    elif actual.get("tipo_cambio_origen") != ORIGEN_MANUAL and (
+        previo in (None, "") or fecha_gasto.isoformat() != str(actual.get("fecha"))
+    ):
+        tc, origen, aviso = cotizar(fecha_gasto)
+        if tc is not None:
+            cambios["tipo_cambio"] = str(tc)
+            cambios["tipo_cambio_origen"] = origen
+        else:
+            cambios["tipo_cambio"] = None
+            cambios["tipo_cambio_origen"] = None
+    assert set(cambios) <= set(CAMPOS_EDITABLES_GASTO)
+
+    filas = _run(
+        client.table("gastos").update(cambios).eq("id", int(gasto_id)).eq("anulado", False)
+    )
+    if not filas:
+        raise FinanzasError("No se pudo guardar: el gasto ya no existe o fue anulado.")
+    filas[0]["rubro_id"] = item["rubro_id"]  # the database sets it from the item
+    return filas[0], aviso
+
+
 def anular_gasto(client: Client, gasto_id: int) -> Fila:
     filas = _run(client.table("gastos").update({"anulado": True}).eq("id", gasto_id))
     if not filas:

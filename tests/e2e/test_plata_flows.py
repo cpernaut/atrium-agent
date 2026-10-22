@@ -266,9 +266,7 @@ def test_f03_ca_5_fuente_caida_guarda_sin_cotizacion(e2e):
     assert "tipo_cambio" not in gasto
     assert "No se pudo consultar el dólar MEP" in visible(at)
     assert "sin cotización" in texts(at)
-    assert at.button(key=f"gasto_cotizacion_{gasto['id']}").help == (
-        "Corregir la cotización de este gasto"
-    )
+    assert at.button(key=f"gasto_editar_{gasto['id']}").help == "Editar este gasto"
 
 
 def test_f03_ca_6_corregir_cotizacion_a_mano(e2e):
@@ -276,9 +274,9 @@ def test_f03_ca_6_corregir_cotizacion_a_mano(e2e):
 
     _obra(e2e)
     gasto = _seed_gasto(e2e, 1000, "USD", "Honorarios", tipo_cambio=1200)
-    at = _plata(e2e).button(key=f"gasto_cotizacion_{gasto['id']}").click().run()
-    at.number_input(key=f"tc_gasto_{gasto['id']}").set_value(1180.0)
-    at = at.button(key=f"gasto_tc_guardar_{gasto['id']}").click().run()
+    at = _plata(e2e).button(key=f"gasto_editar_{gasto['id']}").click().run()
+    at.number_input(key=f"editar_gasto_{gasto['id']}_tc").set_value(1180.0)
+    at = at.button(key=f"gasto_guardar_{gasto['id']}_ed").click().run()
 
     assert not at.exception
     gasto = finanzas.list_gastos(e2e.db, 1)[0]
@@ -758,3 +756,115 @@ def test_f03_ca_27d_registrar_un_gasto_junto_a_editar_y_borrar(e2e):
     at = _abrir_gasto(at, item["id"])
     assert at.button(key=f"gasto_agregar_{item['id']}").disabled  # ya está abierto
     assert "Nuevo gasto en «Látex»" in visible(at)
+
+
+# --------------------------------------------------------------------------- #
+# #25 · Editar un gasto
+# --------------------------------------------------------------------------- #
+def test_f03_ca_36_editar_gasto_muestra_sus_datos(e2e):
+    """F-03-CA-36: el lápiz del gasto abre un formulario con todos sus datos actuales:
+    ítem, fecha, monto, moneda, descripción, proveedor y cotización."""
+
+    _obra(e2e)
+    item = _item(e2e, "Estructura", 1_000_000, descripcion="Hierro")
+    gasto = _seed_gasto(e2e, 350_000, "ARS", "", tipo_cambio=1200, item=item, descripcion="Seña")
+    e2e.db.table("gastos").update({"proveedor": "Hierros Sur"}).eq("id", gasto["id"]).execute()
+    at = _plata(e2e).button(key=f"gasto_editar_{gasto['id']}").click().run()
+    k = f"editar_gasto_{gasto['id']}_"
+
+    assert at.selectbox(key=f"{k}item").value == item["id"]
+    assert at.date_input(key=f"{k}fecha").value == finanzas.hoy()
+    assert at.number_input(key=f"{k}monto").value == 350_000.0
+    assert at.radio(key=f"{k}moneda").value == "ARS"
+    assert at.text_input(key=f"{k}descripcion").value == "Seña"
+    assert at.text_input(key=f"{k}proveedor").value == "Hierros Sur"
+    assert at.number_input(key=f"{k}tc").value == 1200.0
+    assert "Editar el gasto «Seña»" in visible(at)
+
+
+def test_f03_ca_37_guardar_cambios_y_mover_de_item(e2e):
+    """F-03-CA-37: se cambian monto, descripción, fecha y se mueve el gasto a otro ítem;
+    los totales del ítem y del rubro se actualizan y queda «editado»."""
+
+    _obra(e2e)
+    hierro = _item(e2e, "Estructura", 1_000_000, descripcion="Hierro")
+    mesada = _item(e2e, "Carpinterías", 500_000, descripcion="Mesada")
+    gasto = _seed_gasto(e2e, 350_000, "ARS", "", tipo_cambio=1200, item=hierro, descripcion="Seña")
+    at = _plata(e2e).button(key=f"gasto_editar_{gasto['id']}").click().run()
+    k = f"editar_gasto_{gasto['id']}_"
+    at.selectbox(key=f"{k}item").set_value(mesada["id"])
+    at.number_input(key=f"{k}monto").set_value(200_000.0)
+    at.text_input(key=f"{k}descripcion").input("Seña mesada")
+    at.date_input(key=f"{k}fecha").set_value(finanzas.hoy() - timedelta(days=1))
+    at = at.button(key=f"gasto_guardar_{gasto['id']}_ed").click().run()
+
+    assert not at.exception
+    assert "Gasto actualizado: ARS 200.000" in visible(at)
+    guardado = finanzas.get_gasto(e2e.db, gasto["id"])
+    assert (guardado["presupuesto_item_id"], guardado["monto"], guardado["descripcion"]) == (
+        mesada["id"],
+        "200000.00",
+        "Seña mesada",
+    )
+    assert guardado["fecha"] == (finanzas.hoy() - timedelta(days=1)).isoformat()
+    assert _tabla(at).loc["Carpinterías", "Gastado"] == "ARS 200.000"
+    assert _tabla(at).loc["Estructura", "Gastado"] == "ARS 0"
+
+
+def test_f03_ca_38_cancelar_y_error_conservan(e2e):
+    """F-03-CA-38: Cancelar no guarda nada; un dato inválido muestra el error y el
+    formulario conserva lo escrito."""
+
+    _obra(e2e)
+    gasto = _seed_gasto(e2e, 1000, "ARS", "Pintura", tipo_cambio=1200, descripcion="Látex")
+    at = _plata(e2e).button(key=f"gasto_editar_{gasto['id']}").click().run()
+    k = f"editar_gasto_{gasto['id']}_"
+    at.text_input(key=f"{k}descripcion").input("   ")
+    at.text_input(key=f"{k}proveedor").input("Pinturerías X")
+    at = at.button(key=f"gasto_guardar_{gasto['id']}_ed").click().run()
+    assert "No se guardaron los cambios: escribí una descripción." in visible(at)
+    assert at.text_input(key=f"{k}proveedor").value == "Pinturerías X"
+
+    at = at.button(key=f"gasto_cancelar_{gasto['id']}_ed").click().run()
+    assert finanzas.get_gasto(e2e.db, gasto["id"])["descripcion"] == "Látex"
+    assert f"{k}descripcion" not in [w.key for w in at.text_input]
+
+
+def test_f03_ca_39_cambiar_fecha_recalcula_la_cotizacion(e2e):
+    """F-03-CA-39: con cotización automática, cambiar la fecha del gasto la recalcula
+    con el MEP de la nueva fecha."""
+
+    hoy = finanzas.hoy()
+    e2e.set_mep({hoy: (1190, 1210), hoy - timedelta(days=1): (1090, 1110)})
+    _obra(e2e)
+    item = _item(e2e, "Honorarios", 1000, moneda="USD")
+    gasto, _ = finanzas.add_gasto(e2e.db, item["id"], monto=100, moneda="USD", descripcion="x")
+    assert gasto["tipo_cambio"] == "1200.0000"
+    at = _plata(e2e).button(key=f"gasto_editar_{gasto['id']}").click().run()
+    at.date_input(key=f"editar_gasto_{gasto['id']}_fecha").set_value(hoy - timedelta(days=1))
+    at = at.button(key=f"gasto_guardar_{gasto['id']}_ed").click().run()
+
+    guardado = finanzas.get_gasto(e2e.db, gasto["id"])
+    assert (guardado["tipo_cambio"], guardado["tipo_cambio_origen"]) == ("1100.0000", "auto")
+    assert "MEP 1.100,00 (automática)" in visible(at)
+
+
+def test_f03_ca_38b_cotizacion_cero_se_rechaza(e2e):
+    """F-03-CA-38 (revisión PR #48): una cotización 0 al editar se rechaza con un
+    mensaje claro, no guarda y el formulario conserva lo escrito."""
+
+    _obra(e2e)
+    gasto = _seed_gasto(e2e, 1000, "USD", "Honorarios", tipo_cambio=1200, descripcion="Visita")
+    at = _plata(e2e).button(key=f"gasto_editar_{gasto['id']}").click().run()
+    k = f"editar_gasto_{gasto['id']}_"
+    at.number_input(key=f"{k}tc").set_value(0.0)
+    at.text_input(key=f"{k}descripcion").input("Visita 2")
+    at = at.button(key=f"gasto_guardar_{gasto['id']}_ed").click().run()
+
+    assert "No se guardaron los cambios: El tipo de cambio tiene que ser mayor que cero." in (
+        visible(at)
+    )
+    assert "Gasto actualizado" not in visible(at)
+    guardado = finanzas.get_gasto(e2e.db, gasto["id"])
+    assert (guardado["descripcion"], guardado["tipo_cambio"]) == ("Visita", "1200")
+    assert at.text_input(key=f"{k}descripcion").value == "Visita 2"

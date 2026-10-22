@@ -134,9 +134,60 @@ insert into public.presupuesto_items (obra_id, rubro_id, descripcion, monto, mon
   select o.id, 1, 'Ítem borrado', 0, 'ARS', true from public.obras o where o.nombre = 'Obra RLS';
 select pg_temp.falla($$insert into public.gastos (presupuesto_item_id, descripcion, monto, moneda)
   select id, 'x', 10, 'ARS' from public.presupuesto_items where descripcion = 'Ítem borrado'$$, '23514');
-select pg_temp.falla($$update public.gastos set presupuesto_item_id = presupuesto_item_id$$, '42501');
 select pg_temp.falla($$update public.gastos set rubro_id = rubro_id$$, '42501');
-select pg_temp.ok(true, 'gastos por ítem: siempre con un ítem vigente de la misma obra; no se mueven');
+select pg_temp.ok(true, 'gastos por ítem: siempre con un ítem vigente de la misma obra');
+
+-- #25 · Editar un gasto: se mueve solo a un ítem vigente de la misma obra.
+insert into public.presupuesto_items (obra_id, rubro_id, descripcion, monto, moneda)
+  select o.id, r.id, 'Ítem ajeno', 0, 'ARS' from public.obras o, public.rubros r
+  where o.nombre = 'Obra ajena' and r.nombre = 'Pintura';
+insert into public.presupuesto_items (obra_id, rubro_id, descripcion, monto, moneda)
+  select o.id, r.id, 'Destino', 0, 'ARS' from public.obras o, public.rubros r
+  where o.nombre = 'Obra RLS' and r.nombre = 'Revoques';
+select pg_temp.falla($$update public.gastos set presupuesto_item_id =
+  (select id from public.presupuesto_items where descripcion = 'Ítem ajeno')
+  where descripcion = 'Hierro'$$, '23514');
+select pg_temp.falla($$update public.gastos set presupuesto_item_id =
+  (select id from public.presupuesto_items where descripcion = 'Ítem borrado')
+  where descripcion = 'Hierro'$$, '23514');
+update public.gastos set presupuesto_item_id =
+  (select id from public.presupuesto_items where descripcion = 'Destino')
+  where descripcion = 'Hierro';
+select pg_temp.ok((select g.rubro_id = r.id and g.editado_por = '00000000-0000-0000-0000-00000000000a'
+                          and g.editado_en is not null
+                   from public.gastos g, public.rubros r
+                   where g.descripcion = 'Hierro' and r.nombre = 'Revoques'),
+                  'editar gasto: moverlo a otro ítem de la obra toma su rubro y queda registrado');
+update public.gastos set presupuesto_item_id = (select id from item_hierro),
+  fecha = fecha - 1, proveedor = 'Hierros Sur', monto = 350000, moneda = 'ARS'
+  where descripcion = 'Hierro';
+-- R7 en la base: no se mueve ni se carga un gasto en un ítem de rubro desactivado;
+-- un gasto que ya estaba ahí se sigue editando sin moverlo.
+insert into public.rubros (nombre, orden) values ('Rubro viejo', 900);
+insert into public.presupuesto_items (obra_id, rubro_id, descripcion, monto, moneda)
+  select o.id, r.id, 'En rubro viejo', 0, 'ARS' from public.obras o, public.rubros r
+  where o.nombre = 'Obra RLS' and r.nombre = 'Rubro viejo';
+insert into public.gastos (presupuesto_item_id, descripcion, monto, moneda)
+  select id, 'Histórico', 5, 'ARS' from public.presupuesto_items where descripcion = 'En rubro viejo';
+update public.rubros set activo = false where nombre = 'Rubro viejo';
+select pg_temp.falla($$update public.gastos set presupuesto_item_id =
+  (select id from public.presupuesto_items where descripcion = 'En rubro viejo')
+  where descripcion = 'Hierro'$$, '23514');
+select pg_temp.falla($$insert into public.gastos (presupuesto_item_id, descripcion, monto, moneda)
+  select id, 'Nuevo', 5, 'ARS' from public.presupuesto_items where descripcion = 'En rubro viejo'$$,
+  '23514');
+update public.gastos set monto = 6, presupuesto_item_id = presupuesto_item_id
+  where descripcion = 'Histórico';
+select pg_temp.ok((select monto = 6 from public.gastos where descripcion = 'Histórico'),
+                  'rubro desactivado: no recibe gastos nuevos ni movidos; los que ya tiene se editan');
+select pg_temp.falla($$update public.gastos set creado_por = null$$, '42501');
+select pg_temp.falla($$update public.gastos set editado_por = null$$, '42501');
+select pg_temp.falla($$update public.gastos set created_at = now()$$, '42501');
+select pg_temp.falla($$update public.gastos set fecha = current_date + 2 where descripcion = 'Hierro'$$, '23514');
+select pg_temp.ok((select proveedor = 'Hierros Sur' and g.rubro_id = i.rubro_id
+                   from public.gastos g join item_hierro i on i.id = g.presupuesto_item_id
+                   where g.descripcion = 'Hierro'),
+                  'editar gasto: fecha, proveedor, monto y moneda sí; obra, autor y registro no');
 
 -- Monto 0 en ítems (D9) y un solo «Imprevistos» vigente por obra (R12).
 insert into public.presupuesto_items (obra_id, rubro_id, descripcion, monto, moneda, es_imprevistos)
@@ -175,10 +226,9 @@ select pg_temp.falla($$update public.presupuesto_items set obra_id = obra_id$$, 
 select pg_temp.falla($$update public.presupuesto_items set fecha = fecha - 1$$, '42501');
 select pg_temp.falla($$update public.presupuesto_items set creado_por = null$$, '42501');
 select pg_temp.falla($$update public.presupuesto_items set id = id$$, '428C9');  -- identity: nunca se escribe
-select pg_temp.falla($$update public.gastos set monto = 1$$, '42501');
 select pg_temp.falla($$update public.gastos set obra_id = obra_id$$, '42501');
 select pg_temp.ok((select monto = 1500 and moneda = 'USD' from item_hierro),
-                  'editar ítems: campos permitidos sí; obra, fecha, autor e id no; gastos solo cotización y anulado');
+                  'editar ítems: campos permitidos sí; obra, fecha, autor e id no; gasto sin cambiar de obra');
 
 -- Corregir cotización y anular (update permitido); borrar, nunca.
 update public.gastos set tipo_cambio = 1180, tipo_cambio_origen = 'manual' where descripcion = 'Hierro';
@@ -187,8 +237,8 @@ delete from public.presupuesto_items;
 delete from public.rubros;
 select pg_temp.ok((select count(*) from public.gastos where descripcion = 'Hierro') = 1
                   and (select count(*) from public.presupuesto_items i join public.obras o on o.id = i.obra_id
-                       where o.nombre = 'Obra RLS') = 4
-                  and (select count(*) from public.rubros) = 19,
+                       where o.nombre = 'Obra RLS') = 6
+                  and (select count(*) from public.rubros) = 20,
                   'sin DELETE: gastos, presupuesto y rubros no se borran');
 
 -- Borrar (anular) un ítem anula también sus gastos (R12b).
@@ -196,6 +246,7 @@ update public.presupuesto_items set anulado = true where id = (select id from it
 select pg_temp.ok((select anulado from public.gastos where descripcion = 'Hierro'),
                   'borrar un ítem anula sus gastos, que siguen en la base');
 select pg_temp.falla($$update public.gastos set anulado = false where descripcion = 'Hierro'$$, '23514');
+select pg_temp.falla($$update public.gastos set descripcion = 'otra' where descripcion = 'Hierro'$$, '23514');
 select pg_temp.falla($$update public.presupuesto_items set anulado = false
   where id = (select id from item_hierro)$$, '23514');
 select pg_temp.ok((select anulado from public.gastos where descripcion = 'Hierro'),
