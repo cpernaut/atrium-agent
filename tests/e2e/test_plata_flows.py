@@ -847,3 +847,24 @@ def test_f03_ca_39_cambiar_fecha_recalcula_la_cotizacion(e2e):
     guardado = finanzas.get_gasto(e2e.db, gasto["id"])
     assert (guardado["tipo_cambio"], guardado["tipo_cambio_origen"]) == ("1100.0000", "auto")
     assert "MEP 1.100,00 (automática)" in visible(at)
+
+
+def test_f03_ca_38b_cotizacion_cero_se_rechaza(e2e):
+    """F-03-CA-38 (revisión PR #48): una cotización 0 al editar se rechaza con un
+    mensaje claro, no guarda y el formulario conserva lo escrito."""
+
+    _obra(e2e)
+    gasto = _seed_gasto(e2e, 1000, "USD", "Honorarios", tipo_cambio=1200, descripcion="Visita")
+    at = _plata(e2e).button(key=f"gasto_editar_{gasto['id']}").click().run()
+    k = f"editar_gasto_{gasto['id']}_"
+    at.number_input(key=f"{k}tc").set_value(0.0)
+    at.text_input(key=f"{k}descripcion").input("Visita 2")
+    at = at.button(key=f"gasto_guardar_{gasto['id']}_ed").click().run()
+
+    assert "No se guardaron los cambios: El tipo de cambio tiene que ser mayor que cero." in (
+        visible(at)
+    )
+    assert "Gasto actualizado" not in visible(at)
+    guardado = finanzas.get_gasto(e2e.db, gasto["id"])
+    assert (guardado["descripcion"], guardado["tipo_cambio"]) == ("Visita", "1200")
+    assert at.text_input(key=f"{k}descripcion").value == "Visita 2"

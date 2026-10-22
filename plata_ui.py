@@ -710,7 +710,7 @@ def _form_editar_gasto(supabase, g: dict, vigentes: list[dict], rubros_por_id: d
             moneda=moneda,
             descripcion=descripcion,
             proveedor=proveedor,
-            tipo_cambio=tc or None,
+            tipo_cambio=tc,  # empty -> None; 0 is rejected (not taken as empty)
         )
     except finanzas.FinanzasError as exc:
         st.error(f"No se guardaron los cambios: {texto_seguro(exc)}")

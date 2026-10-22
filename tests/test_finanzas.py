@@ -808,6 +808,9 @@ def test_editar_gasto_sin_cotizacion_para_la_nueva_fecha_avisa(db, mep):
         ({"moneda": "EUR"}, "Moneda inválida"),
         ({"fecha": "2999-01-01"}, "futura"),
         ({"presupuesto_item_id": None}, "Elegí el ítem"),
+        ({"tipo_cambio": 0}, "mayor que cero"),
+        ({"tipo_cambio": 0.0}, "mayor que cero"),
+        ({"tipo_cambio": -3}, "mayor que cero"),
     ],
 )
 def test_editar_gasto_invalido_no_cambia_nada(db, mep, cambio, mensaje):

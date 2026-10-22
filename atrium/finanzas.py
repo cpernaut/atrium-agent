@@ -501,6 +501,8 @@ def update_gasto(
     }
     aviso = None
     previo = actual.get("tipo_cambio")
+    if tipo_cambio is not None and not (isinstance(tipo_cambio, str) and not tipo_cambio.strip()):
+        parse_tipo_cambio(tipo_cambio)  # an explicit 0 or negative is an error, not «empty»
     if tipo_cambio not in (None, "", 0) and (
         previo in (None, "") or parse_decimal(previo) != parse_tipo_cambio(tipo_cambio)
     ):
