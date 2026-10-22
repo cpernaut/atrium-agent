@@ -17,6 +17,12 @@ Streamlit, login, historial y obras en Supabase.
 
 **App:** https://atrium-agent.streamlit.app
 
+## Producto
+
+Visión, glosario, roadmap y fichas de cada funcionalidad con criterios de
+aceptación: [`docs/producto/`](docs/producto/README.md). Reglas para trabajar el
+código con Claude: [`CLAUDE.md`](CLAUDE.md).
+
 ## Arquitectura
 
 ```

@@ -1,0 +1,101 @@
+# CLAUDE.md — Atrium Agent
+
+Instrucciones para Claude al trabajar en este repo. Qué construimos y por qué:
+[`docs/producto/`](docs/producto/README.md). Leé la ficha de la funcionalidad
+antes de tocar código.
+
+## Contexto en una línea
+
+App Streamlit para Carolina y sus socios en Atrium: agente de normativa de obra
+(LangGraph + Chroma + OpenAI) más un tracker de obras, todo con login y datos en
+Supabase. Desplegada en Streamlit Community Cloud desde `main`.
+
+## Flujo de trabajo
+
+- **Nunca** pushear a `main`: rama + PR. Mergear `main` redespliega la app real.
+- Implementar solo fichas en estado `Lista`. Si falta una decisión, preguntarla
+  en vez de inventarla. Si un pedido contradice una ficha, avisarlo primero.
+- Un PR por ficha. En el mismo PR: código, tests, ficha en `Hecha`, roadmap,
+  glosario si hay términos nuevos, y `docs/casos-e2e.md`.
+- Si el PR cambia `supabase_schema.sql`, la descripción del PR dice
+  **«Antes de mergear: correr supabase_schema.sql»**, porque el esquema no se
+  aplica solo. Con el conector de Supabase se puede aplicar y verificar,
+  pidiéndolo antes.
+- Commits y PRs en español.
+
+## Arquitectura (respetarla)
+
+```
+app.py            orquestación y render; nada de lógica de negocio
+*_ui.py           pantallas de Streamlit (p. ej. obras_ui.py), una por sección
+atrium/           dominio. NUNCA importa streamlit
+  obras.py        acceso a datos de un área: funciones que reciben el `client`
+  obra_tools.py   herramientas del agente: cierran sobre el client del usuario
+  rag.py          grafo LangGraph: classify -> retrieve -> agente_obra (+ tools)
+supabase_schema.sql  todo el esquema, idempotente
+```
+
+- Un módulo de dominio por área nueva (`atrium/finanzas.py`, `atrium/cronograma.py`,
+  `atrium/archivos.py`), con el mismo patrón que `atrium/obras.py`: funciones
+  puras sobre el `client`, errores envueltos en una excepción propia (`XxxError`)
+  con mensajes en español listos para mostrar.
+- Las herramientas nuevas del agente van en `atrium/obra_tools.py` (o un
+  `*_tools.py` hermano) y se registran en `build_obra_tools`. Nunca lanzan
+  excepciones: devuelven el error como texto. Las que escriben agregan una línea
+  a `acciones` y su docstring dice «Usala SOLO si el usuario pide…».
+- Las pantallas reciben el `supabase` de la sesión (cliente con el login del
+  usuario): así aplica RLS. **No** usar la clave service_role en la app.
+
+## Base de datos
+
+- Todo el esquema está en `supabase_schema.sql` y debe poder correrse varias
+  veces: `create table if not exists`, `drop policy if exists` + `create policy`,
+  `alter table … add column if not exists`.
+- Toda tabla nueva: `enable row level security`, políticas para `authenticated`,
+  columna `creado_por uuid default auth.uid()` y **sin política de DELETE**
+  (se anula o archiva con un booleano).
+- Las restricciones van también en la base (`check`, `not null`), no solo en Python.
+- Montos: `numeric(14,2)` + columna `moneda` (`ARS`/`USD`). Nunca sumar monedas
+  distintas sin tipo de cambio explícito.
+
+## Nombres e idioma
+
+- Interfaz, mensajes de error y respuestas del agente: **español rioplatense con
+  voseo** («cargá», «elegí»).
+- Código y docstrings en inglés; los **nombres del dominio en español**, tal cual
+  figuran en [`docs/producto/glosario.md`](docs/producto/glosario.md) (tablas,
+  columnas, valores, herramientas del agente).
+- Widgets de Streamlit con `key=` estable cuando un test los usa.
+
+## Tests (obligatorios)
+
+```bash
+pytest            # unitarios + E2E simulado; los live se saltean sin credenciales
+ruff check . && ruff format --check .
+```
+
+- **Unitarios** del dominio con `tests/fake_supabase.py`. Si la tabla nueva tiene
+  defaults, agregarlos en `_DEFAULTS` del fake para que imite a la base real.
+- **E2E simulado** (`tests/e2e/`): al menos un test por criterio de aceptación,
+  con el ID de la ficha en el docstring (`"""F-03-CA-2: …"""`). Usa la app real
+  vía `AppTest` y los dobles de `tests/fakes.py`.
+- **E2E real** (`tests/live/`): todo lo que dependa de RLS, constraints o Storage
+  de Supabase. Datos con prefijo `[E2E]` y limpieza garantizada.
+- Ningún test llama a OpenAI ni a internet. El modelo se simula con
+  `ToolCallingFake` y el buscador con `RecordingStore`.
+- Los tests no deben modificar `chroma_db/`. Si aparece modificado en
+  `git status`, restaurarlo antes de commitear.
+
+## Seguridad
+
+- Secretos solo en Secrets de Streamlit o de GitHub; nunca en el código, el chat
+  ni los logs. `.env` y `.streamlit/secrets.toml` están en `.gitignore`.
+- Antes de exponer datos nuevos, preguntarse: ¿los ve alguien sin login? La
+  respuesta tiene que ser no, y tiene que haber un test `live` que lo pruebe.
+
+## Entorno
+
+- Python 3.11 (producción en Streamlit Cloud). `requirements.txt` con versiones
+  fijas; agregar dependencias pinneadas y probar que instalen en Linux.
+- Secrets que la app espera: `OPENAI_API_KEY`, `SUPABASE_URL`,
+  `SUPABASE_ANON_KEY`, y opcionalmente `LANGSMITH_*`.
