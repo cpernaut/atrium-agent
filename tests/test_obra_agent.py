@@ -1,39 +1,14 @@
 """The agent connected to the obras tracker: active obra and tool calls."""
 
-from langchain_core.documents import Document
-from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.messages import AIMessage, ToolMessage
 from langgraph.checkpoint.memory import MemorySaver
 
 from atrium import obras
 from atrium.rag import build_graph
 from tests.fake_supabase import FakeSupabase
+from tests.fakes import RecordingStore, ToolCallingFake, tool_call
 
-
-class RecordingStore:
-    def __init__(self):
-        self.filters = []
-
-    def similarity_search(self, query, k=4, filter=None):  # noqa: A002 - Chroma's name
-        self.filters.append(filter)
-        return [Document(page_content="Retiro de frente: 3 m.", metadata={"source": "x.pdf"})]
-
-
-class ToolCallingFake(GenericFakeChatModel):
-    """Replays scripted AIMessages and records what it was sent."""
-
-    seen: list = []
-
-    def bind_tools(self, tools, **kwargs):
-        return self
-
-    def _generate(self, messages, *args, **kwargs):
-        self.seen.append(list(messages))
-        return super()._generate(messages, *args, **kwargs)
-
-
-def _call(name, args, call_id="c1"):
-    return AIMessage(content="", tool_calls=[{"name": name, "args": args, "id": call_id}])
+_call = tool_call
 
 
 def _app(db, replies, store=None):

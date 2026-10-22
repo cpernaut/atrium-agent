@@ -4,7 +4,14 @@ from __future__ import annotations
 
 import copy
 import itertools
+from datetime import date
 from types import SimpleNamespace
+
+# Column defaults from supabase_schema.sql, applied on insert like Postgres does.
+_DEFAULTS = {
+    "obras": {"estado": "Planificación", "moneda": "ARS", "avance": 0},
+    "bitacora": {"fecha": date.today().isoformat()},
+}
 
 
 class _Query:
@@ -52,9 +59,9 @@ class _Query:
         if self.op == "insert":
             new = []
             for item in self.payload if isinstance(self.payload, list) else [self.payload]:
-                row = {"id": next(self.db.ids), "created_at": f"t{len(rows):04d}", **item}
-                row.setdefault("avance", 0)
-                row.setdefault("estado", "Planificación")
+                row = {"id": next(self.db.ids), "created_at": f"t{len(rows):04d}"}
+                row.update(_DEFAULTS.get(self.table_name, {}))
+                row.update(item)
                 rows.append(row)
                 new.append(copy.deepcopy(row))
             return SimpleNamespace(data=new)
