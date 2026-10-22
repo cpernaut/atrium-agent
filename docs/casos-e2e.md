@@ -97,7 +97,10 @@ que todo gasto tenga un ítem vigente de la misma obra (obra y rubro los pone la
 base), que no se pueda mover de ítem, que el cambio de rubro y el borrado del
 ítem lleguen a sus gastos, que un ítem pueda valer 0 pero no negativo, que haya
 un solo «Imprevistos» vigente por obra y que la migración se lo cree a las obras
-existentes (10 % del presupuesto, en su moneda).
+existentes (10 % del presupuesto, en su moneda). Con dos conexiones a la vez
+(`tests/sql/test_concurrencia.sh`): cargar un gasto mientras su ítem cambia de
+rubro o se borra nunca deja un gasto con el rubro viejo ni vigente bajo un ítem
+borrado.
 
 ## E2E real — reglas de la base (Supabase)
 

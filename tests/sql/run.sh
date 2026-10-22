@@ -23,4 +23,5 @@ echo "OK  actualización desde el esquema anterior a #35, con datos, dos veces s
 "${PSQL[@]}" -d postgres -c "drop database ${DB}_nuevo" >/dev/null
 echo "OK  instalación desde cero, dos veces sin errores"
 "${PSQL[@]}" -d "$DB" -At -f tests/sql/test_rls_f03.sql 2>&1 | grep -E "OK|FALL|ERROR" | sed 's/^NOTICE:  //'
+tests/sql/test_concurrencia.sh "$DB"
 "${PSQL[@]}" -d postgres -c "drop database $DB" >/dev/null

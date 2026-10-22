@@ -248,7 +248,13 @@ as $$
 declare
     item public.presupuesto_items%rowtype;
 begin
-    select * into item from public.presupuesto_items where id = new.presupuesto_item_id;
+    -- FOR SHARE: mientras se inserta el gasto, nadie puede cambiar el rubro del
+    -- ítem ni borrarlo; si otro ya lo estaba cambiando, se espera y se lee el
+    -- valor confirmado (así el gasto nunca queda con un rubro viejo o bajo un
+    -- ítem borrado).
+    select * into item from public.presupuesto_items
+     where id = new.presupuesto_item_id
+       for share;
     if not found then
         raise exception 'El ítem del presupuesto no existe.' using errcode = '23503';
     end if;
