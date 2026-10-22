@@ -118,9 +118,11 @@ def build_obra_tools(
                 f"No hay un rubro «{texto}». Elegí el más adecuado entre: {disponibles}. "
                 "Si ninguno corresponde, preguntale al usuario."
             )
+        # F-03: with an ambiguous rubro the agent must ask, never pick one itself.
         return None, (
-            "Hay varios rubros que coinciden; elegí uno o preguntale al usuario: "
+            "No registré el gasto: hay varios rubros que coinciden ("
             + ", ".join(r["nombre"] for r in matches)
+            + "). Preguntale al usuario cuál corresponde antes de volver a intentarlo."
         )
 
     def registrar_gasto(

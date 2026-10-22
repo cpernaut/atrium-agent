@@ -441,3 +441,25 @@ def test_f03_ca_9c_anular_item_pide_confirmacion_propia(e2e):
     anulados = [i["id"] for i in finanzas.list_presupuesto(e2e.db, 1) if i["anulado"]]
     assert anulados == [segundo["id"]]
     assert _metricas(at)["Presupuestado"] == "ARS 100"
+
+
+def test_f03_ca_11c_rubro_ambiguo_pide_aclarar(e2e):
+    """F-03-CA-11 (revisión PR #5): con un rubro ambiguo no se guarda nada y la
+    herramienta exige preguntar al usuario."""
+
+    _obra(e2e)
+    e2e.script(
+        tool_call(
+            "registrar_gasto", {"monto": 1000, "descripcion": "Cables", "rubro": "Instalación"}
+        ),
+        AIMessage(content="¿Es instalación eléctrica, sanitaria o de gas?"),
+    )
+    at = e2e.login()
+    at.sidebar.selectbox[0].set_value(1).run()
+    at = at.chat_input[0].set_value("Cargá 1000 de instalación").run()
+
+    resultado = e2e.llm.seen[1][-1].content
+    assert "No registré el gasto" in resultado and "Preguntale al usuario" in resultado
+    assert "Instalación eléctrica" in resultado and "Instalación de gas" in resultado
+    assert finanzas.list_gastos(e2e.db, 1) == []
+    assert "💸" not in texts(at)
