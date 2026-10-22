@@ -45,6 +45,23 @@ select pg_temp.ok(
     where o.nombre = 'Obra previa sin presupuesto' and i.es_imprevistos),
   'migración: obra sin presupuesto -> «Imprevistos» en 0');
 
+select pg_temp.ok(
+  (select count(*) = 3 and bool_and(g.presupuesto_item_id is not null and i.obra_id = g.obra_id
+                                    and i.rubro_id = g.rubro_id)
+     from public.gastos g join public.presupuesto_items i on i.id = g.presupuesto_item_id
+    where g.descripcion like 'Gasto previo%'),
+  'migración: los gastos anteriores quedan en un ítem de su obra y rubro');
+select pg_temp.ok(
+  (select i.descripcion = 'Hierro previo' from public.gastos g
+     join public.presupuesto_items i on i.id = g.presupuesto_item_id
+    where g.descripcion = 'Gasto previo con ítem')
+  and (select count(distinct g.presupuesto_item_id) = 1 and bool_and(i.descripcion = 'Gastos anteriores'
+                                                          and i.monto = 0 and not i.es_imprevistos)
+         from public.gastos g join public.presupuesto_items i on i.id = g.presupuesto_item_id
+        where g.descripcion in ('Gasto previo sin ítem', 'Gasto previo anulado'))
+  and (select anulado from public.gastos where descripcion = 'Gasto previo anulado'),
+  'migración: usa el ítem del mismo rubro o crea «Gastos anteriores» en 0; respeta anulados');
+
 -- ----- usuario A logueado -----
 select pg_temp.como('authenticated', '00000000-0000-0000-0000-00000000000a');
 insert into public.obras (nombre) values ('Obra RLS'), ('Obra ajena');
@@ -168,7 +185,7 @@ update public.gastos set tipo_cambio = 1180, tipo_cambio_origen = 'manual' where
 delete from public.gastos;
 delete from public.presupuesto_items;
 delete from public.rubros;
-select pg_temp.ok((select count(*) from public.gastos) = 1
+select pg_temp.ok((select count(*) from public.gastos where descripcion = 'Hierro') = 1
                   and (select count(*) from public.presupuesto_items i join public.obras o on o.id = i.obra_id
                        where o.nombre = 'Obra RLS') = 4
                   and (select count(*) from public.rubros) = 19,
@@ -182,7 +199,7 @@ select pg_temp.ok((select anulado from public.gastos where descripcion = 'Hierro
 -- ----- usuario B: comparte todo con el equipo (D6) -----
 reset role;
 select pg_temp.como('authenticated', '00000000-0000-0000-0000-00000000000b');
-select pg_temp.ok((select count(*) from public.gastos) = 1
+select pg_temp.ok((select count(*) from public.gastos where descripcion = 'Hierro') = 1
                   and (select count(*) from public.presupuesto_items) >= 4,
                   'equipo: B ve gastos y presupuesto de A');
 
@@ -200,4 +217,5 @@ select pg_temp.falla($$insert into public.presupuesto_items (obra_id, rubro_id, 
   values (1, 1, 10, 'ARS')$$, '42501');
 select pg_temp.falla($$update public.gastos set monto = 1$$, '42501');
 reset role;
-select pg_temp.ok((select monto from public.gastos) = 350000, 'anon: no puede crear ni editar');
+select pg_temp.ok((select monto from public.gastos where descripcion = 'Hierro') = 350000,
+                  'anon: no puede crear ni editar');

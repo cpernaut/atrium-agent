@@ -84,7 +84,9 @@ resultado esperado verificable.
 
 ## Esquema y seguridad en Postgres (`tests/sql/`, en cada PR)
 
-Aplica `supabase_schema.sql` dos veces en un Postgres 16 limpio y verifica:
+Aplica `supabase_schema.sql` dos veces en un Postgres 16 limpio, y también
+sobre el esquema anterior a #35 con datos (`tests/sql/esquema_antes_35.sql` y
+`datos_antes_35.sql`: los gastos sin ítem se migran), y verifica:
 precarga de rubros; defaults; que la base rechace montos ≤ 0, descripciones
 vacías o largas, monedas, fechas futuras, cotizaciones inválidas o sin origen y
 rubros inexistentes; rubros únicos; qué columnas se pueden editar (un ítem no

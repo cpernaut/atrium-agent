@@ -536,13 +536,16 @@ def completar_cotizacion_imprevistos(client: Client, items: list[Fila]) -> list[
                 tc, origen, _ = cotizar(_fecha(item.get("fecha")))
                 if tc is not None:
                     cambios = {"tipo_cambio": str(tc), "tipo_cambio_origen": origen}
+                    # Only if it is still empty: never overwrite a manual rate saved
+                    # meanwhile by someone else (R4).
                     filas = _run(
                         client.table("presupuesto_items")
                         .update(cambios)
                         .eq("id", item["id"])
                         .eq("anulado", False)
+                        .is_("tipo_cambio", "null")
                     )
-                    item = filas[0] if filas else {**item, **cambios}
+                    item = filas[0] if filas else get_presupuesto_item(client, item["id"])
             except FinanzasError:
                 pass
         resultado.append(item)

@@ -44,6 +44,11 @@ class _Query:
         self.filters.append(lambda r: r.get(col) == value)
         return self
 
+    def is_(self, col, value):
+        assert value == "null", "the fake only supports is_(col, 'null')"
+        self.filters.append(lambda r: r.get(col) is None)
+        return self
+
     def ilike(self, col, pattern):
         needle = pattern.strip("%").lower()
         self.filters.append(lambda r: needle in str(r.get(col) or "").lower())

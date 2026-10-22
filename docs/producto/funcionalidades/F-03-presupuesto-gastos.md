@@ -152,7 +152,9 @@ siguen).
   la obra** (0 si no tiene). Se calcula una vez, al crearlo. Se puede editar,
   poner en 0 o borrar como cualquier ítem; si no hay uno vigente, el alta de ítem
   ofrece «Es el ítem de imprevistos». Ahí van los gastos que no tienen otro ítem.
-  Las obras que ya existían lo reciben con la migración.
+  Las obras que ya existían lo reciben con la migración. Los gastos cargados
+  antes de #35 pasan a un ítem vigente de su obra y rubro o, si no hay, a un ítem
+  nuevo «Gastos anteriores» en 0 (así conservan el rubro).
 - **R12b. Borrar un ítem con gastos** borra (anula) el ítem **y sus gastos**. El
   diálogo avisa cuántos gastos tiene y por qué monto, y el botón dice «Borrar ítem
   y gastos».

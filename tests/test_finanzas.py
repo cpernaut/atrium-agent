@@ -662,3 +662,33 @@ def test_describe_resumen_incluye_items(db, mep):
     texto = finanzas.describe_resumen(finanzas.resumen(db, 1, "ARS"), "Casa")
     assert "- Mesada: total ARS 1.000, gastado ARS 950 (95%), saldo ARS 50, 1 gasto(s)" in texto
     assert "(Cerca del límite)" in texto
+
+
+def test_completar_cotizacion_no_pisa_una_manual_concurrente(db, mep, monkeypatch):
+    """Revisión PR #38 / R4: si alguien guarda una cotización manual entre la lectura
+    y la escritura, la automática no la reemplaza."""
+
+    db.table("presupuesto_items").insert(
+        {
+            "obra_id": 1,
+            "rubro_id": _rubro(db, "Otros"),
+            "monto": "3700.00",
+            "moneda": "USD",
+            "fecha": finanzas.hoy().isoformat(),
+            "es_imprevistos": True,
+        }
+    ).execute()
+    leidos = finanzas.list_presupuesto(db, 1)  # lectura sin cotización
+    item_id = leidos[0]["id"]
+    real = finanzas.cotizar
+
+    def cotizar_mientras_otro_corrige(fecha):
+        finanzas.set_tipo_cambio(db, "presupuesto_items", item_id, "1111")
+        return real(fecha)
+
+    monkeypatch.setattr(finanzas, "cotizar", cotizar_mientras_otro_corrige)
+    resultado = finanzas.completar_cotizacion_imprevistos(db, leidos)
+
+    guardado = finanzas.get_presupuesto_item(db, item_id)
+    assert (guardado["tipo_cambio"], guardado["tipo_cambio_origen"]) == ("1111.0000", "manual")
+    assert resultado[0]["tipo_cambio_origen"] == "manual"  # devuelve el valor vigente

@@ -222,6 +222,21 @@ create unique index if not exists presupuesto_items_un_imprevistos
 -- base a partir del ítem, así nunca quedan inconsistentes.
 alter table public.gastos
     add column if not exists presupuesto_item_id bigint references public.presupuesto_items (id);
+-- Gastos cargados antes de #35 (sin ítem): van a un ítem vigente de su misma obra
+-- y rubro; si no hay, a un ítem nuevo «Gastos anteriores» en 0, así conservan el
+-- rubro. Solo toca gastos sin ítem: correrlo de nuevo no cambia nada.
+insert into public.presupuesto_items (obra_id, rubro_id, descripcion, monto, moneda)
+select distinct g.obra_id, g.rubro_id, 'Gastos anteriores', 0, o.moneda
+  from public.gastos g join public.obras o on o.id = g.obra_id
+ where g.presupuesto_item_id is null
+   and not exists (
+        select 1 from public.presupuesto_items i
+         where i.obra_id = g.obra_id and i.rubro_id = g.rubro_id and not i.anulado);
+update public.gastos g
+   set presupuesto_item_id = (
+        select min(i.id) from public.presupuesto_items i
+         where i.obra_id = g.obra_id and i.rubro_id = g.rubro_id and not i.anulado)
+ where g.presupuesto_item_id is null;
 alter table public.gastos alter column presupuesto_item_id set not null;
 create index if not exists gastos_item_idx on public.gastos (presupuesto_item_id);
 
