@@ -78,7 +78,10 @@ Para sumar normativa de otro municipio: agregar el PDF a `docs/`, correr
 ## Desarrollo
 
 ```bash
-pytest          # tests
+pytest          # unitarios + E2E simulado (los de Supabase real se saltean)
 ruff check .    # lint
 ruff format .   # formato
 ```
+
+Casos de prueba end to end (simulados y contra Supabase real): ver
+[`docs/casos-e2e.md`](docs/casos-e2e.md).

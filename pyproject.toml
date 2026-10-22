@@ -17,3 +17,6 @@ select = ["E", "F", "I", "UP", "B", "SIM", "C4"]
 pythonpath = ["."]
 testpaths = ["tests"]
 addopts = "-q"
+markers = [
+    "live: corre contra el Supabase real (requiere E2E_SUPABASE_*; ver tests/live/conftest.py)",
+]

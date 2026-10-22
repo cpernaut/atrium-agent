@@ -68,8 +68,8 @@ def require_login(supabase):
 
     st.title("🏗️ Atrium Agent")
     with st.form("login"):
-        email = st.text_input("Email")
-        password = st.text_input("Contraseña", type="password")
+        email = st.text_input("Email", key="login_email")
+        password = st.text_input("Contraseña", type="password", key="login_password")
         submitted = st.form_submit_button("Ingresar")
 
     if submitted:
@@ -116,7 +116,9 @@ def render_sidebar(supabase, user) -> str:
 
     with st.sidebar:
         st.write(f"👤 {user.email}")
-        seccion = st.radio("Sección", [SECCION_AGENTE, SECCION_OBRAS], horizontal=True)
+        seccion = st.radio(
+            "Sección", [SECCION_AGENTE, SECCION_OBRAS], horizontal=True, key="seccion"
+        )
         if seccion == SECCION_AGENTE:
             select_obra_activa(supabase)
         if st.button("Cerrar sesión"):

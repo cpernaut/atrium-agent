@@ -83,7 +83,7 @@ def _render_lista(supabase, lista: list[obras.Obra]) -> None:
     c2.metric("En curso", int((df["estado"] == "En curso").sum()))
     c3.metric("Avance promedio", f"{df['avance'].mean():.0f}%")
 
-    filtro = st.multiselect("Filtrar por estado", obras.ESTADOS)
+    filtro = st.multiselect("Filtrar por estado", obras.ESTADOS, key="lista_filtro")
     if filtro:
         df = df[df["estado"].isin(filtro)]
     columnas = [
@@ -113,15 +113,22 @@ def _render_lista(supabase, lista: list[obras.Obra]) -> None:
 
     st.subheader("Actualizar estado")
     por_id = {o["id"]: o for o in lista}
-    obra = por_id[st.selectbox("Obra", list(por_id), format_func=lambda i: _label(por_id[i]))]
+    obra = por_id[
+        st.selectbox(
+            "Obra", list(por_id), format_func=lambda i: _label(por_id[i]), key="lista_obra"
+        )
+    ]
     with st.form("actualizar_obra"):
         actual = obra.get("estado")
         estado = st.selectbox(
             "Estado",
             obras.ESTADOS,
             index=obras.ESTADOS.index(actual) if actual in obras.ESTADOS else 0,
+            key=f"upd_estado_{obra['id']}",
         )
-        avance = st.slider("Avance (%)", 0, 100, int(obra.get("avance") or 0))
+        avance = st.slider(
+            "Avance (%)", 0, 100, int(obra.get("avance") or 0), key=f"upd_avance_{obra['id']}"
+        )
         if st.form_submit_button("Guardar cambios"):
             try:
                 obras.update_obra(supabase, obra["id"], {"estado": estado, "avance": avance})
@@ -134,24 +141,29 @@ def _render_lista(supabase, lista: list[obras.Obra]) -> None:
 
 def _render_nueva(supabase) -> None:
     with st.form("nueva_obra", clear_on_submit=True):
-        nombre = st.text_input("Nombre de la obra *")
+        nombre = st.text_input("Nombre de la obra *", key="nueva_nombre")
         c1, c2 = st.columns(2)
-        cliente = c1.text_input("Cliente")
-        responsable = c2.text_input("Responsable")
+        cliente = c1.text_input("Cliente", key="nueva_cliente")
+        responsable = c2.text_input("Responsable", key="nueva_responsable")
         c1, c2 = st.columns([2, 1])
-        direccion = c1.text_input("Dirección")
+        direccion = c1.text_input("Dirección", key="nueva_direccion")
         municipio = c2.selectbox(
-            "Municipio", obras.MUNICIPIOS, help="Define qué código de edificación usa el agente."
+            "Municipio",
+            obras.MUNICIPIOS,
+            help="Define qué código de edificación usa el agente.",
+            key="nueva_municipio",
         )
         c1, c2 = st.columns(2)
-        tipo = c1.selectbox("Tipo", obras.TIPOS)
-        estado = c2.selectbox("Estado", obras.ESTADOS)
+        tipo = c1.selectbox("Tipo", obras.TIPOS, key="nueva_tipo")
+        estado = c2.selectbox("Estado", obras.ESTADOS, key="nueva_estado")
         c1, c2 = st.columns(2)
         inicio = c1.date_input("Fecha de inicio", value=None, format="DD/MM/YYYY")
         fin = c2.date_input("Fin estimado", value=None, format="DD/MM/YYYY")
         c1, c2 = st.columns([3, 1])
-        presupuesto = c1.number_input("Presupuesto", min_value=0.0, step=1000.0)
-        moneda = c2.selectbox("Moneda", obras.MONEDAS)
+        presupuesto = c1.number_input(
+            "Presupuesto", min_value=0.0, step=1000.0, key="nueva_presupuesto"
+        )
+        moneda = c2.selectbox("Moneda", obras.MONEDAS, key="nueva_moneda")
 
         if st.form_submit_button("Crear obra"):
             try:
@@ -187,8 +199,8 @@ def _render_bitacora(supabase, user, lista: list[obras.Obra]) -> None:
     )
 
     with st.form("nota_bitacora", clear_on_submit=True):
-        fecha = st.date_input("Fecha", value=date.today(), format="DD/MM/YYYY")
-        nota = st.text_area("Nota de obra")
+        fecha = st.date_input("Fecha", value=date.today(), format="DD/MM/YYYY", key="nota_fecha")
+        nota = st.text_area("Nota de obra", key="nota_texto")
         if st.form_submit_button("Agregar nota"):
             try:
                 obras.add_nota(supabase, obra_id, nota, autor=user.email, fecha=fecha)
