@@ -178,7 +178,7 @@ _NUEVO_ABIERTO = "item_nuevo_abierto"
 _EDITANDO = "item_editando"
 _A_BORRAR = "item_a_borrar"
 _NUEVO = "nuevo_item_"  # prefix of the new-item form widgets
-_GASTO_ABIERTO = "gasto_nuevo_item"  # id of the item whose «+ Agregar gasto» form is open
+_GASTO_ABIERTO = "gasto_nuevo_item"  # id of the item whose «Registrar un gasto» form is open
 _GASTO_A_ANULAR = "gasto_a_anular"
 _GASTO_TC = "gasto_tc_abierto"  # id of the gasto whose rate is being corrected
 
@@ -326,7 +326,8 @@ def _render_item(
             ("Cotización", _cotizacion_txt(item)),
         ]
         st.markdown("\n".join(f"- **{campo}:** {texto_seguro(valor)}" for campo, valor in detalle))
-        c1, c2 = st.columns(2)
+        # Las tres acciones del ítem, juntas: editarlo, borrarlo y registrarle un gasto.
+        c1, c2, c3 = st.columns(3)
         if c1.button("Editar ítem", key=f"item_editar_{item_id}", width="stretch"):
             _clear_prefix(_editar_prefijo(item_id))  # arranca con los valores actuales
             st.session_state[_EDITANDO] = item_id
@@ -335,17 +336,23 @@ def _render_item(
             st.session_state.pop(_GASTO_A_ANULAR, None)
             st.session_state[_A_BORRAR] = item_id
             st.rerun()
-
-        st.markdown("**Gastos de este ítem**")
-        _render_gastos_item(supabase, fila.gastos)
-        if cargando:
-            _form_nuevo_gasto(supabase, item)
-        elif st.button("+ Agregar gasto", key=f"gasto_agregar_{item_id}"):
+        if c3.button(
+            "Registrar un gasto",
+            key=f"gasto_agregar_{item_id}",
+            type="primary",
+            width="stretch",
+            disabled=cargando,
+        ):
             prefijo = _gasto_prefijo(item_id)
             _clear_prefix(prefijo)  # vacío al abrir...
             st.session_state[f"{prefijo}moneda"] = item["moneda"]  # ...salvo la moneda (R15)
             st.session_state[_GASTO_ABIERTO] = item_id
             st.rerun()
+        if cargando:
+            _form_nuevo_gasto(supabase, item)
+
+        st.markdown("**Gastos de este ítem**")
+        _render_gastos_item(supabase, fila.gastos)
 
 
 def _render_resumen_item(item: dict, fila: finanzas.FilaItem) -> None:
@@ -493,7 +500,7 @@ def _form_nuevo_gasto(supabase, item: dict) -> None:
         )
         b1, b2 = st.columns(2)
         guardar = b1.form_submit_button(
-            "Agregar gasto", type="primary", width="stretch", key=f"gasto_guardar_{item_id}"
+            "Guardar gasto", type="primary", width="stretch", key=f"gasto_guardar_{item_id}"
         )
         cancelar = b2.form_submit_button(
             "Cancelar", width="stretch", key=f"gasto_cancelar_{item_id}"
@@ -531,7 +538,7 @@ def _form_nuevo_gasto(supabase, item: dict) -> None:
         return
     _flash(
         "success",
-        "✅ Gasto agregado en "
+        "✅ Gasto registrado en "
         + texto_seguro(
             f"«{_item_nombre(item)}»: {finanzas.formato_monto(gasto['monto'], gasto['moneda'])}"
             f" · {_cotizacion_txt(gasto)}."

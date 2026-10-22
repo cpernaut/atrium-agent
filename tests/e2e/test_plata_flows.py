@@ -71,7 +71,7 @@ def _abrir_gasto(at, item_id):
 
 
 def _cargar_gasto(at, item_id, monto, descripcion, moneda=None, **mas):
-    """«+ Agregar gasto» inside the item, fill the form and save."""
+    """«Registrar un gasto» inside the item, fill the form and save."""
 
     at = _abrir_gasto(at, item_id)
     k = f"nuevo_gasto_{item_id}_"
@@ -118,7 +118,7 @@ def _seed_gasto(e2e, monto, moneda, rubro, tipo_cambio=None, item=None, **mas):
 # Gastos dentro de cada ítem (#35)
 # --------------------------------------------------------------------------- #
 def test_f03_ca_27_agregar_gasto_en_un_item(e2e):
-    """F-03-CA-27: «+ Agregar gasto» dentro del ítem guarda el gasto en ese ítem y
+    """F-03-CA-27: «Registrar un gasto» dentro del ítem guarda el gasto en ese ítem y
     actualiza el ítem, el rubro y los totales."""
 
     _obra(e2e)
@@ -128,7 +128,7 @@ def test_f03_ca_27_agregar_gasto_en_un_item(e2e):
     )
 
     assert not at.exception
-    assert "Gasto agregado en «Hierro del 8»: ARS 350.000" in visible(at)
+    assert "Gasto registrado en «Hierro del 8»: ARS 350.000" in visible(at)
     gasto = finanzas.list_gastos(e2e.db, 1)[0]
     assert gasto["presupuesto_item_id"] == item["id"]
     pantalla = visible(at)
@@ -175,7 +175,8 @@ def test_f03_ca_27c_cancelar_no_guarda(e2e):
     at = at.button(key=f"gasto_cancelar_{item['id']}").click().run()
 
     assert finanzas.list_gastos(e2e.db, 1) == []
-    assert at.button(key=f"gasto_agregar_{item['id']}").label == "+ Agregar gasto"
+    boton = at.button(key=f"gasto_agregar_{item['id']}")
+    assert boton.label == "Registrar un gasto" and not boton.disabled
 
 
 def test_f03_ca_28_datos_faltantes_no_se_guardan(e2e):
@@ -702,3 +703,27 @@ def test_f03_seg_4_respuesta_del_agente_no_carga_imagenes(e2e):
     assert "Listo ![x]" not in crudos
     at = at.run()
     assert "Listo ![x]" not in "\n".join(m.value for m in at.markdown)
+
+
+def test_f03_ca_27d_registrar_un_gasto_junto_a_editar_y_borrar(e2e):
+    """F-03-CA-27: cada ítem tiene «Registrar un gasto» junto a «Editar ítem» y
+    «Borrar ítem»; abre el formulario ahí mismo, ya vinculado al ítem, y no hay
+    ningún formulario de gasto fuera de los ítems."""
+
+    _obra(e2e)
+    item = _item(e2e, "Pintura", 100, descripcion="Látex")
+    at = _plata(e2e)
+    acciones = [b.key for b in at.tabs[PLATA].button if b.key and b.key.endswith(f"_{item['id']}")]
+    assert acciones[:3] == [
+        f"item_editar_{item['id']}",
+        f"item_borrar_{item['id']}",
+        f"gasto_agregar_{item['id']}",
+    ]
+    assert "Registrar un gasto" not in [s.value for s in at.tabs[PLATA].subheader]
+    assert not [
+        k for k in (w.key for w in at.tabs[PLATA].number_input) if k and k.startswith("gasto_")
+    ]
+
+    at = _abrir_gasto(at, item["id"])
+    assert at.button(key=f"gasto_agregar_{item['id']}").disabled  # ya está abierto
+    assert "Nuevo gasto en «Látex»" in visible(at)

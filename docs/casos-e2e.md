@@ -58,9 +58,10 @@ resultado esperado verificable.
 | F-03-CA-24 | Editar fuera de los campos permitidos | El dominio solo envía campos permitidos (la base lo garantiza: SQL y LIVE-19) |
 | F-03-CA-26 | Ítem de 100.000 con 89.000, 90.000, 100.000 y 101.000 gastados | Total, gastado y %, con 🟢 Dentro del presupuesto / 🟡 Cerca del límite / 🟡 / 🔴 Excedido |
 | F-03-CA-26b | Abrir un ítem con gastos | Sus gastos (solo los suyos), gastado, % y saldo |
-| F-03-CA-27 | «+ Agregar gasto» en un ítem | Gasto en ese ítem; ítem, rubro y totales actualizados; formulario cerrado y vacío al reabrir |
+| F-03-CA-27 | «Registrar un gasto» en un ítem | Gasto en ese ítem; ítem, rubro y totales actualizados; formulario cerrado y vacío al reabrir |
 | F-03-CA-27b | Formulario de gasto | Nombra el ítem; moneda precargada con la del ítem y editable |
 | F-03-CA-27c | Cancelar el gasto | No guarda nada |
+| F-03-CA-27d | Acciones de un ítem | «Registrar un gasto» junto a Editar ítem y Borrar ítem; abre el formulario ahí, vinculado al ítem |
 | F-03-CA-28 | Gasto sin monto o sin descripción | Dice qué falta, no guarda y conserva lo escrito |
 | F-03-CA-29 | Anular un gasto | Diálogo que lo nombra; Cancelar no cambia nada; confirmar lo tacha («Anulado»), deja de sumar y sigue en la base |
 | F-03-CA-29b | Cerrar el diálogo de anulación | Equivale a cancelar |
