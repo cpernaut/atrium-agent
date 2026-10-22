@@ -1,0 +1,34 @@
+# «Esquema aplicado»: check obligatorio del auto-merge.
+#
+# Mergear a main publica la app, pero supabase_schema.sql no se aplica solo. Si
+# el PR cambia el esquema, este check falla hasta que alguien lo corra en
+# Supabase y le ponga al PR la etiqueta «esquema aplicado». La etiqueta queda
+# atada al contenido exacto del esquema: si después cambia (commit nuevo,
+# force-push), se quita sola. Sin cambios de esquema, pasa enseguida.
+# Lógica: .github/scripts/esquema_aplicado.py.
+
+name: Listo para mergear
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled, ready_for_review]
+
+# Sin grupo de concurrencia: GitHub descartaría corridas pendientes (por ejemplo,
+# la del evento «labeled»). Cada corrida decide sola con datos frescos del PR.
+
+jobs:
+  esquema:
+    name: Esquema aplicado
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/scripts
+      - name: Verificar si el esquema está aplicado
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 .github/scripts/esquema_aplicado.py

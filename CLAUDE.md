@@ -17,10 +17,18 @@ Supabase. Desplegada en Streamlit Community Cloud desde `main`.
   en vez de inventarla. Si un pedido contradice una ficha, avisarlo primero.
 - Un PR por ficha. En el mismo PR: código, tests, ficha en `Hecha`, roadmap,
   glosario si hay términos nuevos, y `docs/casos-e2e.md`.
+- **Auto-merge:** al abrir un PR, activarle el auto-merge
+  (`PUT repos/{owner}/{repo}/pulls/{n}/ccr/auto_merge`). Se mergea solo cuando
+  pasan los checks obligatorios de `main`: «Tests y lint», «Esquema y seguridad
+  en Postgres», «Revisión sin bloqueantes» y «Esquema aplicado». Si la revisión
+  marca bloqueantes, arreglarlos en el mismo PR.
 - Si el PR cambia `supabase_schema.sql`, la descripción del PR dice
   **«Antes de mergear: correr supabase_schema.sql»**, porque el esquema no se
-  aplica solo. Con el conector de Supabase se puede aplicar y verificar,
-  pidiéndolo antes.
+  aplica solo, y el check «Esquema aplicado» frena el merge hasta que el PR tenga
+  la etiqueta `esquema aplicado`. Con el conector de Supabase se puede aplicar y
+  verificar, pidiéndolo antes; después se pone la etiqueta. Si el check quedara trabado
+  con el esquema ya aplicado (eventos de GitHub fuera de orden), se destraba
+  sacando y volviendo a poner la etiqueta.
 - Commits y PRs en español.
 
 ## Arquitectura (respetarla)
