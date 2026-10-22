@@ -1,7 +1,9 @@
 # Revisión automática de cada PR.
 # 1) Tests y lint, y esquema + seguridad en Postgres. 2) Si pasan, un modelo de
 #    OpenAI (Codex) revisa los cambios y deja un comentario en el PR.
-# La revisión NUNCA aprueba ni mergea: eso queda en manos de una persona.
+# 3) «Revisión sin bloqueantes» falla si la revisión encontró bloqueantes (o no
+#    llegó a correr). Es uno de los checks obligatorios del auto-merge: junto con
+#    «Esquema aplicado» (listo-para-mergear.yml), decide si el PR se mergea solo.
 #
 # Requiere el secret OPENAI_API_KEY (Settings → Secrets and variables → Actions).
 
@@ -134,5 +136,28 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.payload.pull_request.number,
-              body: `### 🤖 Revisión automática (OpenAI)\n\n${process.env.RESULTADO}\n\n_Esta revisión no aprueba ni mergea el PR._`,
+              body: `### 🤖 Revisión automática (OpenAI)\n\n${process.env.RESULTADO}\n\n_Si dice «Sin bloqueantes» y los demás checks pasan, el PR se mergea solo (auto-merge)._`,
             });
+
+  veredicto:
+    name: Revisión sin bloqueantes
+    needs: review
+    # Corre siempre, para que un error o una revisión salteada también frenen el merge.
+    if: always()
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Verificar el resultado de la revisión
+        env:
+          ESTADO: ${{ needs.review.result }}
+          RESULTADO: ${{ needs.review.outputs.resultado }}
+        run: |
+          if [ "$ESTADO" != "success" ]; then
+            echo "::error::La revisión automática no terminó bien ($ESTADO): no se mergea solo."
+            exit 1
+          fi
+          primera=$(printf '%s\n' "$RESULTADO" | sed -n '/[^[:space:]]/{p;q}' | tr -d '*_#>`' | sed 's/^[[:space:]]*[0-9.]*[[:space:]]*//')
+          case "$primera" in
+            "Sin bloqueantes"*) echo "Sin bloqueantes: puede mergearse." ;;
+            *) echo "::error::La revisión encontró bloqueantes: «$primera»"; exit 1 ;;
+          esac

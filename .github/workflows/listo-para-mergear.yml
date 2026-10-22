@@ -1,0 +1,44 @@
+# «Esquema aplicado»: check obligatorio del auto-merge.
+#
+# Mergear a main publica la app, pero supabase_schema.sql no se aplica solo. Si
+# el PR cambia el esquema, este check falla hasta que alguien lo corra en
+# Supabase y le ponga al PR la etiqueta «esquema aplicado». Sin cambios de
+# esquema, pasa enseguida.
+
+name: Listo para mergear
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled, ready_for_review]
+
+jobs:
+  esquema:
+    name: Esquema aplicado
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const archivos = await github.paginate(github.rest.pulls.listFiles, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: pr.number,
+              per_page: 100,
+            });
+            const cambiaEsquema = archivos.some((a) => a.filename === "supabase_schema.sql");
+            if (!cambiaEsquema) {
+              core.info("El PR no cambia supabase_schema.sql.");
+              return;
+            }
+            const etiquetas = pr.labels.map((l) => l.name);
+            if (etiquetas.includes("esquema aplicado")) {
+              core.info("Cambia el esquema y tiene la etiqueta «esquema aplicado».");
+              return;
+            }
+            core.setFailed(
+              "Este PR cambia supabase_schema.sql. Antes de mergear: correr el esquema en " +
+              "Supabase y ponerle al PR la etiqueta «esquema aplicado»."
+            );
