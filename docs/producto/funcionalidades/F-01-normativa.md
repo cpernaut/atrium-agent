@@ -13,7 +13,7 @@ fuente, para no tener que buscar a mano en PDFs de cientos de páginas.
 - Códigos cargados: **La Plata** y **Berazategui** (`docs/*.pdf`).
 - Recuperación por similitud (Chroma) y respuesta del modelo con el contexto.
 - Login con Supabase e historial privado por usuario (tabla `mensajes`).
-- Con **obra activa**, la búsqueda se limita al código de su municipio (ver F-02).
+- Con una **obra elegida**, la búsqueda se limita al código de su municipio (ver F-02).
 
 ## Criterios de aceptación (cubiertos por tests)
 

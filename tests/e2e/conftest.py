@@ -97,7 +97,21 @@ class Harness:
         return click(at, "Ingresar")
 
     def go_to_obras(self, at: AppTest) -> AppTest:
-        return at.radio(key="seccion").set_value("📋 Obras").run()
+        """The app opens on Obras (#33): there is no section to pick, only a reload."""
+
+        return at.run()
+
+    def abrir_agente(self, at: AppTest) -> AppTest:
+        """Open the floating agent (bottom right) if it is closed."""
+
+        if any(b.key == "agente_abrir" for b in at.button):
+            at = at.button(key="agente_abrir").click().run()
+        return at
+
+    def elegir_obra(self, at: AppTest, obra_id: int) -> AppTest:
+        """The single obra picker at the top of the page (UX-02)."""
+
+        return at.selectbox(key="obra_elegida").set_value(obra_id).run()
 
 
 def click(at: AppTest, label: str) -> AppTest:

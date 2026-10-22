@@ -16,7 +16,7 @@ Convención: el código (funciones, módulos, docstrings) está en inglés, pero
 | **Estado de obra** | Planificación · En curso · Pausada · Terminada · Cancelada | `obras.estado` · `ESTADOS` |
 | **Avance** | Porcentaje físico de la obra, de 0 a 100. | `obras.avance` |
 | **Bitácora** | Registro cronológico de lo que pasa en la obra. Cada entrada es una **nota**. | tabla `bitacora` |
-| **Obra activa** | La obra elegida en la barra lateral; le da contexto al agente. | `obra_activa` (sesión) · `obra_id` (estado del grafo) |
+| **Obra elegida** | La obra que se elige arriba de la pantalla: la usan todas las pestañas y el agente. Por defecto, la última usada o la En curso más nueva. | `obra_elegida` (sesión) · `obras.obra_por_defecto` · `obra_id` (estado del grafo) |
 | **Normativa** | Códigos de edificación municipales cargados en `docs/` e indexados. | Chroma, colección `obra` |
 | **Agente** | El asistente de chat. Responde normativa y lee o escribe obras con herramientas. | `atrium/rag.py` · `atrium/obra_tools.py` |
 | **Equipo** | Los usuarios con login. Todos ven y editan todas las obras. | rol `authenticated` en RLS |

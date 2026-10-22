@@ -34,7 +34,7 @@ def _item(e2e, rubro, monto, moneda="ARS", descripcion=None):
 
 def _plata(e2e):
     at = e2e.go_to_obras(e2e.login())
-    return at.selectbox(key="plata_obra").set_value(1).run()
+    return e2e.elegir_obra(at, 1)
 
 
 def _tab(at):

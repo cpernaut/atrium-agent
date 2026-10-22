@@ -51,6 +51,39 @@ def list_obras(client: Client, estado: str | None = None) -> list[Obra]:
     return _run(query)
 
 
+# Order in the obra picker: what is being worked on first (UX-02).
+_PRIORIDAD_ESTADO = {
+    estado: i
+    for i, estado in enumerate(("En curso", "Planificación", "Pausada", "Terminada", "Cancelada"))
+}
+
+
+def ordenar_para_elegir(lista: list[Obra]) -> list[Obra]:
+    """Obras for the picker: En curso first, Terminada/Cancelada last.
+
+    The sort is stable, so within each estado the order of ``lista`` (newest
+    first, as ``list_obras`` returns it) is kept.
+    """
+
+    return sorted(lista, key=lambda o: _PRIORIDAD_ESTADO.get(o.get("estado"), 99))
+
+
+def obra_por_defecto(lista: list[Obra], ultima: int | None = None) -> int | None:
+    """The obra to show when nothing was chosen (UX-02).
+
+    The last one used if it still exists; else the newest En curso; else the
+    first one in picker order, so a Terminada or Cancelada obra is never the
+    default while another one is active.
+    """
+
+    if not lista:
+        return None
+    ids = {o["id"] for o in lista}
+    if ultima in ids:
+        return ultima
+    return ordenar_para_elegir(lista)[0]["id"]
+
+
 def get_obra(client: Client, obra_id: int) -> Obra | None:
     rows = _run(client.table("obras").select("*").eq("id", obra_id).limit(1))
     return rows[0] if rows else None

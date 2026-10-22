@@ -1,7 +1,7 @@
-"""Streamlit UI for Atrium: the obra assistant chat and the obras tracker.
+"""Streamlit UI for Atrium: the obras tracker with the agent as a floating chat.
 
 Run with ``streamlit run app.py``. All domain logic lives in the ``atrium``
-package; this module (and ``obras_ui.py``) is only wiring and rendering.
+package; this module (and the ``*_ui.py`` screens) is only wiring and rendering.
 
 Secrets (``.streamlit/secrets.toml`` locally, or the app's Secrets on
 Streamlit Cloud) — see ``.env.example`` for the full list:
@@ -30,12 +30,12 @@ from pathlib import Path  # noqa: E402
 from langgraph.checkpoint.memory import MemorySaver  # noqa: E402
 from supabase import AuthApiError  # noqa: E402
 
-from atrium import auth, observability, persistence  # noqa: E402
+from agente_ui import load_history, render_agente  # noqa: E402
+from atrium import auth, observability  # noqa: E402
 from atrium.config import ConfigError, settings  # noqa: E402
 from atrium.rag import build_graph  # noqa: E402
 from atrium.vectorstore import collection_size  # noqa: E402
-from obras_ui import render_obras_page, select_obra_activa  # noqa: E402
-from ui_utils import respuesta_segura, texto_seguro  # noqa: E402
+from obras_ui import render_obras_page  # noqa: E402
 
 observability.refresh_env_cache()
 
@@ -123,43 +123,13 @@ def require_login(supabase):
 
 
 # --------------------------------------------------------------------------- #
-# History (Supabase-backed, best-effort)
-# --------------------------------------------------------------------------- #
-def load_history(supabase, user_id) -> list[dict]:
-    try:
-        messages = persistence.load_history(supabase, user_id)
-    except persistence.PersistenceError as exc:
-        st.session_state.persistence_error = str(exc)
-        return []
-    st.session_state.pop("persistence_error", None)
-    return [{"role": m.role, "content": m.content} for m in messages]
-
-
-def save_exchange(supabase, user_id, thread_id, question, answer) -> None:
-    try:
-        persistence.save_exchange(supabase, user_id, thread_id, question, answer)
-    except persistence.PersistenceError as exc:
-        st.session_state.persistence_error = str(exc)
-        st.toast("⚠️ No se pudo guardar el historial en Supabase", icon="⚠️")
-
-
-# --------------------------------------------------------------------------- #
 # Sidebar
 # --------------------------------------------------------------------------- #
-SECCION_AGENTE = "🤖 Agente"
-SECCION_OBRAS = "📋 Obras"
-
-
-def render_sidebar(supabase, user) -> str:
-    """Draw the sidebar; returns the selected section."""
+def render_sidebar(supabase, user) -> None:
+    """Account and diagnostics. Navigation lives on the page (no sections to pick)."""
 
     with st.sidebar:
         st.write(f"👤 {user.email}")
-        seccion = st.radio(
-            "Sección", [SECCION_AGENTE, SECCION_OBRAS], horizontal=True, key="seccion"
-        )
-        if seccion == SECCION_AGENTE:
-            select_obra_activa(supabase)
         if st.button("Cerrar sesión"):
             auth.sign_out(supabase)
             st.session_state.clear()
@@ -167,7 +137,6 @@ def render_sidebar(supabase, user) -> str:
 
         with st.expander("Diagnóstico"):
             _diagnostics()
-    return seccion
 
 
 def _diagnostics() -> None:
@@ -206,61 +175,6 @@ def _has_openai_key() -> bool:
 
 
 # --------------------------------------------------------------------------- #
-# Chat
-# --------------------------------------------------------------------------- #
-def render_history() -> None:
-    for message in st.session_state.get("history", []):
-        with st.chat_message(message["role"]):
-            st.markdown(respuesta_segura(message["content"]))
-            for accion in message.get("acciones", []):
-                st.caption(texto_seguro(accion))
-            if message.get("context"):
-                with st.expander("📄 Contexto recuperado"):
-                    st.markdown(message["context"])
-
-
-def handle_prompt(supabase, user, prompt: str) -> None:
-    st.session_state.setdefault("history", [])
-    st.session_state.history.append({"role": "user", "content": prompt})
-    with st.chat_message("user"):
-        st.markdown(prompt)
-
-    with st.chat_message("assistant"):
-        run_url = None
-        with st.spinner("Pensando…"):
-            try:
-                with observability.trace() as tracer:
-                    result = st.session_state.graph.invoke(
-                        {"mensajes": [prompt], "obra_id": st.session_state.get("obra_activa")},
-                        {"configurable": {"thread_id": st.session_state.thread_id}},
-                    )
-                    if tracer is not None:
-                        try:
-                            run_url = tracer.get_run_url()
-                        except Exception:  # noqa: BLE001 - link is best-effort
-                            run_url = None
-            except Exception as exc:  # noqa: BLE001 - show the error, not a blank reply
-                st.exception(exc)
-                st.stop()
-
-        answer = result["mensajes"][-1]
-        context = result.get("context", "")
-        acciones = result.get("acciones") or []
-        st.markdown(respuesta_segura(answer))
-        for accion in acciones:
-            st.caption(texto_seguro(accion))
-        with st.expander("📄 Contexto recuperado"):
-            st.markdown(context or "_(vacío)_")
-        if run_url:
-            st.caption(f"[🔎 Ver traza en LangSmith]({run_url})")
-
-    st.session_state.history.append(
-        {"role": "assistant", "content": answer, "context": context, "acciones": acciones}
-    )
-    save_exchange(supabase, user.id, st.session_state.thread_id, prompt, answer)
-
-
-# --------------------------------------------------------------------------- #
 # Page
 # --------------------------------------------------------------------------- #
 supabase = get_supabase()
@@ -275,16 +189,9 @@ if "history" not in st.session_state:
 if "thread_id" not in st.session_state:
     st.session_state.thread_id = str(uuid.uuid4())
 
-seccion = render_sidebar(supabase, user)
+render_sidebar(supabase, user)
 
-if seccion == SECCION_OBRAS:
-    render_obras_page(supabase, user)
-    st.stop()
-
+# #33: after login the app opens on Obras; the agent floats bottom right.
 titulo()
-st.caption("Normativa de obra y seguimiento de tus obras")
-
-render_history()
-
-if prompt := st.chat_input("Preguntá normativa o pedí algo sobre tus obras…"):
-    handle_prompt(supabase, user, prompt)
+obra = render_obras_page(supabase, user)
+render_agente(supabase, user, obra)

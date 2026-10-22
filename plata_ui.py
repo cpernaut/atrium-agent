@@ -13,7 +13,7 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
-from atrium import finanzas, obras
+from atrium import finanzas
 from ui_utils import texto_seguro
 
 _SCHEMA_HINT = (
@@ -72,20 +72,14 @@ def _rubro_nombre(rubros_por_id: dict, rubro_id) -> str:
 # --------------------------------------------------------------------------- #
 # Page
 # --------------------------------------------------------------------------- #
-def render_plata(supabase, lista: list[obras.Obra]) -> None:
-    if not lista:
+def render_plata(supabase, obra_id: int | None) -> None:
+    """Budget of the obra chosen at the top of the page (one picker for the app, UX-02)."""
+
+    if obra_id is None:
         st.info("Cargá una obra primero.")
         return
 
-    por_id = {o["id"]: o for o in lista}
-    c1, c2 = st.columns([3, 2])
-    obra_id = c1.selectbox(
-        "Obra",
-        list(por_id),
-        format_func=lambda i: f"{por_id[i]['nombre']} (#{i})",
-        key="plata_obra",
-    )
-    moneda = c2.radio(
+    moneda = st.radio(
         "Ver montos en",
         finanzas.MONEDAS,
         horizontal=True,
