@@ -2,9 +2,10 @@
 #
 # Mergear a main publica la app, pero supabase_schema.sql no se aplica solo. Si
 # el PR cambia el esquema, este check falla hasta que alguien lo corra en
-# Supabase y le ponga al PR la etiqueta «esquema aplicado». Si después llega un
-# commit que vuelve a cambiar el esquema, la etiqueta se quita sola. Sin cambios
-# de esquema, pasa enseguida. Lógica: .github/scripts/esquema_aplicado.py.
+# Supabase y le ponga al PR la etiqueta «esquema aplicado». La etiqueta queda
+# atada al contenido exacto del esquema: si después cambia (commit nuevo,
+# force-push), se quita sola. Sin cambios de esquema, pasa enseguida.
+# Lógica: .github/scripts/esquema_aplicado.py.
 
 name: Listo para mergear
 
@@ -14,7 +15,8 @@ on:
 
 concurrency:
   group: listo-para-mergear-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
+  # Sin cancelar: cada corrida decide sola con datos frescos del PR.
+  cancel-in-progress: false
 
 jobs:
   esquema:
