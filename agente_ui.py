@@ -13,6 +13,7 @@ from __future__ import annotations
 import streamlit as st
 
 from atrium import obras, observability, persistence
+from obras_ui import olvidar_formularios_de_obra
 from ui_utils import respuesta_segura, texto_seguro
 
 ABIERTO = "agente_abierto"
@@ -171,5 +172,7 @@ def handle_prompt(supabase, user, prompt: str, obra_id: int | None) -> None:
     save_exchange(supabase, user.id, st.session_state.thread_id, prompt, answer)
     if acciones:
         # The agent changed data shown on the page (avance, notes, gastos): reload
-        # so the screen behind the chat is up to date. The answer stays in history.
+        # so the screen behind the chat is up to date, forms included. The answer
+        # stays in history.
+        olvidar_formularios_de_obra()
         st.rerun()

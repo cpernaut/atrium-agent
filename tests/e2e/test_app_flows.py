@@ -427,3 +427,23 @@ def test_agente_flotante_actualiza_la_pantalla(e2e):
 
     assert at.dataframe[0].value.set_index("nombre").loc["Casa Lote 12", "avance"] == 70
     assert "Avance en 70%." in texts(at)
+
+
+def test_agente_2b_el_formulario_no_pisa_lo_que_cargo_el_agente(e2e):
+    """AGENTE-2 (revisión PR #43): si el agente cambia el avance y después se guarda
+    el estado desde «Actualizar», el avance nuevo se conserva."""
+
+    _seed(e2e.db)
+    e2e.script(
+        tool_call("actualizar_obra", {"avance": 70}, "c1"),
+        AIMessage(content="Avance en 70%."),
+    )
+    at = e2e.elegir_obra(e2e.login(), 1)
+    assert at.slider(key="upd_avance_1").value == 30
+    at = e2e.abrir_agente(at).chat_input(key="agente_input").set_value("Avance 70").run()
+
+    assert at.slider(key="upd_avance_1").value == 70  # el formulario muestra el dato nuevo
+    at.selectbox(key="upd_estado_1").set_value("Pausada")
+    at = click(at, "Guardar cambios")
+    obra = obras.get_obra(e2e.db, 1)
+    assert (obra["estado"], obra["avance"]) == ("Pausada", 70)

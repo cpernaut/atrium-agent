@@ -34,6 +34,7 @@ resultado esperado verificable.
 | UX-02-CA-3 | Obra elegida | Abrir y cerrar el agente, recargar | La obra elegida se mantiene |
 | AGENTE-1 | Agente | Abrir el agente, preguntar, cerrar y volver a abrir | Panel con la obra sobre la que trabaja y ayuda para empezar; la conversación se conserva |
 | AGENTE-2 | Agente | Pedirle que cambie el avance | La pantalla de atrás se recarga con el dato nuevo |
+| AGENTE-2b | Agente | Cambiar el avance por chat y después guardar el estado en «Actualizar» | El formulario muestra el avance nuevo y no lo pisa |
 | E2E-18 | Historial | Sesión con la carga del historial interrumpida | La app no se rompe: vuelve a cargarlo |
 
 ## E2E simulado — F-03 Presupuesto y gastos (`tests/e2e/test_plata_flows.py` y `test_presupuesto_flows.py`)

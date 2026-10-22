@@ -71,6 +71,18 @@ def select_obra(lista: list[obras.Obra]) -> int | None:
     return elegida
 
 
+def olvidar_formularios_de_obra() -> None:
+    """Forget the «Actualizar» widgets, so they show the obra's current data.
+
+    Called when the data changed elsewhere (the agent updated avance or estado):
+    otherwise Streamlit keeps the old widget values and saving the form would
+    write them back over the new data.
+    """
+
+    for clave in [k for k in st.session_state if str(k).startswith(("upd_estado_", "upd_avance_"))]:
+        st.session_state.pop(clave, None)
+
+
 # --------------------------------------------------------------------------- #
 # Obras page
 # --------------------------------------------------------------------------- #
