@@ -33,18 +33,30 @@ def decidir(
     recien_etiquetado: bool,
     confirmado: str | None,
     actual: str | None,
+    etiquetado: str | None = None,
 ) -> tuple[bool, str]:
-    """(passes, action) where action is "", "registrar" or "quitar". Pure, tested."""
+    """(passes, action) where action is "", "registrar" or "quitar". Pure, tested.
+
+    ``actual``: schema blob SHA at the PR head now. ``etiquetado``: at the commit
+    the PR had when the label was added (the event's head). ``None`` means it
+    couldn't be read (API error, file deleted): never approves.
+    """
 
     if not cambia_esquema:
         return True, ""
     if not tiene_etiqueta:
         return False, ""
+    if actual is None:
+        return False, "quitar"  # can't verify the schema: never approve
     if recien_etiquetado:
-        return True, "registrar"  # confirms the schema as it is now
+        # The label confirms the schema of the commit that was labeled; a push that
+        # arrived before this run (another schema) doesn't get confirmed by it.
+        if etiquetado is not None and etiquetado == actual:
+            return True, "registrar"
+        return False, "quitar"
     if confirmado is not None and confirmado == actual:
         return True, ""
-    return False, "quitar"  # the schema changed (or can't be checked) since it was confirmed
+    return False, "quitar"  # the schema changed since it was confirmed
 
 
 MENSAJES = {
@@ -78,10 +90,12 @@ def main() -> int:
     archivos = _gh(
         "--paginate", f"repos/{repo}/pulls/{numero}/files", "--jq", ".[].filename"
     ).split()
-    actual = (
-        _gh(f"repos/{repo}/contents/{ESQUEMA}?ref={head}", "--jq", ".sha", check=False).strip()
-        or None
-    )
+
+    def blob(ref: str) -> str | None:
+        sha = _gh(f"repos/{repo}/contents/{ESQUEMA}?ref={ref}", "--jq", ".sha", check=False)
+        return sha.strip() if re.fullmatch(r"[0-9a-f]{40}", sha.strip()) else None
+
+    actual = blob(head)
     etiquetas = [e["name"] for e in pr.get("labels", [])]
     recien = (
         evento.get("action") == "labeled"
@@ -98,7 +112,10 @@ def main() -> int:
             if marca and c.get("user", {}).get("login") == BOT:
                 confirmado = marca.group(1)  # the last one wins
 
-    pasa, accion = decidir(ESQUEMA in archivos, ETIQUETA in etiquetas, recien, confirmado, actual)
+    etiquetado = blob(evento["pull_request"]["head"]["sha"]) if recien else None
+    pasa, accion = decidir(
+        ESQUEMA in archivos, ETIQUETA in etiquetas, recien, confirmado, actual, etiquetado
+    )
     if accion == "registrar" and actual:
         _gh(
             "-X",

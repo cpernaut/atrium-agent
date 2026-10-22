@@ -19,7 +19,6 @@ A, B = "a" * 40, "b" * 40
     [
         (False, False, False, None, A, (True, "")),  # no toca el esquema: pasa
         (True, False, False, None, A, (False, "")),  # cambia el esquema: espera la etiqueta
-        (True, True, True, None, A, (True, "registrar")),  # se etiqueta: registra la huella
         (True, True, False, A, A, (True, "")),  # misma huella: pasa
         (True, True, False, A, B, (False, "quitar")),  # commit nuevo o force-push: se invalida
         (True, True, False, None, A, (False, "quitar")),  # etiqueta sin huella registrada
@@ -29,7 +28,29 @@ A, B = "a" * 40, "b" * 40
 def test_decidir(cambia, etiqueta, recien, confirmado, actual, esperado):
     """AUTO-MERGE-1: la etiqueta «esquema aplicado» vale solo para el esquema que se confirmó."""
 
-    assert decidir(cambia, etiqueta, recien, confirmado, actual) == esperado
+    assert decidir(cambia, etiqueta, recien, confirmado, actual, etiquetado=actual) == esperado
+
+
+def test_etiquetar_registra_el_esquema_del_commit_etiquetado():
+    """AUTO-MERGE-3: al etiquetar se confirma el esquema del commit que tenía el PR."""
+
+    assert decidir(True, True, True, None, A, etiquetado=A) == (True, "registrar")
+
+
+def test_etiqueta_en_a_y_push_de_b_antes_de_correr_no_aprueba():
+    """AUTO-MERGE-4: si llega un push con otro esquema antes de que corra el check de la
+    etiqueta, no se confirma el esquema nuevo."""
+
+    assert decidir(True, True, True, None, B, etiquetado=A) == (False, "quitar")
+
+
+@pytest.mark.parametrize("recien", [True, False])
+def test_esquema_ilegible_o_borrado_nunca_aprueba(recien):
+    """AUTO-MERGE-5: si no se puede leer el esquema (error de la API o archivo borrado),
+    el check falla, también justo al etiquetar."""
+
+    assert decidir(True, True, recien, A, None, etiquetado=None) == (False, "quitar")
+    assert decidir(True, True, True, None, A, etiquetado=None) == (False, "quitar")
 
 
 def test_otra_etiqueta_despues_de_un_cambio_no_aprueba():
