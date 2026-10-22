@@ -264,6 +264,12 @@ begin
     if new.obra_id is not null and new.obra_id <> item.obra_id then
         raise exception 'El ítem es de otra obra.' using errcode = '23514';
     end if;
+    -- R7: un rubro desactivado no recibe gastos nuevos ni gastos movidos desde
+    -- otro ítem. Los gastos que ya estaban se siguen pudiendo editar sin moverlos.
+    if (tg_op = 'INSERT' or new.presupuesto_item_id is distinct from old.presupuesto_item_id)
+       and exists (select 1 from public.rubros r where r.id = item.rubro_id and not r.activo) then
+        raise exception 'El rubro del ítem está desactivado.' using errcode = '23514';
+    end if;
     new.obra_id := item.obra_id;
     new.rubro_id := item.rubro_id;
     return new;

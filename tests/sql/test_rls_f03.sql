@@ -161,6 +161,25 @@ select pg_temp.ok((select g.rubro_id = r.id and g.editado_por = '00000000-0000-0
 update public.gastos set presupuesto_item_id = (select id from item_hierro),
   fecha = fecha - 1, proveedor = 'Hierros Sur', monto = 350000, moneda = 'ARS'
   where descripcion = 'Hierro';
+-- R7 en la base: no se mueve ni se carga un gasto en un ítem de rubro desactivado;
+-- un gasto que ya estaba ahí se sigue editando sin moverlo.
+insert into public.rubros (nombre, orden) values ('Rubro viejo', 900);
+insert into public.presupuesto_items (obra_id, rubro_id, descripcion, monto, moneda)
+  select o.id, r.id, 'En rubro viejo', 0, 'ARS' from public.obras o, public.rubros r
+  where o.nombre = 'Obra RLS' and r.nombre = 'Rubro viejo';
+insert into public.gastos (presupuesto_item_id, descripcion, monto, moneda)
+  select id, 'Histórico', 5, 'ARS' from public.presupuesto_items where descripcion = 'En rubro viejo';
+update public.rubros set activo = false where nombre = 'Rubro viejo';
+select pg_temp.falla($$update public.gastos set presupuesto_item_id =
+  (select id from public.presupuesto_items where descripcion = 'En rubro viejo')
+  where descripcion = 'Hierro'$$, '23514');
+select pg_temp.falla($$insert into public.gastos (presupuesto_item_id, descripcion, monto, moneda)
+  select id, 'Nuevo', 5, 'ARS' from public.presupuesto_items where descripcion = 'En rubro viejo'$$,
+  '23514');
+update public.gastos set monto = 6, presupuesto_item_id = presupuesto_item_id
+  where descripcion = 'Histórico';
+select pg_temp.ok((select monto = 6 from public.gastos where descripcion = 'Histórico'),
+                  'rubro desactivado: no recibe gastos nuevos ni movidos; los que ya tiene se editan');
 select pg_temp.falla($$update public.gastos set creado_por = null$$, '42501');
 select pg_temp.falla($$update public.gastos set editado_por = null$$, '42501');
 select pg_temp.falla($$update public.gastos set created_at = now()$$, '42501');
@@ -218,8 +237,8 @@ delete from public.presupuesto_items;
 delete from public.rubros;
 select pg_temp.ok((select count(*) from public.gastos where descripcion = 'Hierro') = 1
                   and (select count(*) from public.presupuesto_items i join public.obras o on o.id = i.obra_id
-                       where o.nombre = 'Obra RLS') = 5
-                  and (select count(*) from public.rubros) = 19,
+                       where o.nombre = 'Obra RLS') = 6
+                  and (select count(*) from public.rubros) = 20,
                   'sin DELETE: gastos, presupuesto y rubros no se borran');
 
 -- Borrar (anular) un ítem anula también sus gastos (R12b).
