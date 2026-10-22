@@ -21,7 +21,7 @@ A, B = "a" * 40, "b" * 40
         (True, False, False, None, A, (False, "")),  # cambia el esquema: espera la etiqueta
         (True, True, False, A, A, (True, "")),  # misma huella: pasa
         (True, True, False, A, B, (False, "quitar")),  # commit nuevo o force-push: se invalida
-        (True, True, False, None, A, (False, "quitar")),  # etiqueta sin huella registrada
+        (True, True, False, None, A, (False, "")),  # etiqueta aún sin registrar: espera
         (True, True, False, A, None, (False, "quitar")),  # no se pudo leer el esquema
     ],
 )
@@ -63,3 +63,26 @@ def test_otra_etiqueta_despues_de_un_cambio_no_aprueba():
 def test_todos_los_resultados_tienen_mensaje():
     for clave in [(True, ""), (True, "registrar"), (False, ""), (False, "quitar")]:
         assert esquema_aplicado.MENSAJES[clave]
+
+
+def test_synchronize_antes_que_labeled_no_quita_la_etiqueta():
+    """AUTO-MERGE-6: si la corrida del push llega antes que la de la etiqueta, espera
+    sin quitarla; después la de la etiqueta la registra y aprueba."""
+
+    assert decidir(True, True, False, None, A, etiquetado=None) == (False, "")
+    assert decidir(True, True, True, None, A, etiquetado=A) == (True, "registrar")
+
+
+@pytest.mark.parametrize(
+    "archivos, esperado",
+    [
+        ([{"filename": "app.py"}], False),
+        ([{"filename": "supabase_schema.sql"}], True),
+        ([{"filename": "db/esquema.sql", "previous_filename": "supabase_schema.sql"}], True),
+        ([{"filename": "supabase_schema.sql", "previous_filename": "viejo.sql"}], True),
+    ],
+)
+def test_toca_esquema_incluye_renombres(archivos, esperado):
+    """AUTO-MERGE-7: renombrar o mover el esquema también cuenta como cambiarlo."""
+
+    assert esquema_aplicado.toca_esquema(archivos) is esperado

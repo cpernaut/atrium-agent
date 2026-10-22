@@ -27,6 +27,12 @@ MARCA = re.compile(r"<!-- esquema-aplicado:([0-9a-f]{40}) -->")
 BOT = "github-actions[bot]"
 
 
+def toca_esquema(archivos: list[dict]) -> bool:
+    """Whether the PR changes the schema: edited, added, deleted or renamed (either way)."""
+
+    return any(ESQUEMA in (a.get("filename"), a.get("previous_filename")) for a in archivos)
+
+
 def decidir(
     cambia_esquema: bool,
     tiene_etiqueta: bool,
@@ -54,7 +60,11 @@ def decidir(
         if etiquetado is not None and etiquetado == actual:
             return True, "registrar"
         return False, "quitar"
-    if confirmado is not None and confirmado == actual:
+    if confirmado is None:
+        # Labeled, but the «labeled» run hasn't recorded it yet (events can arrive
+        # out of order): wait for it instead of removing a valid label.
+        return False, ""
+    if confirmado == actual:
         return True, ""
     return False, "quitar"  # the schema changed since it was confirmed
 
@@ -64,7 +74,7 @@ MENSAJES = {
     (True, "registrar"): "Esquema confirmado como aplicado tal como está en este commit.",
     (False, ""): (
         f"Este PR cambia {ESQUEMA}. Antes de mergear: correr el esquema en Supabase y "
-        f"ponerle al PR la etiqueta «{ETIQUETA}»."
+        f"ponerle al PR la etiqueta «{ETIQUETA}» (si ya la tiene, se está registrando)."
     ),
     (False, "quitar"): (
         f"{ESQUEMA} cambió desde que se confirmó: se quitó la etiqueta «{ETIQUETA}». "
@@ -87,9 +97,13 @@ def main() -> int:
     # Fresh data, not the event payload: events can arrive out of order.
     pr = json.loads(_gh(f"repos/{repo}/pulls/{numero}"))
     head = pr["head"]["sha"]
-    archivos = _gh(
-        "--paginate", f"repos/{repo}/pulls/{numero}/files", "--jq", ".[].filename"
-    ).split()
+    archivos = [
+        archivo
+        for pagina in json.loads(
+            _gh("--paginate", "--slurp", f"repos/{repo}/pulls/{numero}/files") or "[]"
+        )
+        for archivo in pagina
+    ]
 
     def blob(ref: str) -> str | None:
         sha = _gh(f"repos/{repo}/contents/{ESQUEMA}?ref={ref}", "--jq", ".sha", check=False)
@@ -114,7 +128,7 @@ def main() -> int:
 
     etiquetado = blob(evento["pull_request"]["head"]["sha"]) if recien else None
     pasa, accion = decidir(
-        ESQUEMA in archivos, ETIQUETA in etiquetas, recien, confirmado, actual, etiquetado
+        toca_esquema(archivos), ETIQUETA in etiquetas, recien, confirmado, actual, etiquetado
     )
     if accion == "registrar" and actual:
         _gh(
