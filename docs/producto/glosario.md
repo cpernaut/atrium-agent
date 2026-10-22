@@ -21,7 +21,7 @@ Convención: el código (funciones, módulos, docstrings) está en inglés, pero
 | **Agente** | El asistente de chat. Responde normativa y lee o escribe obras con herramientas. | `atrium/rag.py` · `atrium/obra_tools.py` |
 | **Equipo** | Los usuarios con login. Todos ven y editan todas las obras. | rol `authenticated` en RLS |
 
-## Nuevos (propuestos en las fichas F-03 a F-05)
+## Nuevos (definidos en F-03; propuestos en F-04 y F-05)
 
 | Término | Significado | En el código (propuesto) |
 |---|---|---|
@@ -29,7 +29,8 @@ Convención: el código (funciones, módulos, docstrings) está en inglés, pero
 | **Presupuesto** | Lo que se prevé gastar en una obra, desglosado en **ítems** por rubro, con moneda. | tabla `presupuesto_items` |
 | **Gasto** | Un pago o compromiso real: fecha, rubro, monto, moneda, proveedor y comprobante opcional. | tabla `gastos` |
 | **Desvío** | Diferencia entre lo gastado y lo presupuestado, por rubro y total, en una misma moneda. | calculado en `atrium/finanzas.py` |
-| **Tipo de cambio** | Cotización ARS por USD usada para convertir. Siempre explícita y con fecha. | `gastos.tipo_cambio` |
+| **Tipo de cambio** | Pesos por dólar usados para convertir: el **MEP promedio** (compra + venta ÷ 2) de la fecha del gasto o ítem. Se trae solo y se puede corregir. | `tipo_cambio` · `tipo_cambio_origen` (`auto`/`manual`) |
+| **Cotización** | El valor del MEP de una fecha, obtenido de una fuente pública. | `atrium/cotizaciones.py` |
 | **Etapa** | Tramo planificado de la obra (por ejemplo «Estructura»), con fechas previstas y reales, y avance propio. | tabla `etapas` |
 | **Cronograma** | El conjunto ordenado de etapas de una obra. | vista en `obras_ui.py` |
 | **Atraso** | Una etapa cuya fecha de fin prevista ya pasó sin estar terminada, o que va más lenta de lo previsto. | calculado en `atrium/cronograma.py` |
