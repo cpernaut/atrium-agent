@@ -8,6 +8,8 @@ import pandas as pd
 import streamlit as st
 
 from atrium import obras
+from plata_ui import render_plata
+from ui_utils import texto_seguro
 
 _SCHEMA_HINT = (
     "¿Ya corriste `supabase_schema.sql` en el SQL Editor de Supabase? "
@@ -59,7 +61,9 @@ def select_obra_activa(supabase) -> int | None:
 # --------------------------------------------------------------------------- #
 def render_obras_page(supabase, user) -> None:
     st.title("📋 Obras")
-    tab_lista, tab_nueva, tab_bitacora = st.tabs(["Obras", "Nueva obra", "Bitácora"])
+    tab_lista, tab_nueva, tab_bitacora, tab_plata = st.tabs(
+        ["Obras", "Nueva obra", "Bitácora", "💰 Plata"]
+    )
     lista = _load_obras(supabase)
     if lista is None:
         return
@@ -70,6 +74,8 @@ def render_obras_page(supabase, user) -> None:
         _render_nueva(supabase)
     with tab_bitacora:
         _render_bitacora(supabase, user, lista)
+    with tab_plata:
+        render_plata(supabase, lista)
 
 
 def _render_lista(supabase, lista: list[obras.Obra]) -> None:
@@ -217,5 +223,6 @@ def _render_bitacora(supabase, user, lista: list[obras.Obra]) -> None:
     if not notas:
         st.caption("Sin notas todavía. También podés pedirle al agente: «anotá en esta obra…».")
     for n in notas:
-        st.markdown(f"**{n['fecha']}** · {n.get('autor') or '—'}  \n{n['nota']}")
+        autor = texto_seguro(n.get("autor") or "—")
+        st.markdown(f"**{texto_seguro(n['fecha'])}** · {autor}  \n{texto_seguro(n['nota'])}")
         st.divider()

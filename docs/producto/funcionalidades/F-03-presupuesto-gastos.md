@@ -1,6 +1,6 @@
 # F-03 · Presupuesto y gastos
 
-**Estado:** Lista
+**Estado:** Hecha
 **Prioridad:** Alta
 **Depende de:** F-02
 
@@ -33,7 +33,11 @@ desvío de cada obra, en pesos y en dólares, sin planillas aparte.
 - Resumen por obra: presupuestado, gastado, desvío y porcentaje ejecutado,
   por rubro y total, en una **moneda de visualización** (ARS o USD).
 - Herramientas del agente para cargar gastos y consultar el resumen.
-- Anular un gasto mal cargado (no se borra).
+- Anular un gasto o un ítem de presupuesto mal cargado (no se borra).
+- **Rubros nuevos — preparado:** la base y el dominio ya permiten agregar,
+  desactivar y reactivar rubros (`finanzas.create_rubro`, `set_rubro_activo`),
+  con nombres únicos sin importar mayúsculas, tildes ni espacios. Falta solo la
+  pantalla: próxima iteración (ver «Siguiente iteración»).
 
 **No incluye** (por ahora)
 - Ingresos, señas, aportes de socios y rentabilidad: van en una ficha aparte,
@@ -183,6 +187,34 @@ estamos pasando?», «cargá 350 mil pesos de hierro, proveedor Hierros Sur».
   usando datos reales.
 - **F-03-CA-13** — *Dado* un usuario sin login *cuando* consulta gastos,
   presupuestos o rubros *entonces* no ve nada (RLS).
+
+## Implementación
+
+| Pieza | Dónde |
+|---|---|
+| Tablas, precarga, restricciones y RLS | `supabase_schema.sql` |
+| Cotización MEP | `atrium/cotizaciones.py` (fuente: ArgentinaDatos, serie `bolsa`, caché de 1 hora) |
+| Reglas y cálculos | `atrium/finanzas.py` |
+| Pantalla 💰 Plata | `plata_ui.py` |
+| Herramientas del agente | `registrar_gasto`, `resumen_plata` en `atrium/obra_tools.py` |
+| Tests | `tests/test_finanzas.py`, `tests/test_cotizaciones.py`, `tests/e2e/test_plata_flows.py`, `tests/live/test_finanzas_live.py`, `tests/sql/test_rls_f03.sql` |
+
+**Seguridad:** RLS en las tres tablas, sin DELETE; todas las reglas de datos
+también como `check` en la base; la URL de cotizaciones es fija y su respuesta se
+valida (tamaño, formato y números); el texto que cargan los usuarios se escapa
+antes de mostrarlo, así no puede insertar links ni imágenes externas.
+
+**Accesibilidad:** todos los campos con etiqueta visible y los obligatorios lo
+dicen; el estado del desvío se escribe en palabras (no solo color); anulados
+tachados **y** con la palabra «Anulado»; montos con formato argentino y su
+moneda; si hay un error, el formulario conserva lo escrito; anular pide
+confirmación explícita.
+
+## Siguiente iteración
+
+- **Pantalla de rubros:** agregar, renombrar, ordenar y desactivar rubros desde
+  la app. El dominio y la base ya lo soportan.
+- Editar un gasto (hoy se anula y se carga de nuevo).
 
 ## Decisiones
 

@@ -1,5 +1,6 @@
 -- Run in the Supabase SQL Editor (SQL Editor → New query → Run).
--- Tables + row-level security used by app.py (chat history and obras tracker).
+-- Tables + row-level security used by app.py (chat history, obras tracker and
+-- presupuesto y gastos).
 -- Safe to re-run: every statement is idempotent.
 
 create table if not exists public.mensajes (
@@ -85,3 +86,125 @@ create policy "bitacora: equipo lee" on public.bitacora
 drop policy if exists "bitacora: equipo crea" on public.bitacora;
 create policy "bitacora: equipo crea" on public.bitacora
     for insert to authenticated with check (true);
+
+
+-- --------------------------------------------------------------------------- --
+-- F-03 · Presupuesto y gastos (tablas `rubros`, `presupuesto_items`, `gastos`).
+-- Compartidas por el equipo. Sin DELETE: los gastos e ítems se anulan y los
+-- rubros se desactivan. Las reglas de datos se validan también acá, no solo en
+-- la app.
+-- --------------------------------------------------------------------------- --
+
+create table if not exists public.rubros (
+    id         bigint generated always as identity primary key,
+    nombre     text not null check (char_length(btrim(nombre)) between 2 and 60),
+    orden      int  not null default 1000 check (orden >= 0),
+    activo     boolean not null default true,
+    creado_por uuid references auth.users (id) default auth.uid(),
+    created_at timestamptz not null default now()
+);
+
+-- Un rubro por nombre, sin importar mayúsculas ni espacios de más.
+create unique index if not exists rubros_nombre_unico
+    on public.rubros (lower(btrim(nombre)));
+
+-- Precarga. Si un rubro ya existe (con cualquier mayúscula) no se duplica.
+insert into public.rubros (nombre, orden) values
+    ('Trabajos preliminares', 10),
+    ('Movimiento de suelo', 20),
+    ('Fundaciones', 30),
+    ('Estructura', 40),
+    ('Steel frame', 50),
+    ('Mampostería', 60),
+    ('Cubierta', 70),
+    ('Instalación sanitaria', 80),
+    ('Instalación eléctrica', 90),
+    ('Instalación de gas', 100),
+    ('Revoques', 110),
+    ('Contrapisos y carpetas', 120),
+    ('Pisos y revestimientos', 130),
+    ('Carpinterías', 140),
+    ('Pintura', 150),
+    ('Honorarios y trámites', 160),
+    ('Limpieza final', 170),
+    ('Otros', 999)
+on conflict do nothing;
+
+create table if not exists public.presupuesto_items (
+    id                 bigint generated always as identity primary key,
+    obra_id            bigint not null references public.obras (id) on delete cascade,
+    rubro_id           bigint not null references public.rubros (id),
+    descripcion        text check (descripcion is null or char_length(descripcion) <= 200),
+    monto              numeric(14, 2) not null check (monto > 0),
+    moneda             text not null check (moneda in ('ARS', 'USD')),
+    fecha              date not null default current_date,
+    tipo_cambio        numeric(12, 4) check (tipo_cambio is null or tipo_cambio > 0),
+    tipo_cambio_origen text check (tipo_cambio_origen in ('auto', 'manual')),
+    anulado            boolean not null default false,
+    creado_por         uuid references auth.users (id) default auth.uid(),
+    created_at         timestamptz not null default now(),
+    constraint presupuesto_tc_con_origen
+        check ((tipo_cambio is null) = (tipo_cambio_origen is null))
+);
+
+create table if not exists public.gastos (
+    id                 bigint generated always as identity primary key,
+    obra_id            bigint not null references public.obras (id) on delete cascade,
+    fecha              date not null default current_date check (fecha <= current_date),
+    rubro_id           bigint not null references public.rubros (id),
+    descripcion        text not null
+                       check (char_length(btrim(descripcion)) between 1 and 200),
+    proveedor          text check (proveedor is null or char_length(proveedor) <= 120),
+    monto              numeric(14, 2) not null check (monto > 0),
+    moneda             text not null check (moneda in ('ARS', 'USD')),
+    tipo_cambio        numeric(12, 4) check (tipo_cambio is null or tipo_cambio > 0),
+    tipo_cambio_origen text check (tipo_cambio_origen in ('auto', 'manual')),
+    anulado            boolean not null default false,
+    creado_por         uuid references auth.users (id) default auth.uid(),
+    created_at         timestamptz not null default now(),
+    constraint gastos_tc_con_origen
+        check ((tipo_cambio is null) = (tipo_cambio_origen is null))
+);
+
+create index if not exists presupuesto_items_obra_idx on public.presupuesto_items (obra_id);
+create index if not exists gastos_obra_fecha_idx on public.gastos (obra_id, fecha desc);
+
+alter table public.rubros            enable row level security;
+alter table public.presupuesto_items enable row level security;
+alter table public.gastos            enable row level security;
+
+drop policy if exists "rubros: equipo lee" on public.rubros;
+create policy "rubros: equipo lee" on public.rubros
+    for select to authenticated using (true);
+
+drop policy if exists "rubros: equipo crea" on public.rubros;
+create policy "rubros: equipo crea" on public.rubros
+    for insert to authenticated with check (true);
+
+drop policy if exists "rubros: equipo edita" on public.rubros;
+create policy "rubros: equipo edita" on public.rubros
+    for update to authenticated using (true) with check (true);
+
+drop policy if exists "presupuesto: equipo lee" on public.presupuesto_items;
+create policy "presupuesto: equipo lee" on public.presupuesto_items
+    for select to authenticated using (true);
+
+drop policy if exists "presupuesto: equipo crea" on public.presupuesto_items;
+create policy "presupuesto: equipo crea" on public.presupuesto_items
+    for insert to authenticated with check (true);
+
+drop policy if exists "presupuesto: equipo edita" on public.presupuesto_items;
+create policy "presupuesto: equipo edita" on public.presupuesto_items
+    for update to authenticated using (true) with check (true);
+
+drop policy if exists "gastos: equipo lee" on public.gastos;
+create policy "gastos: equipo lee" on public.gastos
+    for select to authenticated using (true);
+
+drop policy if exists "gastos: equipo crea" on public.gastos;
+create policy "gastos: equipo crea" on public.gastos
+    for insert to authenticated with check (true);
+
+drop policy if exists "gastos: equipo edita" on public.gastos;
+create policy "gastos: equipo edita" on public.gastos
+    for update to authenticated using (true) with check (true);

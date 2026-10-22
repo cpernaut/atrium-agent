@@ -32,9 +32,37 @@ jobs:
       - run: ruff format --check .
       - run: pytest
 
+  schema:
+    name: Esquema y seguridad en Postgres
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGHOST: localhost
+      PGPORT: "5432"
+      PGUSER: postgres
+      PGPASSWORD: postgres
+    steps:
+      - uses: actions/checkout@v4
+      - name: Aplicar supabase_schema.sql y verificar RLS y restricciones
+        run: tests/sql/run.sh
+
   review:
     name: Revisión de Claude
-    needs: checks
+    needs: [checks, schema]
     if: github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 15

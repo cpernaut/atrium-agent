@@ -14,6 +14,9 @@ Streamlit, login, historial y obras en Supabase.
   lee y escribe el tracker con herramientas; solo escribe si se lo pedís.
 - **📋 Obras** — listado con avance, alta de obras y bitácora, para todo el
   equipo con el mismo login.
+- **💰 Plata** — presupuesto por rubro y gastos en ARS o USD, con la cotización
+  del dólar MEP de cada fecha, desvíos por rubro y carga por chat («cargá 350 mil
+  pesos de hierro»).
 
 **App:** https://atrium-agent.streamlit.app
 
