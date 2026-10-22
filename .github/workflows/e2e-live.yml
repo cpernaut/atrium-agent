@@ -42,3 +42,13 @@ jobs:
       - run: pip install -r requirements-dev.txt
       - name: Correr tests/live
         run: pytest tests/live -m live -v -rs
+        env:
+          TEST_REPORT_TITLE: "E2E contra Supabase (base real)"
+          TEST_REPORT_DIR: reporte
+      - name: Guardar el reporte HTML
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reporte-e2e-supabase
+          path: reporte/reporte-tests.html
+          if-no-files-found: ignore

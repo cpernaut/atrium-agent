@@ -131,6 +131,18 @@ borrado.
 | LIVE-22 | Presupuesto | B cambia el rubro del ítem de A y lo borra, salteando la app | El gasto sigue el rubro y queda anulado |
 | LIVE-23 | Presupuesto | Ítem en 0, ítem negativo, dos «Imprevistos» | 0 sí; negativo y segundo «Imprevistos» rechazados; se puede recrear tras borrarlo |
 
+## Cómo ver los resultados
+
+Cada corrida en GitHub (Actions → la corrida → **Summary**) muestra un reporte:
+cuántos tests pasaron, fallaron o se saltearon por área, y una tabla con el ID
+de cada caso, **qué prueba** (sale del docstring del test) y su resultado, con
+el motivo si falló. El reporte completo, con todos los tests, se descarga como
+archivo HTML en **Artifacts** (`reporte-tests` o `reporte-e2e-supabase`). La
+suite de Postgres agrega su propia tabla con cada chequeo.
+
+Lo genera `tests/reporte.py`; localmente no escribe nada, salvo que se definan
+`GITHUB_STEP_SUMMARY` o `TEST_REPORT_DIR`.
+
 ## Cómo correr
 
 ```bash
