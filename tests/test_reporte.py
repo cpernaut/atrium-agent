@@ -31,28 +31,21 @@ def test_id_y_que_prueba_salen_del_docstring(doc, esperado):
     assert reporte._descripcion(_item(doc)) == esperado
 
 
-def test_markdown_con_un_fallo_y_salteados(monkeypatch):
-    monkeypatch.setattr(reporte, "_casos", {})
-    reporte._casos.update(
-        {
-            "a": reporte.Caso(
-                "a", "Presupuesto y gastos", "F-03-CA-1", "Uno | dos", None, "passed"
-            ),
-            "b": reporte.Caso("b", "Unitarios", None, "Interno", None, "passed"),
-            "c": reporte.Caso("c", "Unitarios", None, "Roto", None, "failed", "AssertionError: x"),
-            "d": reporte.Caso(
-                "d", "Base real (Supabase)", "LIVE-1", "Y", None, "skipped", "faltan"
-            ),
-        }
-    )
-    texto = reporte.markdown("Título")
+def test_markdown_con_un_fallo_y_salteados():
+    casos = {
+        "a": reporte.Caso("a", "Presupuesto y gastos", "F-03-CA-1", "Uno | dos", None, "passed"),
+        "b": reporte.Caso("b", "Unitarios", None, "Interno", None, "passed"),
+        "c": reporte.Caso("c", "Unitarios", None, "Roto", None, "failed", "AssertionError: x"),
+        "d": reporte.Caso("d", "Base real (Supabase)", "LIVE-1", "Y", None, "skipped", "faltan"),
+    }
+    texto = reporte.markdown("Título", casos=casos)
 
     assert "**❌ Hay tests que fallaron** · 2 pasaron · 1 fallaron · 1 salteados" in texto
     assert "| ✅ | F-03-CA-1 | Uno \\| dos | Pasó |" in texto  # escapa el separador
     assert "| ❌ | — | Roto | Falló: AssertionError: x |" in texto
     assert "Interno" not in texto  # los unitarios que pasan solo se cuentan
     assert "⏭️ Salteados: faltan" in texto
-    assert "<td>Interno</td>" in reporte.html_reporte("Título")  # el HTML lista todo
+    assert "<td>Interno</td>" in reporte.html_reporte("Título", casos=casos)  # el HTML lista todo
 
 
 def test_sin_variables_no_escribe_nada(monkeypatch, tmp_path):
@@ -61,3 +54,21 @@ def test_sin_variables_no_escribe_nada(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     reporte.escribir()
     assert list(tmp_path.iterdir()) == []
+
+
+def test_corrida_interrumpida_no_dice_todo_paso():
+    """Revisión PR #40: si pytest termina con error o quedan tests sin correr, el
+    reporte lo dice aunque los que corrieron hayan pasado."""
+
+    casos = {
+        "a": reporte.Caso("a", "Unitarios", None, "Corrió", None, "passed"),
+        "b": reporte.Caso("b", "Unitarios", None, "No llegó a correr"),
+    }
+    texto = reporte.markdown("T", estado_salida=2, casos=casos)
+    assert "Todo pasó" not in texto
+    assert "⚠️ La corrida no terminó bien (código 2)" in texto and "1 sin ejecutar" in texto
+    assert "Todo pasó" not in reporte.html_reporte("T", estado_salida=2, casos=casos)
+
+    casos["b"].resultado = "passed"
+    assert "(código 1)" in reporte.markdown("T", estado_salida=1, casos=casos)
+    assert "✅ Todo pasó" in reporte.markdown("T", estado_salida=0, casos=casos)

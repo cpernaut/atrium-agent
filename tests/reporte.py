@@ -112,9 +112,9 @@ def registrar_resultado(report) -> None:
 # --------------------------------------------------------------------------- #
 # Output
 # --------------------------------------------------------------------------- #
-def _por_area() -> dict[str, list[Caso]]:
+def _por_area(casos: dict[str, Caso]) -> dict[str, list[Caso]]:
     grupos: dict[str, list[Caso]] = {}
-    for caso in _casos.values():
+    for caso in casos.values():
         if caso.resultado:
             grupos.setdefault(caso.area, []).append(caso)
     orden = [nombre for _, nombre in AREAS] + [UNITARIOS]
@@ -142,16 +142,34 @@ def _celda(texto: str) -> str:
     return texto.replace("|", "\\|").replace("\n", " ")
 
 
-def markdown(titulo: str) -> str:
-    grupos = _por_area()
-    todos = [c for casos in grupos.values() for c in casos]
+def _encabezado(casos: dict[str, Caso], estado_salida: int) -> str:
+    """Overall status; never «Todo pasó» if pytest failed or some tests didn't run."""
+
+    todos = [c for grupo in _por_area(casos).values() for c in grupo]
     fallidos = _cuenta(todos, "failed")
-    estado = "❌ Hay tests que fallaron" if fallidos else "✅ Todo pasó"
+    sin_correr = sum(c.resultado is None for c in casos.values())
+    if fallidos:
+        estado = "❌ Hay tests que fallaron"
+    elif estado_salida != 0 or sin_correr:
+        estado = f"⚠️ La corrida no terminó bien (código {estado_salida})"
+    else:
+        estado = "✅ Todo pasó"
+    texto = (
+        f"**{estado}** · {_cuenta(todos, 'passed')} pasaron · {fallidos} fallaron · "
+        f"{_cuenta(todos, 'skipped')} salteados"
+    )
+    if sin_correr:
+        texto += f" · **{sin_correr} sin ejecutar**"
+    return texto
+
+
+def markdown(titulo: str, estado_salida: int = 0, casos: dict[str, Caso] | None = None) -> str:
+    casos = _casos if casos is None else casos
+    grupos = _por_area(casos)
     lineas = [
         f"## {titulo}",
         "",
-        f"**{estado}** · {_cuenta(todos, 'passed')} pasaron · {fallidos} fallaron · "
-        f"{_cuenta(todos, 'skipped')} salteados",
+        _encabezado(casos, estado_salida),
         "",
         "| Área | Total | ✅ Pasaron | ❌ Fallaron | ⏭️ Salteados |",
         "|---|---|---|---|---|",
@@ -180,9 +198,10 @@ def markdown(titulo: str) -> str:
     return "\n".join(lineas)
 
 
-def html_reporte(titulo: str) -> str:
+def html_reporte(titulo: str, estado_salida: int = 0, casos: dict[str, Caso] | None = None) -> str:
     e = html.escape
-    grupos = _por_area()
+    casos_ = _casos if casos is None else casos
+    grupos = _por_area(casos_)
     partes = [
         "<!doctype html><html lang='es'><head><meta charset='utf-8'>",
         "<meta name='viewport' content='width=device-width, initial-scale=1'>",
@@ -193,6 +212,7 @@ def html_reporte(titulo: str) -> str:
         "th{background:#f3f3f3}.failed{background:#fde8e8}",
         "</style></head><body>",
         f"<h1>{e(titulo)}</h1>",
+        f"<p>{e(_encabezado(casos_, estado_salida).replace('**', ''))}</p>",
     ]
     for area, casos in grupos.items():
         partes.append(
@@ -212,15 +232,17 @@ def html_reporte(titulo: str) -> str:
     return "\n".join(partes)
 
 
-def escribir() -> None:
+def escribir(estado_salida: int = 0) -> None:
     resumen = os.getenv("GITHUB_STEP_SUMMARY")
     carpeta = os.getenv("TEST_REPORT_DIR")
-    if not (resumen or carpeta) or not _por_area():
+    if not (resumen or carpeta) or not _casos:
         return
     titulo = os.getenv("TEST_REPORT_TITLE", "Resultado de los tests")
     if resumen:
         with open(resumen, "a", encoding="utf-8") as archivo:
-            archivo.write(markdown(titulo))
+            archivo.write(markdown(titulo, estado_salida))
     if carpeta:
         Path(carpeta).mkdir(parents=True, exist_ok=True)
-        (Path(carpeta) / "reporte-tests.html").write_text(html_reporte(titulo), encoding="utf-8")
+        (Path(carpeta) / "reporte-tests.html").write_text(
+            html_reporte(titulo, estado_salida), encoding="utf-8"
+        )

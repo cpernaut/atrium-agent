@@ -28,4 +28,4 @@ def pytest_runtest_logreport(report):
 
 
 def pytest_sessionfinish(session, exitstatus):
-    reporte.escribir()
+    reporte.escribir(int(exitstatus))
