@@ -8,14 +8,14 @@ Streamlit, login, historial y obras en Supabase.
 
 ## Qué hace
 
-- **🤖 Agente** — responde normativa. Si elegís una *obra activa* en la barra
-  lateral, busca solo en el código de edificación de su municipio y conoce los
-  datos de la obra.
+- **📋 Obras** — la pantalla de inicio. Arriba se elige **una obra**, que es la
+  de todas las pestañas (listado, bitácora y plata) y la del agente.
+- **💬 Agente** — botón abajo a la derecha que abre el chat. Responde normativa
+  del código de edificación del municipio de la obra elegida y conoce sus datos.
 - **Chatear con las obras** — «¿qué obras tengo en curso?», «¿cómo viene Lote
   12?», «anotá que hoy se hormigonó la platea y poné el avance en 40%». El agente
   lee y escribe el tracker con herramientas; solo escribe si se lo pedís.
-- **📋 Obras** — listado con avance, alta de obras y bitácora, para todo el
-  equipo con el mismo login.
+- **Listado, alta y bitácora** — para todo el equipo con el mismo login.
 - **💰 Plata** — presupuesto por rubro y gastos en ARS o USD, con la cotización
   del dólar MEP de cada fecha, desvíos por rubro y carga por chat («cargá 350 mil
   pesos de hierro»).
@@ -32,7 +32,10 @@ código con Claude: [`CLAUDE.md`](CLAUDE.md).
 
 ```
 app.py                  Streamlit UI (solo orquestación y render)
-obras_ui.py             pantallas de la sección Obras
+obras_ui.py             pantalla de Obras y selector único de obra
+plata_ui.py             pestaña 💰 Plata (presupuesto y gastos)
+agente_ui.py            agente flotante (abajo a la derecha) e historial
+.streamlit/config.toml  tema visual (claro, color primario con buen contraste)
 ingest.py               CLI: python ingest.py
 atrium/
   config.py             settings + acceso a secrets (sin LangChain/Streamlit)

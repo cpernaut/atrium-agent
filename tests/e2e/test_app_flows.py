@@ -39,16 +39,22 @@ def test_e2e_01_login_con_credenciales_invalidas(e2e):
     assert "user" not in at.session_state
 
 
-def test_e2e_02_login_valido_muestra_agente(e2e):
-    """E2E-02: con credenciales válidas ve el agente, su email y el chat."""
+def test_e2e_02_login_valido_abre_en_obras(e2e):
+    """E2E-02 (#33): con credenciales válidas entra a Obras, con su email y el
+    botón del agente abajo a la derecha; no hay selector de sección."""
 
+    _seed(e2e.db)
     at = e2e.login()
 
     assert not at.exception
     assert "Atrium Studio" in [t.value for t in at.title]
     assert any("Versión beta" in m.value for m in at.markdown), "falta la etiqueta beta"
     assert EMAIL in "\n".join(m.value for m in at.sidebar.markdown)
-    assert at.chat_input
+    assert [t.label for t in at.tabs][0] == "📋 Obras"
+    assert at.dataframe  # el listado de obras
+    assert "seccion" not in [r.key for r in at.radio]
+    assert at.button(key="agente_abrir").label == "💬 Agente"
+    assert not at.chat_input  # el chat se abre solo si se pide
 
 
 def test_e2e_03_cerrar_sesion(e2e):
@@ -79,7 +85,8 @@ def test_e2e_04_crear_obra(e2e):
     at = click(at, "Crear obra")
 
     assert not at.exception
-    assert "Obra «Casa Lote 12» creada." in texts(at)
+    assert "Obra «Casa Lote 12» creada y elegida." in texts(at)
+    assert at.selectbox(key="obra_elegida").value == 1  # queda elegida arriba
     guardada = obras.find_obras(e2e.db, "Lote 12")[0]
     assert guardada["municipio"] == "La Plata" and guardada["moneda"] == "USD"
     assert guardada["presupuesto"] == 85000.0 and guardada["estado"] == "En curso"
@@ -102,8 +109,7 @@ def test_e2e_06_actualizar_estado_y_avance(e2e):
     """E2E-06: cambia estado y avance de una obra y se refleja en el listado."""
 
     _seed(e2e.db)
-    at = e2e.go_to_obras(e2e.login())
-    at.selectbox(key="lista_obra").set_value(1).run()
+    at = e2e.elegir_obra(e2e.login(), 1)
     at.selectbox(key="upd_estado_1").set_value("Pausada")
     at.slider(key="upd_avance_1").set_value(55)
     at = click(at, "Guardar cambios")
@@ -131,7 +137,7 @@ def test_e2e_08_bitacora_manual(e2e):
 
     _seed(e2e.db)
     at = e2e.go_to_obras(e2e.login())
-    at.selectbox(key="bitacora_obra").set_value(1)
+    at = e2e.elegir_obra(at, 1)
     at.date_input(key="nota_fecha").set_value(date(2026, 10, 20))
     at.text_area(key="nota_texto").input("Hormigonado de platea")
     at = click(at, "Agregar nota")
@@ -178,8 +184,8 @@ def test_e2e_11_normativa_de_la_obra_activa(e2e):
     _seed(e2e.db)
     e2e.script(AIMessage(content="Para Casa Lote 12 el retiro de frente es de 3 m."))
     at = e2e.login()
-    at.sidebar.selectbox[0].set_value(1).run()
-    at = at.chat_input[0].set_value("¿Qué retiro de frente necesito?").run()
+    at = e2e.elegir_obra(at, 1)
+    at = e2e.abrir_agente(at).chat_input[0].set_value("¿Qué retiro de frente necesito?").run()
 
     assert not at.exception
     assert e2e.store.filters == [{"source": "Codigo Edificacion de La Plata.pdf"}]
@@ -189,11 +195,10 @@ def test_e2e_11_normativa_de_la_obra_activa(e2e):
 
 
 def test_e2e_12_sin_obra_activa_busca_en_todo(e2e):
-    """E2E-12: sin obra activa, la búsqueda de normativa no se filtra."""
+    """E2E-12: sin obras cargadas, el agente responde normativa sin filtrar."""
 
-    _seed(e2e.db)
     e2e.script(AIMessage(content="Depende del municipio."))
-    at = e2e.login().chat_input[0].set_value("¿Altura máxima permitida?").run()
+    at = e2e.abrir_agente(e2e.login()).chat_input[0].set_value("¿Altura máxima permitida?").run()
 
     assert not at.exception
     assert e2e.store.filters == [None]
@@ -208,7 +213,7 @@ def test_e2e_13_consultar_obras_por_chat(e2e):
         tool_call("listar_obras", {"estado": "En curso"}),
         AIMessage(content="Tenés 1 obra en curso: Casa Lote 12 (30%)."),
     )
-    at = e2e.login().chat_input[0].set_value("¿Qué obras tengo en curso?").run()
+    at = e2e.abrir_agente(e2e.login()).chat_input[0].set_value("¿Qué obras tengo en curso?").run()
 
     assert not at.exception
     resultado_herramienta = e2e.llm.seen[1][-1].content
@@ -227,8 +232,13 @@ def test_e2e_14_cargar_avance_y_nota_por_chat(e2e):
         AIMessage(content="Listo: anoté la nota y pasé el avance a 40%."),
     )
     at = e2e.login()
-    at.sidebar.selectbox[0].set_value(1).run()
-    at = at.chat_input[0].set_value("Anotá que se hormigonó la platea, avance 40%").run()
+    at = e2e.elegir_obra(at, 1)
+    at = (
+        e2e.abrir_agente(at)
+        .chat_input[0]
+        .set_value("Anotá que se hormigonó la platea, avance 40%")
+        .run()
+    )
 
     assert not at.exception
     pantalla = texts(at)
@@ -238,7 +248,7 @@ def test_e2e_14_cargar_avance_y_nota_por_chat(e2e):
 
     at = e2e.go_to_obras(at)
     assert at.dataframe[0].value.set_index("nombre").loc["Casa Lote 12", "avance"] == 40
-    at = at.selectbox(key="bitacora_obra").set_value(1).run()
+    at = e2e.elegir_obra(at, 1)
     assert "Hormigonado de platea" in texts(at)
 
 
@@ -251,7 +261,12 @@ def test_e2e_15_obra_ambigua_no_escribe(e2e):
         tool_call("agregar_nota_bitacora", {"nota": "Llegó el hierro", "obra": "Casa Lote"}),
         AIMessage(content="¿En cuál obra? Casa Lote 12 o Casa Lote 14."),
     )
-    at = e2e.login().chat_input[0].set_value("Anotá en Casa Lote que llegó el hierro").run()
+    at = (
+        e2e.abrir_agente(e2e.login())
+        .chat_input[0]
+        .set_value("Anotá en Casa Lote que llegó el hierro")
+        .run()
+    )
 
     assert not at.exception
     assert "varias obras" in e2e.llm.seen[1][-1].content
@@ -263,7 +278,7 @@ def test_e2e_16_historial_se_guarda(e2e):
     """E2E-16: pregunta y respuesta quedan en la tabla de historial del usuario."""
 
     e2e.script(AIMessage(content="La altura máxima es de 9 m."))
-    e2e.login().chat_input[0].set_value("¿Altura máxima?").run()
+    e2e.abrir_agente(e2e.login()).chat_input[0].set_value("¿Altura máxima?").run()
 
     filas = e2e.db.tables["mensajes"]
     assert [(f["rol"], f["contenido"]) for f in filas] == [
@@ -317,7 +332,118 @@ def test_e2e_18_historial_interrumpido_se_recupera(e2e):
     at = e2e.login()
     # Sesión como la que dejó el error: conversación iniciada pero sin historial.
     del at.session_state["history"]
-    at = at.run()
+    at = e2e.abrir_agente(at.run())
 
     assert not at.exception
     assert any("Hola de ayer" in m.value for m in at.markdown)
+
+
+# --------------------------------------------------------------------------- #
+# Una sola obra elegida (UX-02, issue #7) y agente flotante (#33)
+# --------------------------------------------------------------------------- #
+def test_ux_02_ca_1_una_obra_para_toda_la_app(e2e):
+    """UX-02-CA-1: la obra que se elige arriba es la de todas las pestañas y la del
+    agente; ya no hay selectores por pestaña ni en la barra lateral."""
+
+    _seed(e2e.db)
+    obras.add_nota(e2e.db, 2, "Nota de Hudson", autor=EMAIL)
+    e2e.script(AIMessage(content="Listo."))
+    at = e2e.elegir_obra(e2e.login(), 2)
+
+    claves = [w.key for w in at.selectbox]
+    assert claves.count("obra_elegida") == 1
+    assert not {"lista_obra", "bitacora_obra", "plata_obra"} & set(claves)
+    assert not at.sidebar.selectbox
+    assert "Actualizar «Ampliación Hudson»" in [h.value for h in at.subheader]
+    assert "Nota de Hudson" in texts(at)  # Bitácora de la misma obra
+    assert at.button(key="item_agregar")  # Plata de la misma obra, sin otro selector
+
+    at = e2e.abrir_agente(at)
+    assert "Trabajando sobre **Ampliación Hudson**" in [c.value for c in at.caption]
+    at.chat_input(key="agente_input").set_value("¿Qué retiro pide el código?").run()
+    assert e2e.store.filters == [{"source": "codigo-edificacion-berazategui.pdf"}]
+
+
+def test_ux_02_ca_2_por_defecto_nunca_una_terminada(e2e):
+    """UX-02-CA-2: al entrar, si hay una obra En curso, no se elige una Terminada o
+    Cancelada aunque sea la más nueva."""
+
+    obras.create_obra(e2e.db, {"nombre": "Vieja en curso", "estado": "En curso"})
+    obras.create_obra(e2e.db, {"nombre": "Nueva terminada", "estado": "Terminada"})
+    obras.create_obra(e2e.db, {"nombre": "Nueva cancelada", "estado": "Cancelada"})
+    at = e2e.login()
+
+    assert at.selectbox(key="obra_elegida").value == 1
+    opciones = at.selectbox(key="obra_elegida").options
+    assert opciones[0] == "Vieja en curso · En curso"  # las activas primero
+    assert opciones[-1].endswith("· Cancelada")
+
+
+def test_ux_02_ca_3_la_eleccion_se_mantiene(e2e):
+    """UX-02-CA-3: la obra elegida se mantiene al cambiar de pestaña, abrir el
+    agente y recargar."""
+
+    _seed(e2e.db)
+    at = e2e.elegir_obra(e2e.login(), 2)
+    at = e2e.abrir_agente(at).run()
+    assert at.selectbox(key="obra_elegida").value == 2
+    at = at.button(key="agente_cerrar").click().run()
+    assert at.selectbox(key="obra_elegida").value == 2
+
+
+def test_agente_flotante_se_abre_y_se_cierra(e2e):
+    """AGENTE-1 (#33): el agente es un botón abajo a la derecha; se abre con el chat
+    y la obra sobre la que trabaja, y se cierra sin perder la conversación."""
+
+    _seed(e2e.db)
+    e2e.script(AIMessage(content="La altura máxima es de 9 m."))
+    at = e2e.login()
+    assert not at.chat_input
+
+    at = e2e.abrir_agente(at)
+    assert at.chat_input(key="agente_input")
+    assert at.button(key="agente_cerrar").label == "✕ Cerrar"
+    assert any("Probá con" in c.value for c in at.caption)  # ayuda para empezar
+    at = at.chat_input(key="agente_input").set_value("¿Altura máxima?").run()
+    assert "La altura máxima es de 9 m." in texts(at)
+
+    at = at.button(key="agente_cerrar").click().run()
+    assert not at.chat_input and at.button(key="agente_abrir")
+    at = e2e.abrir_agente(at)
+    assert "La altura máxima es de 9 m." in texts(at)  # la conversación sigue ahí
+
+
+def test_agente_flotante_actualiza_la_pantalla(e2e):
+    """AGENTE-2: si el agente cambia datos (avance, notas, gastos), la pantalla de
+    atrás se recarga y los muestra sin tocar nada más."""
+
+    _seed(e2e.db)
+    e2e.script(
+        tool_call("actualizar_obra", {"avance": 70}, "c1"),
+        AIMessage(content="Avance en 70%."),
+    )
+    at = e2e.abrir_agente(e2e.elegir_obra(e2e.login(), 1))
+    at = at.chat_input(key="agente_input").set_value("Pasá el avance a 70").run()
+
+    assert at.dataframe[0].value.set_index("nombre").loc["Casa Lote 12", "avance"] == 70
+    assert "Avance en 70%." in texts(at)
+
+
+def test_agente_2b_el_formulario_no_pisa_lo_que_cargo_el_agente(e2e):
+    """AGENTE-2 (revisión PR #43): si el agente cambia el avance y después se guarda
+    el estado desde «Actualizar», el avance nuevo se conserva."""
+
+    _seed(e2e.db)
+    e2e.script(
+        tool_call("actualizar_obra", {"avance": 70}, "c1"),
+        AIMessage(content="Avance en 70%."),
+    )
+    at = e2e.elegir_obra(e2e.login(), 1)
+    assert at.slider(key="upd_avance_1").value == 30
+    at = e2e.abrir_agente(at).chat_input(key="agente_input").set_value("Avance 70").run()
+
+    assert at.slider(key="upd_avance_1").value == 70  # el formulario muestra el dato nuevo
+    at.selectbox(key="upd_estado_1").set_value("Pausada")
+    at = click(at, "Guardar cambios")
+    obra = obras.get_obra(e2e.db, 1)
+    assert (obra["estado"], obra["avance"]) == ("Pausada", 70)

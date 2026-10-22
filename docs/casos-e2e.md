@@ -13,7 +13,7 @@ resultado esperado verificable.
 | ID | Área | Caso | Resultado esperado |
 |---|---|---|---|
 | E2E-01 | Acceso | Login con contraseña incorrecta | Mensaje de error; no entra al chat |
-| E2E-02 | Acceso | Login válido | Ve el agente, su email en la barra lateral y el chat |
+| E2E-02 | Acceso | Login válido | Entra a 📋 Obras con su email en la barra lateral y el botón «💬 Agente» abajo a la derecha; no hay selector de sección (#33) |
 | E2E-03 | Acceso | Cerrar sesión | Vuelve al login y la sesión queda limpia |
 | E2E-04 | Obras | Crear obra completa | Mensaje de éxito; datos guardados; aparece en listado y métricas |
 | E2E-05 | Obras | Crear obra sin nombre | Error «La obra necesita un nombre»; no se guarda |
@@ -29,6 +29,12 @@ resultado esperado verificable.
 | E2E-15 | Agente | Pedido con obra ambigua | No escribe nada; pide aclarar |
 | E2E-16 | Historial | Una pregunta en el chat | Pregunta y respuesta guardadas para el usuario |
 | E2E-17 | Marca | Abrir la app | Nombre «Atrium Studio» con la etiqueta «Versión beta»; logo en el login y arriba a la izquierda; isotipo como favicon |
+| UX-02-CA-1 | Obra elegida | Elegir una obra arriba | Listado, Bitácora, Plata y agente usan esa obra; no hay otros selectores |
+| UX-02-CA-2 | Obra elegida | Entrar con una obra En curso y otras más nuevas Terminada/Cancelada | Queda elegida la En curso; las activas aparecen primero |
+| UX-02-CA-3 | Obra elegida | Abrir y cerrar el agente, recargar | La obra elegida se mantiene |
+| AGENTE-1 | Agente | Abrir el agente, preguntar, cerrar y volver a abrir | Panel con la obra sobre la que trabaja y ayuda para empezar; la conversación se conserva |
+| AGENTE-2 | Agente | Pedirle que cambie el avance | La pantalla de atrás se recarga con el dato nuevo |
+| AGENTE-2b | Agente | Cambiar el avance por chat y después guardar el estado en «Actualizar» | El formulario muestra el avance nuevo y no lo pisa |
 | E2E-18 | Historial | Sesión con la carga del historial interrumpida | La app no se rompe: vuelve a cargarlo |
 
 ## E2E simulado — F-03 Presupuesto y gastos (`tests/e2e/test_plata_flows.py` y `test_presupuesto_flows.py`)
