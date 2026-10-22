@@ -4,7 +4,9 @@
 
 [tool.ruff]
 line-length = 100
-target-version = "py311"
+# Runtime is Python 3.14 (CI and Streamlit Cloud). Ruff targets 3.13 so the code
+# keeps running on 3.13 and `except (A, B):` isn't rewritten without parentheses.
+target-version = "py313"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "C4"]
