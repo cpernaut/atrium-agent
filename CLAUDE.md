@@ -95,7 +95,9 @@ ruff check . && ruff format --check .
 - **Unitarios** del dominio con `tests/fake_supabase.py`. Si la tabla nueva tiene
   defaults, agregarlos en `_DEFAULTS` del fake para que imite a la base real.
 - **E2E simulado** (`tests/e2e/`): al menos un test por criterio de aceptación,
-  con el ID de la ficha en el docstring (`"""F-03-CA-2: …"""`). Usa la app real
+  con el ID de la ficha en el docstring (`"""F-03-CA-2: …"""`). La primera oración
+  del docstring es lo que el reporte de cada corrida muestra como «Qué prueba»:
+  que se entienda sin leer el código. Usa la app real
   vía `AppTest` y los dobles de `tests/fakes.py`.
 - **E2E real** (`tests/live/`): todo lo que dependa de RLS, constraints o Storage
   de Supabase. Datos con prefijo `[E2E]` y limpieza garantizada.
