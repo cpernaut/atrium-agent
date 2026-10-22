@@ -692,3 +692,19 @@ def test_completar_cotizacion_no_pisa_una_manual_concurrente(db, mep, monkeypatc
     guardado = finanzas.get_presupuesto_item(db, item_id)
     assert (guardado["tipo_cambio"], guardado["tipo_cambio_origen"]) == ("1111.0000", "manual")
     assert resultado[0]["tipo_cambio_origen"] == "manual"  # devuelve el valor vigente
+
+
+def test_item_con_rubro_desactivado_no_acepta_gastos_nuevos(db, mep):
+    """Revisión PR #38 / R7: un rubro desactivado no recibe cargas nuevas, tampoco
+    gastos en ítems que ya lo tenían; el historial se conserva."""
+
+    item = _item_db(db, rubro_id=_rubro(db, "Pintura"))
+    viejo, _ = finanzas.add_gasto(db, item["id"], monto=10, moneda="USD", descripcion="antes")
+    finanzas.set_rubro_activo(db, item["rubro_id"], False)
+
+    with pytest.raises(finanzas.FinanzasError, match="desactivado"):
+        finanzas.add_gasto(db, item["id"], monto=10, moneda="USD", descripcion="después")
+    assert [g["id"] for g in finanzas.list_gastos(db, 1)] == [viejo["id"]]
+    otro = _rubro(db, "Revoques")
+    _editar(db, item, rubro_id=otro)  # lo pasa a un rubro activo...
+    finanzas.add_gasto(db, item["id"], monto=10, moneda="USD", descripcion="después")  # ...y sí

@@ -384,6 +384,13 @@ def add_gasto(
     item = get_presupuesto_item(client, item_id)
     if item.get("anulado"):
         raise FinanzasError("Este ítem fue borrado: no se le pueden agregar gastos.")
+    rubros = _run(client.table("rubros").select("*").eq("id", int(item["rubro_id"])).limit(1))
+    if rubros and not rubros[0].get("activo", True):
+        # R7: a deactivated rubro takes no new loads; the item's history stays.
+        raise FinanzasError(
+            f"El rubro «{rubros[0]['nombre']}» está desactivado: para cargarle gastos, "
+            "cambiá el ítem a un rubro activo con «Editar ítem»."
+        )
     fecha_gasto = _fecha(fecha)
     if fecha_gasto > hoy():
         raise FinanzasError("La fecha del gasto no puede ser futura.")

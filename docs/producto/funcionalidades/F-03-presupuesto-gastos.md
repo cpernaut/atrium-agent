@@ -146,7 +146,9 @@ siguen).
 
 - **R11. Todo gasto pertenece a un ítem** de presupuesto vigente de la misma obra.
   El rubro y la obra del gasto los toma del ítem (la base lo garantiza). Ningún
-  gasto queda suelto: no hay formulario de gasto fuera de un ítem.
+  gasto queda suelto: no hay formulario de gasto fuera de un ítem. Si el rubro del
+  ítem está desactivado, no recibe gastos nuevos (R7): primero se lo pasa a un
+  rubro activo.
 - **R12. «Imprevistos».** Toda obra nueva nace con un ítem «Imprevistos» en el
   rubro **Otros**, en la **moneda de la obra**, por el **10 % del presupuesto de
   la obra** (0 si no tiene). Se calcula una vez, al crearlo. Se puede editar,
