@@ -8,7 +8,7 @@ from datetime import date
 from langchain_core.messages import AIMessage
 
 from atrium import obras
-from tests.e2e.conftest import EMAIL, click, texts
+from tests.e2e.conftest import EMAIL, click, pagina_actual, texts
 from tests.fakes import tool_call
 
 
@@ -26,6 +26,20 @@ def _seed(db):
     obras.create_obra(db, {"nombre": "Ampliación Hudson", "municipio": "Berazategui"})
 
 
+def _obras_listadas(at) -> list[int]:
+    """Ids of the obras shown in 📋 Obras, in order (one «Abrir» per card)."""
+
+    return [
+        int(b.key.rsplit("_", 1)[1]) for b in at.button if (b.key or "").startswith("abrir_obra_")
+    ]
+
+
+def _encabezado(at) -> str:
+    """The obra activa header, always on top (#49)."""
+
+    return "\n".join(m.value for m in at.markdown if m.value.startswith("🏗️"))
+
+
 # --------------------------------------------------------------------------- #
 # Acceso
 # --------------------------------------------------------------------------- #
@@ -39,19 +53,18 @@ def test_e2e_01_login_con_credenciales_invalidas(e2e):
     assert "user" not in at.session_state
 
 
-def test_e2e_02_login_valido_abre_en_obras(e2e):
-    """E2E-02 (#33): con credenciales válidas entra a Obras, con su email y el
-    botón del agente abajo a la derecha; no hay selector de sección."""
+def test_e2e_02_login_valido_abre_en_la_obra_activa(e2e):
+    """E2E-02 (#33, #49): con credenciales válidas entra a la obra activa (Detalle,
+    Bitácora y Presupuesto), con su email en el menú y el botón del agente abajo a
+    la derecha."""
 
     _seed(e2e.db)
     at = e2e.login()
 
     assert not at.exception
-    assert "Atrium Studio" in [t.value for t in at.title]
     assert any("Versión beta" in m.value for m in at.markdown), "falta la etiqueta beta"
-    assert EMAIL in "\n".join(m.value for m in at.sidebar.markdown)
-    assert [t.label for t in at.tabs][0] == "📋 Obras"
-    assert at.dataframe  # el listado de obras
+    assert EMAIL in "\n".join(c.value for c in at.sidebar.caption)
+    assert [t.label for t in at.tabs] == ["Detalle", "Bitácora", "Presupuesto"]
     assert "seccion" not in [r.key for r in at.radio]
     assert at.button(key="agente_abrir").label == "💬 Agente"
     assert not at.chat_input  # el chat se abre solo si se pide
@@ -71,10 +84,12 @@ def test_e2e_03_cerrar_sesion(e2e):
 # Obras
 # --------------------------------------------------------------------------- #
 def test_e2e_04_crear_obra(e2e):
-    """E2E-04: crea una obra desde el formulario y aparece en el listado."""
+    """E2E-04: crea una obra desde «Nueva obra»; queda como obra activa y aparece
+    en el listado de Obras."""
 
-    at = e2e.go_to_obras(e2e.login())
-    assert "Todavía no hay obras" in texts(at)
+    at = e2e.login()  # sin obras, la app abre en «Nueva obra» (#49 D8)
+    assert pagina_actual(at) == "Nueva obra"
+    assert "Te damos la bienvenida" in texts(at)
 
     at.text_input(key="nueva_nombre").input("Casa Lote 12")
     at.text_input(key="nueva_cliente").input("Pérez")
@@ -85,33 +100,34 @@ def test_e2e_04_crear_obra(e2e):
     at = click(at, "Crear obra")
 
     assert not at.exception
-    assert "Obra «Casa Lote 12» creada y elegida." in texts(at)
-    assert at.selectbox(key="obra_elegida").value == 1  # queda elegida arriba
+    assert "Obra «Casa Lote 12» creada: es la obra activa." in texts(at)
+    assert at.selectbox(key="obra_elegida").value == 1  # queda como obra activa
+    assert pagina_actual(at) == "Detalle"  # y se abre su detalle
     guardada = obras.find_obras(e2e.db, "Lote 12")[0]
     assert guardada["municipio"] == "La Plata" and guardada["moneda"] == "USD"
     assert guardada["presupuesto"] == 85000.0 and guardada["estado"] == "En curso"
 
-    at = at.run()  # siguiente carga: ya figura en el listado y en las métricas
-    assert at.dataframe[0].value["nombre"].tolist() == ["Casa Lote 12"]
-    assert [m.value for m in at.tabs[0].metric] == ["1", "1", "0%"]
+    at = e2e.ir_a(at, "obras")  # figura en el listado y en las métricas
+    assert _obras_listadas(at) == [1]
+    assert [m.value for m in at.metric] == ["1", "1", "0%"]
 
 
 def test_e2e_05_obra_sin_nombre(e2e):
     """E2E-05: no deja crear una obra sin nombre."""
 
-    at = click(e2e.go_to_obras(e2e.login()), "Crear obra")
+    at = click(e2e.login(), "Crear obra")
 
     assert "La obra necesita un nombre." in texts(at)
     assert obras.list_obras(e2e.db) == []
 
 
 def test_e2e_06_actualizar_estado_y_avance(e2e):
-    """E2E-06: cambia estado y avance de una obra y se refleja en el listado."""
+    """E2E-06: cambia estado y avance de una obra desde su Detalle."""
 
     _seed(e2e.db)
     at = e2e.elegir_obra(e2e.login(), 1)
-    at.selectbox(key="upd_estado_1").set_value("Pausada")
-    at.slider(key="upd_avance_1").set_value(55)
+    at.selectbox(key="det_estado_1").set_value("Pausada")
+    at.slider(key="det_avance_1").set_value(55)
     at = click(at, "Guardar cambios")
 
     assert not at.exception
@@ -124,12 +140,12 @@ def test_e2e_07_filtrar_por_estado(e2e):
     """E2E-07: el filtro por estado deja solo las obras de ese estado."""
 
     _seed(e2e.db)
-    at = e2e.go_to_obras(e2e.login())
-    assert len(at.dataframe[0].value) == 2
+    at = e2e.ir_a(e2e.login(), "obras")
+    assert sorted(_obras_listadas(at)) == [1, 2]
 
     at = at.multiselect(key="lista_filtro").set_value(["En curso"]).run()
 
-    assert at.dataframe[0].value["nombre"].tolist() == ["Casa Lote 12"]
+    assert _obras_listadas(at) == [1]
 
 
 def test_e2e_08_bitacora_manual(e2e):
@@ -223,7 +239,7 @@ def test_e2e_13_consultar_obras_por_chat(e2e):
 
 def test_e2e_14_cargar_avance_y_nota_por_chat(e2e):
     """E2E-14: pedido por chat -> nota + avance guardados, avisos visibles y
-    los cambios se ven después en la sección Obras."""
+    los cambios se ven después en la obra activa."""
 
     _seed(e2e.db)
     e2e.script(
@@ -247,8 +263,8 @@ def test_e2e_14_cargar_avance_y_nota_por_chat(e2e):
     assert obras.list_bitacora(e2e.db, 1)[0]["autor"] == EMAIL
 
     at = e2e.go_to_obras(at)
-    assert at.dataframe[0].value.set_index("nombre").loc["Casa Lote 12", "avance"] == 40
-    at = e2e.elegir_obra(at, 1)
+    assert "Casa Lote 12** · En curso · 40 % de avance" in _encabezado(at)
+    assert at.slider(key="det_avance_1").value == 40
     assert "Hormigonado de platea" in texts(at)
 
 
@@ -342,8 +358,8 @@ def test_e2e_18_historial_interrumpido_se_recupera(e2e):
 # Una sola obra elegida (UX-02, issue #7) y agente flotante (#33)
 # --------------------------------------------------------------------------- #
 def test_ux_02_ca_1_una_obra_para_toda_la_app(e2e):
-    """UX-02-CA-1: la obra que se elige arriba es la de todas las pestañas y la del
-    agente; ya no hay selectores por pestaña ni en la barra lateral."""
+    """UX-02-CA-1: la obra que se elige en el menú es la de todas las pestañas y la
+    del agente; no hay otros selectores de obra."""
 
     _seed(e2e.db)
     obras.add_nota(e2e.db, 2, "Nota de Hudson", autor=EMAIL)
@@ -353,10 +369,10 @@ def test_ux_02_ca_1_una_obra_para_toda_la_app(e2e):
     claves = [w.key for w in at.selectbox]
     assert claves.count("obra_elegida") == 1
     assert not {"lista_obra", "bitacora_obra", "plata_obra"} & set(claves)
-    assert not at.sidebar.selectbox
-    assert "Actualizar «Ampliación Hudson»" in [h.value for h in at.subheader]
+    assert [w.key for w in at.sidebar.selectbox] == ["obra_elegida"]  # en el menú (#49)
+    assert at.text_input(key="det_nombre_2").value == "Ampliación Hudson"  # Detalle
     assert "Nota de Hudson" in texts(at)  # Bitácora de la misma obra
-    assert at.button(key="item_agregar")  # Plata de la misma obra, sin otro selector
+    assert at.button(key="item_agregar")  # Presupuesto de la misma obra, sin otro selector
 
     at = e2e.abrir_agente(at)
     assert "Trabajando sobre **Ampliación Hudson**" in [c.value for c in at.caption]
@@ -425,13 +441,14 @@ def test_agente_flotante_actualiza_la_pantalla(e2e):
     at = e2e.abrir_agente(e2e.elegir_obra(e2e.login(), 1))
     at = at.chat_input(key="agente_input").set_value("Pasá el avance a 70").run()
 
-    assert at.dataframe[0].value.set_index("nombre").loc["Casa Lote 12", "avance"] == 70
+    assert "70 % de avance" in _encabezado(at)
+    assert at.slider(key="det_avance_1").value == 70
     assert "Avance en 70%." in texts(at)
 
 
 def test_agente_2b_el_formulario_no_pisa_lo_que_cargo_el_agente(e2e):
     """AGENTE-2 (revisión PR #43): si el agente cambia el avance y después se guarda
-    el estado desde «Actualizar», el avance nuevo se conserva."""
+    el estado desde el Detalle, el avance nuevo se conserva."""
 
     _seed(e2e.db)
     e2e.script(
@@ -439,11 +456,11 @@ def test_agente_2b_el_formulario_no_pisa_lo_que_cargo_el_agente(e2e):
         AIMessage(content="Avance en 70%."),
     )
     at = e2e.elegir_obra(e2e.login(), 1)
-    assert at.slider(key="upd_avance_1").value == 30
+    assert at.slider(key="det_avance_1").value == 30
     at = e2e.abrir_agente(at).chat_input(key="agente_input").set_value("Avance 70").run()
 
-    assert at.slider(key="upd_avance_1").value == 70  # el formulario muestra el dato nuevo
-    at.selectbox(key="upd_estado_1").set_value("Pausada")
+    assert at.slider(key="det_avance_1").value == 70  # el formulario muestra el dato nuevo
+    at.selectbox(key="det_estado_1").set_value("Pausada")
     at = click(at, "Guardar cambios")
     obra = obras.get_obra(e2e.db, 1)
     assert (obra["estado"], obra["avance"]) == ("Pausada", 70)

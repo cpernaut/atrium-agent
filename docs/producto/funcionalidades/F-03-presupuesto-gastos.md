@@ -192,7 +192,7 @@ siguen).
 
 ## Pantallas
 
-En la sección **📋 Obras**, la pestaña **💰 Plata**:
+En la obra activa, la pestaña **Presupuesto** (antes «💰 Plata», renombrada en #49):
 1. Selector de obra y de moneda de visualización (ARS / USD MEP).
 2. Tres números arriba: presupuestado, gastado y desvío, con el estado en palabras.
 3. Tabla por rubro con barra de ejecución.
@@ -254,7 +254,7 @@ estamos pasando?», «cargá 350 mil pesos de hierro, proveedor Hierros Sur».
   claro, en la app y en la base.
 - **F-03-CA-11** — *Dado* la obra activa Lote 12 *cuando* le pido al agente
   «cargá 350 mil pesos de hierro» *entonces* registra el gasto en Estructura con la
-  cotización del día, avisa qué guardó, y aparece en 💰 Plata.
+  cotización del día, avisa qué guardó, y aparece en la pestaña Presupuesto.
 - **F-03-CA-12** — *Dado* gastos y presupuesto cargados *cuando* pregunto «¿en qué
   rubro nos pasamos?» *entonces* el agente responde con los rubros con desvío
   usando datos reales.
@@ -263,7 +263,7 @@ estamos pasando?», «cargá 350 mil pesos de hierro, proveedor Hierros Sur».
 
 **Presupuesto: lista, detalle, edición y borrado** (issue #9)
 
-- **F-03-CA-14** — *Dado* ítems en tres rubros *cuando* abro 💰 Plata *entonces*
+- **F-03-CA-14** — *Dado* ítems en tres rubros *cuando* abro la pestaña Presupuesto *entonces*
   veo la lista agrupada por rubro, en orden de obra, con cantidad de ítems y
   subtotal de cada rubro.
 - **F-03-CA-15** — *Dado* un ítem *cuando* abro su fila *entonces* veo rubro,
@@ -357,7 +357,7 @@ dentro de cada ítem (CA-27, CA-29, CA-28 y CA-33).
 | Tablas, precarga, restricciones y RLS | `supabase_schema.sql` |
 | Cotización MEP | `atrium/cotizaciones.py` (fuente: ArgentinaDatos, serie `bolsa`, caché de 1 hora) |
 | Reglas y cálculos | `atrium/finanzas.py` |
-| Pantalla 💰 Plata | `plata_ui.py` |
+| Pestaña Presupuesto (ex 💰 Plata) | `plata_ui.py` |
 | Herramientas del agente | `registrar_gasto`, `resumen_plata` en `atrium/obra_tools.py` |
 | «Imprevistos» de una obra nueva | `obras_ui.py` → `finanzas.crear_imprevistos` |
 | Tests | `tests/test_finanzas.py`, `tests/test_cotizaciones.py`, `tests/e2e/test_plata_flows.py`, `tests/e2e/test_presupuesto_flows.py`, `tests/live/test_finanzas_live.py`, `tests/sql/test_rls_f03.sql` |

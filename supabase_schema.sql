@@ -429,3 +429,42 @@ grant update (presupuesto_item_id, fecha, descripcion, proveedor, monto, moneda,
     on public.gastos to authenticated;
 -- Sin login no se crean gastos (además de RLS): así ni siquiera corre el trigger.
 revoke insert on public.gastos from anon;
+
+-- #49 · Datos de la obra editables desde su Detalle (D4): todos los del alta.
+-- El autor, la fecha de creación y el id nunca cambian, aunque se saltee la app.
+revoke update on public.obras from authenticated, anon;
+grant update (nombre, cliente, direccion, municipio, tipo, estado, avance, responsable,
+              fecha_inicio, fecha_fin_estimada, presupuesto, moneda)
+    on public.obras to authenticated;
+-- El nombre de una obra no puede quedar vacío, ni el presupuesto ser negativo.
+alter table public.obras drop constraint if exists obras_nombre_no_vacio;
+alter table public.obras add constraint obras_nombre_no_vacio
+    check (char_length(btrim(nombre)) > 0) not valid;
+alter table public.obras drop constraint if exists obras_presupuesto_no_negativo;
+alter table public.obras add constraint obras_presupuesto_no_negativo
+    check (presupuesto is null or presupuesto >= 0) not valid;
+
+-- #49 · Pantalla de Rubros: se ordenan y se desactivan; el nombre no se edita.
+revoke update on public.rubros from authenticated, anon;
+grant update (orden, activo) on public.rubros to authenticated;
+
+-- «Otros» siempre activo: ahí va el ítem «Imprevistos» de cada obra nueva.
+create or replace function public.rubro_otros_activo()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if not new.activo and public.rubro_clave(new.nombre) = 'otros' then
+    raise exception 'El rubro «Otros» no se puede desactivar: ahí va «Imprevistos».'
+      using errcode = '23514';
+  end if;
+  return new;
+end;
+$$;
+revoke execute on function public.rubro_otros_activo() from public, anon, authenticated;
+
+drop trigger if exists rubros_otros_activo on public.rubros;
+create trigger rubros_otros_activo
+    before update of activo on public.rubros
+    for each row execute function public.rubro_otros_activo();

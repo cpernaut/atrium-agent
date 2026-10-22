@@ -13,11 +13,11 @@ resultado esperado verificable.
 | ID | Área | Caso | Resultado esperado |
 |---|---|---|---|
 | E2E-01 | Acceso | Login con contraseña incorrecta | Mensaje de error; no entra al chat |
-| E2E-02 | Acceso | Login válido | Entra a 📋 Obras con su email en la barra lateral y el botón «💬 Agente» abajo a la derecha; no hay selector de sección (#33) |
+| E2E-02 | Acceso | Login válido | Entra a la obra activa (Detalle, Bitácora, Presupuesto) con su email en el menú y el botón «💬 Agente» abajo a la derecha (#33, #49) |
 | E2E-03 | Acceso | Cerrar sesión | Vuelve al login y la sesión queda limpia |
-| E2E-04 | Obras | Crear obra completa | Mensaje de éxito; datos guardados; aparece en listado y métricas |
+| E2E-04 | Obras | Crear obra completa (sin obras, la app abre en «Nueva obra») | Mensaje de éxito; queda activa con su detalle; aparece en listado y métricas |
 | E2E-05 | Obras | Crear obra sin nombre | Error «La obra necesita un nombre»; no se guarda |
-| E2E-06 | Obras | Cambiar estado y avance | Se guarda solo en la obra elegida |
+| E2E-06 | Obras | Cambiar estado y avance en Detalle | Se guarda solo en la obra activa |
 | E2E-07 | Obras | Filtrar por estado | El listado muestra solo ese estado |
 | E2E-08 | Bitácora | Agregar nota con fecha | Se guarda con autor = usuario logueado y se muestra |
 | E2E-09 | Bitácora | Nota vacía | Error «La nota está vacía»; no se guarda |
@@ -25,17 +25,43 @@ resultado esperado verificable.
 | E2E-11 | Agente | Pregunta con obra activa | Busca solo en el código del municipio; la ficha de la obra va al modelo |
 | E2E-12 | Agente | Pregunta sin obra activa | Búsqueda sin filtro; el modelo sabe que no hay obra activa |
 | E2E-13 | Agente | «¿Qué obras tengo en curso?» | Responde con datos reales del tracker, filtrados por estado |
-| E2E-14 | Agente | «Anotá… avance 40%» con obra activa | Nota y avance guardados; avisos visibles; se ven luego en Obras |
+| E2E-14 | Agente | «Anotá… avance 40%» con obra activa | Nota y avance guardados; avisos visibles; se ven luego en el encabezado, Detalle y Bitácora |
 | E2E-15 | Agente | Pedido con obra ambigua | No escribe nada; pide aclarar |
 | E2E-16 | Historial | Una pregunta en el chat | Pregunta y respuesta guardadas para el usuario |
 | E2E-17 | Marca | Abrir la app | Nombre «Atrium Studio» con la etiqueta «Versión beta»; logo en el login y arriba a la izquierda; isotipo como favicon |
-| UX-02-CA-1 | Obra elegida | Elegir una obra arriba | Listado, Bitácora, Plata y agente usan esa obra; no hay otros selectores |
+| UX-02-CA-1 | Obra activa | Elegir una obra en el menú | Detalle, Bitácora, Presupuesto y agente usan esa obra; no hay otros selectores |
 | UX-02-CA-2 | Obra elegida | Entrar con una obra En curso y otras más nuevas Terminada/Cancelada | Queda elegida la En curso; las activas aparecen primero |
 | UX-02-CA-3 | Obra elegida | Abrir y cerrar el agente, recargar | La obra elegida se mantiene |
 | AGENTE-1 | Agente | Abrir el agente, preguntar, cerrar y volver a abrir | Panel con la obra sobre la que trabaja y ayuda para empezar; la conversación se conserva |
-| AGENTE-2 | Agente | Pedirle que cambie el avance | La pantalla de atrás se recarga con el dato nuevo |
-| AGENTE-2b | Agente | Cambiar el avance por chat y después guardar el estado en «Actualizar» | El formulario muestra el avance nuevo y no lo pisa |
+| AGENTE-2 | Agente | Pedirle que cambie el avance | La pantalla de atrás (encabezado y Detalle) se recarga con el dato nuevo |
+| AGENTE-2b | Agente | Cambiar el avance por chat y después guardar el estado en Detalle | El formulario muestra el avance nuevo y no lo pisa |
 | E2E-18 | Historial | Sesión con la carga del historial interrumpida | La app no se rompe: vuelve a cargarlo |
+
+## E2E simulado — UX-03 Menú y obra activa (`tests/e2e/test_navegacion_flows.py`, #49)
+
+| ID | Caso | Resultado esperado |
+|---|---|---|
+| UX-03-CA-1 | Entrar | Menú con el selector de obra activa y las pantallas Obra activa, Obras, Nueva obra, Rubros y Proveedores |
+| UX-03-CA-2 | Recorrer todas las pantallas | Arriba se ve la obra activa con estado y avance |
+| UX-03-CA-3 | Abrir la obra activa | Pestañas Detalle, Bitácora y Presupuesto; «Plata» no aparece |
+| UX-03-CA-4 | Editar todos los datos en Detalle | Se guardan en esa obra; la otra no cambia |
+| UX-03-CA-4b | Guardar sin cambios | Avisa «No hay cambios» y no escribe |
+| UX-03-CA-5 | Guardar con el nombre vacío | Error, no guarda, conserva lo escrito |
+| UX-03-CA-6 | «Descartar cambios» | Vuelve a lo guardado |
+| UX-03-CA-7 | «Abrir» en el listado | Queda activa y abre su detalle |
+| UX-03-CA-8 | Elegir otra obra, salir y entrar de nuevo | Entra con esa obra (recordada en la cuenta) |
+| UX-03-CA-8b | Recargar y cambiar de pantalla | La obra se guarda en la cuenta solo cuando cambia |
+| UX-03-CA-8c | Obra recordada inexistente o dato inválido | Entra a la En curso más nueva |
+| UX-03-CA-8d | No se puede guardar en la cuenta | La app sigue con la obra elegida |
+| UX-03-CA-9 | Crear una obra | Queda activa y abre su detalle |
+| UX-03-CA-10 | Sin obras | Abre «Nueva obra» con bienvenida, también desde «Obra activa» |
+| UX-03-CA-11 | Agente desde Rubros | Trabaja sobre la obra activa |
+| UX-03-CA-12 | Cambiar el municipio | El agente usa la normativa nueva |
+| UX-03-CA-13 | Cambiar el presupuesto de la obra | «Imprevistos» no cambia |
+| UX-03-CA-14 | Nombre de obra con Markdown | Se muestra como texto en encabezado y listado |
+| UX-03-CA-15 | Rubros: agregar, subir, desactivar, reactivar; desactivar «Otros» | Todo se guarda; «Otros» no se desactiva |
+| UX-03-CA-15b | Rubro repetido | No se agrega; conserva lo escrito |
+| UX-03-CA-16 | Proveedores | «Próximamente» |
 
 ## E2E simulado — F-03 Presupuesto y gastos (`tests/e2e/test_plata_flows.py` y `test_presupuesto_flows.py`)
 
@@ -77,7 +103,7 @@ resultado esperado verificable.
 | F-03-CA-30c | Obra sin «Imprevistos» | El alta ofrece «Es el ítem de imprevistos»; con uno vigente, no |
 | F-03-CA-30d | Alta de ítem sin monto | Se guarda en 0 con «Sin presupuesto asignado» |
 | F-03-CA-31 | Gasto en USD en un ítem en ARS | Se convierte con su cotización; sin cotización, «total incompleto» |
-| F-03-CA-32 | Abrir 💰 Plata | No hay formulario de gasto suelto ni «Últimos gastos» |
+| F-03-CA-32 | Abrir la pestaña Presupuesto | No hay formulario de gasto suelto ni «Últimos gastos» |
 | F-03-CA-33 | «Cargá 350 mil de hierro» por chat con un ítem que coincide | Gasto en ese ítem con la cotización del día; aviso visible |
 | F-03-CA-33b | Ningún ítem coincide | No guarda; pregunta y ofrece «Imprevistos» |
 | F-03-CA-33c | Varios ítems coinciden | No guarda; la herramienta exige preguntar |
@@ -86,7 +112,7 @@ resultado esperado verificable.
 | F-03-CA-38 | Edición inválida o cancelada | Error claro y conserva lo escrito; Cancelar no cambia nada |
 | F-03-CA-39 | Cambiar la fecha de un gasto con cotización automática | Toma el MEP de la nueva fecha; una corregida a mano se respeta |
 | F-03-CA-35 | Cambiar el rubro de un ítem con gastos | Los gastos pasan a ese rubro en el resumen |
-| TABLA-1 | Presupuesto en una tabla (#45) | Abrir 💰 Plata | Una sola tabla con Ítems y % consumido; rubros cerrados; sin lista aparte |
+| TABLA-1 | Presupuesto en una tabla (#45) | Abrir la pestaña Presupuesto | Una sola tabla con Ítems y % consumido; rubros cerrados; sin lista aparte |
 | TABLA-2 | Presupuesto en una tabla | Expandir rubro, ítem y volver a cerrar | Aparecen sus ítems y después sus gastos; al cerrar se ocultan |
 | TABLA-3 | Presupuesto en una tabla | Íconos por fila | Rubro: agregar ítem. Ítem: registrar gasto, editar, borrar. Gasto: cotización, anular. Todos con descripción |
 | TABLA-4 | Presupuesto en una tabla | «+» en el rubro | Alta con ese rubro elegido; el ítem nuevo aparece en el rubro |
@@ -151,6 +177,9 @@ borrado.
 | LIVE-22 | Presupuesto | B cambia el rubro del ítem de A y lo borra, salteando la app | El gasto sigue el rubro y queda anulado |
 | LIVE-24 | Gastos | B edita todo el gasto de A y lo mueve de ítem; después se anula | Se guarda con `editado_por` = B; el autor no cambia; anulado ya no se edita |
 | LIVE-23 | Presupuesto | Ítem en 0, ítem negativo, dos «Imprevistos» | 0 sí; negativo y segundo «Imprevistos» rechazados; se puede recrear tras borrarlo |
+| LIVE-25 | Obras | B edita todos los datos de la obra de A; intenta cambiar autor, fecha de creación, nombre vacío, presupuesto negativo; anónimo edita | Datos del alta sí; lo demás rechazado (#49) |
+| LIVE-26 | Rubros | Ordenar, desactivar, reactivar; renombrar y desactivar «Otros» salteando la app | Orden y activo sí; nombre y «Otros» rechazados (#49) |
+| LIVE-27 | Obra activa | A guarda su obra activa | Queda en la cuenta de A (se relee al entrar), no en la de B (#49) |
 
 ## Cómo ver los resultados
 

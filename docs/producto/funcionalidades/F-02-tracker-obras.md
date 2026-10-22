@@ -12,7 +12,7 @@ lleve una bitácora compartida, también por chat.
 
 - Sección **📋 Obras**: listado con métricas y filtro por estado; alta de obra;
   cambio de estado y avance; bitácora con fecha y autor.
-- **Obra elegida** arriba de la pantalla: la usan todas las pestañas y el agente (normativa del municipio + contexto). Ver UX-02 (#7).
+- **Obra activa**, elegida en el menú de la izquierda y siempre visible arriba: la usan todas las pantallas y el agente (normativa del municipio + contexto). Ver UX-02 (#7) y [UX-03](UX-03-navegacion-obra-activa.md) (#49), que suma el Detalle editable.
 - Herramientas del agente: `listar_obras`, `ver_obra`, `agregar_nota_bitacora`,
   `actualizar_obra`. Escribe solo si se le pide y avisa qué guardó.
 - Datos compartidos por todo el equipo con RLS; nadie puede borrar obras.

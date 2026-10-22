@@ -848,3 +848,54 @@ def test_editar_gasto_solo_envia_campos_permitidos(db, mep, monkeypatch):
     assert enviados and all(
         set(p) <= set(finanzas.CAMPOS_EDITABLES_GASTO) for t, p in enviados if t == "gastos"
     )
+
+
+# --------------------------------------------------------------------------- #
+# #49 · Pantalla de rubros: ordenar y desactivar
+# --------------------------------------------------------------------------- #
+def _nombres(db):
+    return [r["nombre"] for r in finanzas.list_rubros(db, incluir_inactivos=True)]
+
+
+def test_mover_rubro_arriba_y_abajo(db):
+    nombres = _nombres(db)
+    segundo = finanzas.find_rubros(db, nombres[1])[0]
+    finanzas.mover_rubro(db, segundo["id"], -1)
+    assert _nombres(db)[:2] == [nombres[1], nombres[0]]
+    finanzas.mover_rubro(db, segundo["id"], 1)
+    assert _nombres(db) == nombres
+
+
+def test_mover_rubro_en_los_extremos_no_hace_nada(db):
+    rubros = finanzas.list_rubros(db, incluir_inactivos=True)
+    assert finanzas.mover_rubro(db, rubros[0]["id"], -1) == []
+    assert finanzas.mover_rubro(db, rubros[-1]["id"], 1) == []
+
+
+def test_mover_rubro_con_ordenes_repetidos(db):
+    a = finanzas.create_rubro(db, "Zeta", orden=500)
+    b = finanzas.create_rubro(db, "Alfa", orden=500)  # mismo orden: va por nombre
+    nombres = _nombres(db)
+    assert nombres.index("Alfa") + 1 == nombres.index("Zeta")
+    finanzas.mover_rubro(db, a["id"], -1)
+    nombres = _nombres(db)
+    assert nombres.index("Zeta") + 1 == nombres.index("Alfa")
+    assert b["id"] != a["id"]
+
+
+@pytest.mark.parametrize("paso", [0, 2, -2])
+def test_mover_rubro_paso_invalido(db, paso):
+    with pytest.raises(finanzas.FinanzasError):
+        finanzas.mover_rubro(db, 1, paso)
+
+
+def test_mover_rubro_inexistente(db):
+    with pytest.raises(finanzas.FinanzasError, match="No se encontró"):
+        finanzas.mover_rubro(db, 9999, 1)
+
+
+def test_otros_no_se_desactiva(db):
+    otros = finanzas.find_rubros(db, "Otros")[0]
+    with pytest.raises(finanzas.FinanzasError, match="«Otros» no se puede desactivar"):
+        finanzas.set_rubro_activo(db, otros["id"], False)
+    assert finanzas.set_rubro_activo(db, otros["id"], True)["activo"]

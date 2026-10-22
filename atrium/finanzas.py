@@ -277,12 +277,51 @@ def create_rubro(client: Client, nombre: str, orden: int | None = None) -> Fila:
 
 
 def set_rubro_activo(client: Client, rubro_id: int, activo: bool) -> Fila:
-    """Deactivate (or reactivate) a rubro instead of deleting it."""
+    """Deactivate (or reactivate) a rubro instead of deleting it.
 
+    «Otros» always stays active: every new obra's «Imprevistos» goes there.
+    """
+
+    if not activo:
+        filas = _run(client.table("rubros").select("*").eq("id", rubro_id).limit(1))
+        if filas and normalizar(filas[0]["nombre"]) == "otros":
+            raise FinanzasError(
+                "«Otros» no se puede desactivar: ahí va el ítem «Imprevistos» de cada obra."
+            )
     filas = _run(client.table("rubros").update({"activo": bool(activo)}).eq("id", rubro_id))
     if not filas:
         raise FinanzasError("No se encontró el rubro.")
     return filas[0]
+
+
+def mover_rubro(client: Client, rubro_id: int, paso: int) -> list[Fila]:
+    """Move a rubro one place up (``paso=-1``) or down (``paso=1``) in the list.
+
+    The order is the one every screen and the budget table use. Rubros with the
+    same ``orden`` are first renumbered (in steps of 10) so the move is visible.
+    Returns the rubros whose ``orden`` changed.
+    """
+
+    if paso not in (-1, 1):
+        raise FinanzasError("Solo se puede mover un lugar para arriba o para abajo.")
+    rubros = list_rubros(client, incluir_inactivos=True)
+    ids = [r["id"] for r in rubros]
+    if rubro_id not in ids:
+        raise FinanzasError("No se encontró el rubro.")
+    i = ids.index(rubro_id)
+    j = i + paso
+    if not 0 <= j < len(rubros):
+        return []
+    ordenes = [int(r.get("orden") or 0) for r in rubros]
+    if len(set(ordenes)) != len(ordenes):
+        ordenes = [(k + 1) * 10 for k in range(len(rubros))]
+    ordenes[i], ordenes[j] = ordenes[j], ordenes[i]
+    cambiados = []
+    for rubro, orden in zip(rubros, ordenes, strict=True):
+        if int(rubro.get("orden") or 0) != orden:
+            filas = _run(client.table("rubros").update({"orden": orden}).eq("id", rubro["id"]))
+            cambiados.append(filas[0] if filas else {**rubro, "orden": orden})
+    return cambiados
 
 
 def _rubro_activo(client: Client, rubro_id: Any) -> Fila:
@@ -1012,7 +1051,7 @@ def describe_resumen(res: Resumen, nombre_obra: str) -> str:
     m = res.moneda
     estado_total = estado_desvio(res.desvio, res.presupuestado)
     lineas = [
-        f"Plata de {nombre_obra} en {m}:",
+        f"Presupuesto y gastos de {nombre_obra} en {m}:",
         f"- Presupuestado: {formato_monto(res.presupuestado, m)}",
         f"- Gastado: {formato_monto(res.gastado, m)}",
         f"- Desvío: {formato_monto(res.desvio, m)} ({estado_total})",
