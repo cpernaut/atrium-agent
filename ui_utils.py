@@ -20,8 +20,11 @@ def texto_seguro(valor: object) -> str:
     return "  \n".join(texto.splitlines())
 
 
-# ![alt](url) and reference-style images ![alt][ref]
-_IMAGEN = re.compile(r"!\[([^\]]*)\]\s*(\([^)]*\)|\[[^\]]*\])")
+# In Markdown an image always starts with "![". Escaping that "!" (taking care
+# of backslashes already in front of it) leaves at most a link, which the
+# browser never loads by itself. This holds for nested brackets, reference
+# images and any other variant, unlike matching whole image patterns.
+_BANG_ANTES_DE_CORCHETE = re.compile(r"(\\*)!(?=\[)")
 
 
 def respuesta_segura(texto: object) -> str:
@@ -29,7 +32,11 @@ def respuesta_segura(texto: object) -> str:
 
     An image in an answer would be fetched by the viewer's browser; a prompt
     injection hidden in stored data could use its URL to leak information.
-    Images are shown as plain text instead.
     """
 
-    return _IMAGEN.sub(lambda m: f"[imagen: {m.group(1) or 'sin descripción'}]", str(texto or ""))
+    def escapar(m: re.Match) -> str:
+        barras = m.group(1)
+        # Odd number of backslashes: the "!" is already literal.
+        return barras + ("!" if len(barras) % 2 else "\\!")
+
+    return _BANG_ANTES_DE_CORCHETE.sub(escapar, str(texto or ""))

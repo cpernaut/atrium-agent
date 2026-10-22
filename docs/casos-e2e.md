@@ -53,7 +53,7 @@ resultado esperado verificable.
 | F-03-SEG-1 | Descripción con Markdown de imagen o link | Se muestra como texto, no se interpreta |
 | F-03-SEG-2 | Rubro con Markdown en el aviso «Ítem agregado» | Se muestra como texto, no se interpreta |
 | F-03-SEG-3 | Nombres con Markdown en los avisos del chat | Se muestran como texto, también en el historial |
-| F-03-SEG-4 | Respuesta del agente con una imagen | Se muestra como texto; el resto del formato se mantiene |
+| F-03-SEG-4 | Respuesta del agente con una imagen (cualquier variante de Markdown) | No se carga ninguna imagen; el resto del formato se mantiene |
 | F-03-A11Y-1 | Campos de la pestaña | Todos con etiqueta visible; los obligatorios lo dicen |
 | F-03-A11Y-2 | Rubro excedido | El estado se lee en palabras, no solo por color |
 

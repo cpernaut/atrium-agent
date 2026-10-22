@@ -522,6 +522,7 @@ def test_f03_seg_4_respuesta_del_agente_no_carga_imagenes(e2e):
     at = e2e.login().chat_input[0].set_value("hola").run()
 
     crudos = "\n".join(m.value for m in at.markdown)
-    assert "](https://evil.test" not in crudos and "[imagen: x]" in crudos and "**ok**" in crudos
+    assert "\\![x](https://evil.test" in crudos and "**ok**" in crudos
+    assert "Listo ![x]" not in crudos
     at = at.run()
-    assert "](https://evil.test" not in "\n".join(m.value for m in at.markdown)
+    assert "Listo ![x]" not in "\n".join(m.value for m in at.markdown)
