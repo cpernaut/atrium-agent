@@ -92,7 +92,7 @@ def test_f03_ca_1_cargar_presupuesto_por_rubro(e2e):
         at.number_input(key="item_monto").set_value(float(monto))
         at = click(at, "Agregar al presupuesto")
         assert not at.exception
-        assert f"Ítem agregado: {rubro}" in texts(at)
+        assert f"Ítem agregado: {rubro}" in visible(at)
 
     tabla = _tabla(at)
     assert list(tabla.index) == ["Fundaciones", "Estructura", "Pintura"]  # orden de obra
@@ -117,7 +117,7 @@ def test_f03_ca_2_registrar_gasto_suma_en_rubro_y_total(e2e):
 
     assert not at.exception
     pantalla = texts(at)
-    assert "Gasto guardado: ARS 350.000" in pantalla
+    assert "Gasto guardado: ARS 350.000" in visible(at)
     assert "Hierro del 8" in pantalla and "Hierros Sur" in pantalla
     assert _tabla(at).loc["Estructura", "Gastado"] == "ARS 350.000"
     assert _metricas(at)["Gastado"] == "ARS 350.000"
@@ -135,7 +135,7 @@ def test_f03_ca_3_cotizacion_automatica_del_dia(e2e):
 
     gasto = finanzas.list_gastos(e2e.db, 1)[0]
     assert (gasto["tipo_cambio"], gasto["tipo_cambio_origen"]) == ("1200.0000", "auto")
-    assert "MEP 1.200,00 (automática)" in texts(at)
+    assert "MEP 1.200,00 (automática)" in visible(at)
 
 
 def test_f03_ca_4_sabado_usa_cotizacion_del_viernes(e2e):
@@ -167,7 +167,7 @@ def test_f03_ca_5_fuente_caida_guarda_sin_cotizacion(e2e):
     gasto = finanzas.list_gastos(e2e.db, 1)[0]
     assert "tipo_cambio" not in gasto
     pantalla = texts(at)
-    assert "No se pudo consultar el dólar MEP" in pantalla
+    assert "No se pudo consultar el dólar MEP" in visible(at)
     assert "sin cotización" in pantalla
     assert any(b.label == "Guardar cotización" for b in at.button)
 
@@ -246,11 +246,11 @@ def test_f03_ca_10_datos_invalidos_no_se_guardan(e2e):
 
     _obra(e2e)
     at = _cargar_gasto(_plata(e2e), 0.0, "Cemento", _rubro(e2e, "Fundaciones"))
-    assert "No se guardó el gasto: El monto tiene que ser mayor que cero." in texts(at)
+    assert "No se guardó el gasto: El monto tiene que ser mayor que cero." in visible(at)
     assert at.text_input(key="gasto_descripcion").value == "Cemento"
 
     at = _cargar_gasto(at, 1000.0, "   ", _rubro(e2e, "Fundaciones"))
-    assert "No se guardó el gasto: Falta la descripción." in texts(at)
+    assert "No se guardó el gasto: Falta la descripción." in visible(at)
     assert finanzas.list_gastos(e2e.db, 1) == []
 
 
@@ -463,3 +463,24 @@ def test_f03_ca_11c_rubro_ambiguo_pide_aclarar(e2e):
     assert "Instalación eléctrica" in resultado and "Instalación de gas" in resultado
     assert finanzas.list_gastos(e2e.db, 1) == []
     assert "💸" not in texts(at)
+
+
+def test_f03_seg_2_avisos_escapan_nombres(e2e):
+    """F-03-SEG-2 (revisión PR #5): un rubro con Markdown no se interpreta en el
+    aviso de «Ítem agregado»."""
+
+    _obra(e2e)
+    malicioso = (
+        e2e.db.table("rubros")
+        .insert({"nombre": "![x](https://evil.test/p.png)", "orden": 5})
+        .execute()
+        .data[0]
+    )
+    at = _plata(e2e)
+    at.selectbox(key="item_rubro").set_value(malicioso["id"])
+    at.number_input(key="item_monto").set_value(100.0)
+    at = click(at, "Agregar al presupuesto")
+
+    exitos = [m.value for m in at.success]
+    assert exitos and "![x](https://" not in exitos[0]
+    assert r"\!\[x\]" in exitos[0]

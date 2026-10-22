@@ -349,6 +349,15 @@ def test_paginas_sin_fin_se_cortan(db, monkeypatch):
         finanzas.list_rubros(db)  # 18 rubros > 2 páginas de 5
 
 
+@pytest.mark.parametrize("valor", ["-1e30", "-" + "9" * 40, -(10**20)])
+def test_montos_negativos_enormes_dan_error_claro(valor):
+    """Revisión PR #5: un negativo enorme se rechaza antes de redondear."""
+
+    for parse in (finanzas.parse_monto, finanzas.parse_tipo_cambio):
+        with pytest.raises(finanzas.FinanzasError, match="mayor que cero"):
+            parse(valor)
+
+
 @pytest.mark.parametrize("valor", ["1e30", "9" * 40, 10**20])
 def test_montos_enormes_dan_error_claro(valor):
     """Revisión PR #5: un monto enorme no rompe con InvalidOperation."""

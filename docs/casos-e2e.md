@@ -51,6 +51,7 @@ resultado esperado verificable.
 | F-03-CA-11c | Rubro ambiguo por chat («Instalación») | No guarda nada; la herramienta exige preguntar |
 | F-03-CA-12 | «¿En qué rubro nos pasamos?» | Responde con desvíos reales por rubro |
 | F-03-SEG-1 | Descripción con Markdown de imagen o link | Se muestra como texto, no se interpreta |
+| F-03-SEG-2 | Rubro con Markdown en el aviso «Ítem agregado» | Se muestra como texto, no se interpreta |
 | F-03-A11Y-1 | Campos de la pestaña | Todos con etiqueta visible; los obligatorios lo dicen |
 | F-03-A11Y-2 | Rubro excedido | El estado se lee en palabras, no solo por color |
 

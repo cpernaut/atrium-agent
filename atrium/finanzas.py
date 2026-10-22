@@ -145,6 +145,8 @@ def _en_rango(valor: Any, paso: Decimal, maximo: Decimal, que: str) -> Decimal:
     """Round to ``paso`` only after checking the range (huge values can't be rounded)."""
 
     numero = parse_decimal(valor)
+    if numero <= 0:
+        raise FinanzasError(f"{que} tiene que ser mayor que cero.")
     if numero > maximo:
         raise FinanzasError(f"{que} es demasiado grande.")
     redondeado = numero.quantize(paso, rounding=ROUND_HALF_UP)

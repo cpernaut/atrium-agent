@@ -104,7 +104,7 @@ def render_plata(supabase, lista: list[obras.Obra]) -> None:
         items = finanzas.list_presupuesto(supabase, obra_id)
         gastos = finanzas.list_gastos(supabase, obra_id)
     except finanzas.FinanzasError as exc:
-        st.error(f"No se pudieron leer los datos de plata: {exc}")
+        st.error(f"No se pudieron leer los datos de plata: {texto_seguro(exc)}")
         st.caption(_SCHEMA_HINT)
         return
 
@@ -241,15 +241,18 @@ def _render_form_gasto(supabase, obra_id: int, activos: list[dict]) -> None:
                     tipo_cambio=tc or None,
                 )
             except finanzas.FinanzasError as exc:
-                st.error(f"No se guardó el gasto: {exc}")
+                st.error(f"No se guardó el gasto: {texto_seguro(exc)}")
             else:
                 _flash(
                     "success",
-                    f"✅ Gasto guardado: {finanzas.formato_monto(gasto['monto'], gasto['moneda'])}"
-                    f" · {_cotizacion_txt(gasto)}.",
+                    "✅ Gasto guardado: "
+                    + texto_seguro(
+                        f"{finanzas.formato_monto(gasto['monto'], gasto['moneda'])}"
+                        f" · {_cotizacion_txt(gasto)}."
+                    ),
                 )
                 if aviso:
-                    _flash("warning", f"⚠️ {aviso}")
+                    _flash("warning", f"⚠️ {texto_seguro(aviso)}")
                 st.session_state["gasto_limpiar"] = True
                 st.rerun()
 
@@ -304,7 +307,7 @@ def _render_gastos(supabase, gastos: list[dict], rubros_por_id: dict) -> None:
                 try:
                     finanzas.set_tipo_cambio(supabase, "gastos", gasto_id, valor)
                 except finanzas.FinanzasError as exc:
-                    st.error(f"No se guardó la cotización: {exc}")
+                    st.error(f"No se guardó la cotización: {texto_seguro(exc)}")
                 else:
                     _flash("success", "✅ Cotización corregida a mano.")
                     st.session_state["anular_gasto_limpiar"] = True
@@ -323,7 +326,7 @@ def _render_gastos(supabase, gastos: list[dict], rubros_por_id: dict) -> None:
                     try:
                         finanzas.anular_gasto(supabase, gasto_id)
                     except finanzas.FinanzasError as exc:
-                        st.error(f"No se anuló el gasto: {exc}")
+                        st.error(f"No se anuló el gasto: {texto_seguro(exc)}")
                     else:
                         _flash("success", "✅ Gasto anulado.")
                         st.session_state["anular_gasto_limpiar"] = True
@@ -394,15 +397,18 @@ def _render_presupuesto(
                     tipo_cambio=tc or None,
                 )
             except finanzas.FinanzasError as exc:
-                st.error(f"No se agregó el ítem: {exc}")
+                st.error(f"No se agregó el ítem: {texto_seguro(exc)}")
             else:
                 _flash(
                     "success",
-                    f"✅ Ítem agregado: {_rubro_nombre(rubros_por_id, item['rubro_id'])} · "
-                    f"{finanzas.formato_monto(item['monto'], item['moneda'])}.",
+                    "✅ Ítem agregado: "
+                    + texto_seguro(
+                        f"{_rubro_nombre(rubros_por_id, item['rubro_id'])} · "
+                        f"{finanzas.formato_monto(item['monto'], item['moneda'])}."
+                    ),
                 )
                 if aviso:
-                    _flash("warning", f"⚠️ {aviso}")
+                    _flash("warning", f"⚠️ {texto_seguro(aviso)}")
                 st.session_state["item_limpiar"] = True
                 st.rerun()
 
@@ -437,7 +443,7 @@ def _render_presupuesto(
             try:
                 finanzas.set_tipo_cambio(supabase, "presupuesto_items", item_id, valor)
             except finanzas.FinanzasError as exc:
-                st.error(f"No se guardó la cotización: {exc}")
+                st.error(f"No se guardó la cotización: {texto_seguro(exc)}")
             else:
                 _flash("success", "✅ Cotización del ítem corregida a mano.")
                 st.session_state["anular_item_limpiar"] = True
@@ -453,7 +459,7 @@ def _render_presupuesto(
                 try:
                     finanzas.anular_presupuesto_item(supabase, item_id)
                 except finanzas.FinanzasError as exc:
-                    st.error(f"No se anuló el ítem: {exc}")
+                    st.error(f"No se anuló el ítem: {texto_seguro(exc)}")
                 else:
                     _flash("success", "✅ Ítem anulado.")
                     st.session_state["anular_item_limpiar"] = True
