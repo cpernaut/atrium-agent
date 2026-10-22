@@ -632,3 +632,26 @@ def test_tabla_5_gasto_anulado_tachado_en_su_fila(e2e):
     tachados = [m.value for m in _tab(at).markdown if m.value.startswith("~~")]
     assert tachados and "Rodillo" in tachados[0] and tachados[0].endswith("**Anulado**")
     assert f"gasto_anular_{gasto['id']}" not in [b.key for b in at.button]
+
+
+def test_tabla_6_pasar_de_un_alta_a_otra(e2e):
+    """TABLA-6 (revisión PR #46): con el alta abierta, tocar el «+» de un rubro (o de
+    otro rubro) cambia el formulario a ese rubro sin errores."""
+
+    _obra(e2e)
+    pintura = _item(e2e, "Pintura", 100, descripcion="Látex")
+    revoques = _item(e2e, "Revoques", 100, descripcion="Grueso")
+    at = _abrir_nuevo(_plata(e2e))  # «+ Agregar ítem», vacío
+
+    at = at.button(key=f"rubro_agregar_{pintura['rubro_id']}").click().run()
+    assert not at.exception
+    assert at.selectbox(key="nuevo_item_rubro").value == pintura["rubro_id"]
+
+    at = at.button(key=f"rubro_agregar_{revoques['rubro_id']}").click().run()
+    assert not at.exception
+    assert at.selectbox(key="nuevo_item_rubro").value == revoques["rubro_id"]
+    assert len([f for f in at.selectbox if f.key == "nuevo_item_rubro"]) == 1
+
+    at = at.button(key="item_nuevo_cancelar").click().run()
+    at = _abrir_nuevo(at)
+    assert at.selectbox(key="nuevo_item_rubro").value is None  # el de arriba, vacío

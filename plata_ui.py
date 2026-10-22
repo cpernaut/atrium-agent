@@ -199,6 +199,22 @@ _CSS_TABLA = """
 """
 
 
+def _abrir_alta(rubro_id: int | None) -> None:
+    """Open the new-item form: empty (R8), or with ``rubro_id`` chosen (row «＋»).
+
+    Runs as a button callback, before any widget is drawn, so switching from one
+    open form to another can preset its fields.
+    """
+
+    _clear_prefix(_NUEVO)
+    if rubro_id is None:
+        st.session_state[_NUEVO_ABIERTO] = True
+        return
+    st.session_state[f"{_NUEVO}rubro"] = rubro_id
+    st.session_state[_NUEVO_ABIERTO] = rubro_id
+    _abrir(f"r{rubro_id}")
+
+
 def _abierta(clave: str) -> bool:
     return clave in st.session_state.get(_ABIERTOS, set())
 
@@ -244,10 +260,8 @@ def _render_presupuesto(
 
     if st.session_state.get(_NUEVO_ABIERTO) is True:  # «+ Agregar ítem», sin rubro
         _form_nuevo_item(supabase, obra_id, activos, vigentes)
-    elif st.button("+ Agregar ítem", key="item_agregar"):
-        _clear_prefix(_NUEVO)  # R8: siempre vacío al abrir
-        st.session_state[_NUEVO_ABIERTO] = True
-        st.rerun()
+    else:
+        st.button("+ Agregar ítem", key="item_agregar", on_click=_abrir_alta, args=(None,))
 
     if not vigentes:
         st.caption("Todavía no hay ítems en el presupuesto de esta obra.")
@@ -334,17 +348,16 @@ def _fila_rubro(
                 estado,
             ],
         )
-        if _icono(
-            cols[-1],
+        # Callback: the new-item form may already be on screen (another rubro or the
+        # top button), and its widgets can only be preset before they are drawn.
+        cols[-1].button(
             ":material/add:",
-            f"rubro_agregar_{rubro_id}",
-            f"Agregar un ítem en {nombre}",
-        ):
-            _clear_prefix(_NUEVO)
-            st.session_state[f"{_NUEVO}rubro"] = rubro_id
-            st.session_state[_NUEVO_ABIERTO] = rubro_id
-            _abrir(clave)
-            st.rerun()
+            key=f"rubro_agregar_{rubro_id}",
+            help=f"Agregar un ítem en {nombre}",
+            type="tertiary",
+            on_click=_abrir_alta,
+            args=(rubro_id,),
+        )
 
     abierto = st.session_state.get(_NUEVO_ABIERTO)
     if abierto is not True and abierto == rubro_id:  # True == 1: compare identity first
