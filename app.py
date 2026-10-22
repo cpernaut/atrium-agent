@@ -209,7 +209,7 @@ def _has_openai_key() -> bool:
 # Chat
 # --------------------------------------------------------------------------- #
 def render_history() -> None:
-    for message in st.session_state.history:
+    for message in st.session_state.get("history", []):
         with st.chat_message(message["role"]):
             st.markdown(respuesta_segura(message["content"]))
             for accion in message.get("acciones", []):
@@ -220,6 +220,7 @@ def render_history() -> None:
 
 
 def handle_prompt(supabase, user, prompt: str) -> None:
+    st.session_state.setdefault("history", [])
     st.session_state.history.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
@@ -266,9 +267,13 @@ supabase = get_supabase()
 user = require_login(supabase)
 graph = get_graph(supabase, user)
 
+# The history is loaded until it is in the session, and the thread id is set
+# last: if a rerun interrupts the load (a tap while it runs, a network error),
+# the next run tries again instead of leaving a session without history.
+if "history" not in st.session_state:
+    st.session_state.history = load_history(supabase, user.id)
 if "thread_id" not in st.session_state:
     st.session_state.thread_id = str(uuid.uuid4())
-    st.session_state.history = load_history(supabase, user.id)
 
 seccion = render_sidebar(supabase, user)
 

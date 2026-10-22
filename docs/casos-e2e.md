@@ -29,6 +29,7 @@ resultado esperado verificable.
 | E2E-15 | Agente | Pedido con obra ambigua | No escribe nada; pide aclarar |
 | E2E-16 | Historial | Una pregunta en el chat | Pregunta y respuesta guardadas para el usuario |
 | E2E-17 | Marca | Abrir la app | Nombre «Atrium Studio» con la etiqueta «Versión beta»; logo en el login y arriba a la izquierda; isotipo como favicon |
+| E2E-18 | Historial | Sesión con la carga del historial interrumpida | La app no se rompe: vuelve a cargarlo |
 
 ## E2E simulado — F-03 Presupuesto y gastos (`tests/e2e/test_plata_flows.py` y `test_presupuesto_flows.py`)
 
