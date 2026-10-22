@@ -26,7 +26,9 @@ Supabase. Desplegada en Streamlit Community Cloud desde `main`.
   **«Antes de mergear: correr supabase_schema.sql»**, porque el esquema no se
   aplica solo, y el check «Esquema aplicado» frena el merge hasta que el PR tenga
   la etiqueta `esquema aplicado`. Con el conector de Supabase se puede aplicar y
-  verificar, pidiéndolo antes; después se pone la etiqueta.
+  verificar, pidiéndolo antes; después se pone la etiqueta. Si el check quedara trabado
+  con el esquema ya aplicado (eventos de GitHub fuera de orden), se destraba
+  sacando y volviendo a poner la etiqueta.
 - Commits y PRs en español.
 
 ## Arquitectura (respetarla)

@@ -13,10 +13,8 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, labeled, unlabeled, ready_for_review]
 
-concurrency:
-  group: listo-para-mergear-${{ github.event.pull_request.number }}
-  # Sin cancelar: cada corrida decide sola con datos frescos del PR.
-  cancel-in-progress: false
+# Sin grupo de concurrencia: GitHub descartaría corridas pendientes (por ejemplo,
+# la del evento «labeled»). Cada corrida decide sola con datos frescos del PR.
 
 jobs:
   esquema:
