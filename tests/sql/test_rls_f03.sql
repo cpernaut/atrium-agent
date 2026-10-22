@@ -78,8 +78,12 @@ insert into public.rubros (nombre, orden) values ('Piscina', 500);
 select pg_temp.falla($$insert into public.rubros (nombre) values ('  piscina ')$$, '23505');
 select pg_temp.falla($$insert into public.rubros (nombre) values ('ESTRUCTURA')$$, '23505');
 select pg_temp.falla($$insert into public.rubros (nombre) values ('x')$$, '23514');
+select pg_temp.falla($$insert into public.rubros (nombre) values ('Mamposteria')$$, '23505');
+select pg_temp.falla($$insert into public.rubros (nombre) values ('MAMPOSTERÍA')$$, '23505');
+select pg_temp.falla($$insert into public.rubros (nombre) values ('Steel   Frame')$$, '23505');
+select pg_temp.falla($$insert into public.rubros (nombre) values ('instalacion  ELECTRICA')$$, '23505');
 update public.rubros set activo = false where nombre = 'Piscina';
-select pg_temp.ok(true, 'rubros: alta, duplicados rechazados, desactivar');
+select pg_temp.ok(true, 'rubros: alta, duplicados (mayúsculas, tildes, espacios) rechazados, desactivar');
 
 -- Anular y corregir cotización (update permitido); borrar, nunca.
 update public.gastos set anulado = true where descripcion = 'Hierro';

@@ -107,3 +107,11 @@ def test_live_17_rubros_nuevos_unicos(users, run_id):
     with pytest.raises(APIError):  # salteando la app: el índice único lo rechaza
         users.b.client.table("rubros").insert({"nombre": f"  {nombre.upper()} "}).execute()
     assert users.a.client.table("rubros").delete().eq("id", nuevo["id"]).execute().data == []
+
+
+@pytest.mark.parametrize("nombre", ["Mamposteria", "MAMPOSTERÍA", "  steel   FRAME "])
+def test_live_18_rubros_casi_duplicados(users, nombre):
+    """LIVE-18: la base rechaza rubros que solo difieren en mayúsculas, tildes o espacios."""
+
+    with pytest.raises(APIError):
+        users.a.client.table("rubros").insert({"nombre": nombre}).execute()

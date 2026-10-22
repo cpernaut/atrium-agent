@@ -315,3 +315,28 @@ def test_describe_resumen_avisa_total_incompleto():
 def test_crear_rubro_orden_invalido(db, orden):
     with pytest.raises(finanzas.FinanzasError, match="orden"):
         finanzas.create_rubro(db, "Piscina", orden=orden)
+
+
+def test_resumen_trae_todas_las_paginas(db, mep, monkeypatch):
+    """Revisión PR #5: con más filas que el máximo por respuesta, el resumen no se corta."""
+
+    monkeypatch.setattr(finanzas, "_PAGINA", 4)
+    db.max_rows_por_respuesta = 3  # el servidor devuelve aún menos que lo pedido
+    for _ in range(10):
+        _gasto(db, monto="100")
+        finanzas.add_presupuesto_item(
+            db, 1, monto="50", moneda="ARS", rubro_id=_rubro(db, "Pintura")
+        )
+
+    assert len(finanzas.list_gastos(db, 1)) == 10
+    res = finanzas.resumen(db, 1, "ARS")
+    assert (res.gastado, res.presupuestado) == (Decimal("1000"), Decimal("500"))
+    assert len(finanzas.list_rubros(db)) == len(finanzas.RUBROS_INICIALES)
+    assert len(finanzas.list_gastos(db, 1, limit=2)) == 2
+
+
+def test_paginas_sin_fin_se_cortan(db, monkeypatch):
+    monkeypatch.setattr(finanzas, "_MAX_PAGINAS", 2)
+    monkeypatch.setattr(finanzas, "_PAGINA", 5)
+    with pytest.raises(finanzas.FinanzasError, match="demasiados"):
+        finanzas.list_rubros(db)  # 18 rubros > 2 páginas de 5

@@ -77,12 +77,33 @@ def hoy() -> date:
     return datetime.now(_ARGENTINA).date()
 
 
+_PAGINA = 1000  # Supabase's default max rows per response
+_MAX_PAGINAS = 200  # 200.000 rows: far beyond any obra; guards against loops
+
+
+def _run_all(build) -> list[Fila]:
+    """Every row of a query, page by page.
+
+    ``build`` returns a fresh query with a stable order (ending in ``id``).
+    Pages advance by the rows actually received, so a server with a smaller
+    max-rows setting can't make us stop early and silently drop rows.
+    """
+
+    filas: list[Fila] = []
+    for _ in range(_MAX_PAGINAS):
+        pagina = _run(build().range(len(filas), len(filas) + _PAGINA - 1))
+        if not pagina:
+            return filas
+        filas.extend(pagina)
+    raise FinanzasError("Hay demasiados registros para calcular el resumen.")
+
+
 def _run(query) -> list[Fila]:
     try:
         return query.execute().data or []
     except Exception as exc:  # noqa: BLE001 - wrap the provider error
         mensaje = str(exc)
-        if "rubros_nombre_unico" in mensaje or "duplicate key" in mensaje:
+        if "rubros_nombre_clave_unico" in mensaje or "duplicate key" in mensaje:
             raise FinanzasError("Ya existe un rubro con ese nombre.") from exc
         raise FinanzasError(mensaje) from exc
 
@@ -185,10 +206,11 @@ def normalizar(texto: str) -> str:
 # Rubros
 # --------------------------------------------------------------------------- #
 def list_rubros(client: Client, incluir_inactivos: bool = False) -> list[Fila]:
-    query = client.table("rubros").select("*").order("orden").order("nombre")
-    if not incluir_inactivos:
-        query = query.eq("activo", True)
-    return _run(query)
+    def build():
+        query = client.table("rubros").select("*").order("orden").order("nombre").order("id")
+        return query if incluir_inactivos else query.eq("activo", True)
+
+    return _run_all(build)
 
 
 def find_rubros(client: Client, texto: str) -> list[Fila]:
@@ -345,16 +367,21 @@ def add_gasto(
 
 
 def list_gastos(client: Client, obra_id: int, limit: int | None = None) -> list[Fila]:
-    query = (
-        client.table("gastos")
-        .select("*")
-        .eq("obra_id", obra_id)
-        .order("fecha", desc=True)
-        .order("created_at", desc=True)
-    )
+    """All gastos of the obra, newest first (``limit`` only for short listings)."""
+
+    def build():
+        return (
+            client.table("gastos")
+            .select("*")
+            .eq("obra_id", obra_id)
+            .order("fecha", desc=True)
+            .order("created_at", desc=True)
+            .order("id", desc=True)
+        )
+
     if limit:
-        query = query.limit(limit)
-    return _run(query)
+        return _run(build().limit(limit))
+    return _run_all(build)
 
 
 def anular_gasto(client: Client, gasto_id: int) -> Fila:
@@ -394,8 +421,16 @@ def add_presupuesto_item(
 
 
 def list_presupuesto(client: Client, obra_id: int) -> list[Fila]:
-    query = client.table("presupuesto_items").select("*").eq("obra_id", obra_id).order("created_at")
-    return _run(query)
+    def build():
+        return (
+            client.table("presupuesto_items")
+            .select("*")
+            .eq("obra_id", obra_id)
+            .order("created_at")
+            .order("id")
+        )
+
+    return _run_all(build)
 
 
 def anular_presupuesto_item(client: Client, item_id: int) -> Fila:

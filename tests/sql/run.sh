@@ -6,7 +6,7 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 DB="atrium_schema_test"
 PSQL=(psql -X -q -v ON_ERROR_STOP=1)
-"${PSQL[@]}" -d postgres -c "drop database if exists $DB" -c "create database $DB" >/dev/null 2>&1
+"${PSQL[@]}" -d postgres -c "drop database if exists $DB" -c "create database $DB encoding 'UTF8' lc_collate 'C.UTF-8' lc_ctype 'C.UTF-8' template template0" >/dev/null 2>&1
 "${PSQL[@]}" -d "$DB" -f tests/sql/supabase_stub.sql >/dev/null
 "${PSQL[@]}" -d "$DB" -f supabase_schema.sql 2>/dev/null
 "${PSQL[@]}" -d "$DB" -f supabase_schema.sql 2>/dev/null

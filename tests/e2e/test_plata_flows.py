@@ -222,14 +222,14 @@ def test_f03_ca_9_anular_gasto(e2e):
     no se borra."""
 
     _obra(e2e)
-    _seed_gasto(e2e, 350000, "ARS", "Estructura", tipo_cambio=1200, descripcion="Hierro")
+    gasto = _seed_gasto(e2e, 350000, "ARS", "Estructura", tipo_cambio=1200, descripcion="Hierro")
     at = _plata(e2e)
 
     at = click(at, "Anular gasto")
     assert "Marcá la confirmación" in texts(at)
     assert finanzas.list_gastos(e2e.db, 1)[0]["anulado"] is False
 
-    at.checkbox(key="anular_gasto_ok").check()
+    at.checkbox(key=f"anular_gasto_ok_{gasto['id']}").check()
     at = click(at, "Anular gasto")
 
     assert not at.exception
@@ -398,3 +398,46 @@ def test_f03_ca_6b_corregir_cotizacion_de_un_item(e2e):
     assert (item["tipo_cambio"], item["tipo_cambio_origen"]) == ("1200.0000", "manual")
     assert "Total incompleto" not in texts(at)
     assert _metricas(at)["Presupuestado"] == "ARS 6.000.000"
+
+
+def test_f03_ca_9b_confirmacion_no_pasa_a_otro_gasto(e2e):
+    """F-03-CA-9 (revisión PR #5): confirmar un gasto y elegir otro no lo anula sin
+    confirmar de nuevo."""
+
+    _obra(e2e)
+    a = _seed_gasto(e2e, 100, "ARS", "Pintura", tipo_cambio=1200, descripcion="Gasto A")
+    b = _seed_gasto(e2e, 200, "ARS", "Pintura", tipo_cambio=1200, descripcion="Gasto B")
+    at = _plata(e2e)
+
+    at.selectbox(key="gasto_elegido").set_value(a["id"]).run()
+    at.checkbox(key=f"anular_gasto_ok_{a['id']}").check().run()
+    at.selectbox(key="gasto_elegido").set_value(b["id"]).run()
+    assert at.checkbox(key=f"anular_gasto_ok_{b['id']}").value is False
+
+    at = click(at, "Anular gasto")
+    assert "Marcá la confirmación" in texts(at)
+    assert not any(g["anulado"] for g in finanzas.list_gastos(e2e.db, 1))
+
+
+def test_f03_ca_9c_anular_item_pide_confirmacion_propia(e2e):
+    """F-03-CA-9 (presupuesto): la confirmación también es por ítem."""
+
+    _obra(e2e)
+    for monto in (100, 200):
+        finanzas.add_presupuesto_item(
+            e2e.db, 1, monto=monto, moneda="ARS", rubro_id=_rubro(e2e, "Pintura")
+        )
+    primero, segundo = finanzas.list_presupuesto(e2e.db, 1)
+    at = _plata(e2e)
+
+    at.selectbox(key="anular_item_id").set_value(primero["id"]).run()
+    at.checkbox(key=f"anular_item_ok_{primero['id']}").check().run()
+    at.selectbox(key="anular_item_id").set_value(segundo["id"]).run()
+    at = click(at, "Anular ítem")
+    assert "Marcá la confirmación" in texts(at)
+
+    at.checkbox(key=f"anular_item_ok_{segundo['id']}").check()
+    at = click(at, "Anular ítem")
+    anulados = [i["id"] for i in finanzas.list_presupuesto(e2e.db, 1) if i["anulado"]]
+    assert anulados == [segundo["id"]]
+    assert _metricas(at)["Presupuestado"] == "ARS 100"

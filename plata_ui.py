@@ -42,6 +42,13 @@ def _clear(keys: list[str]) -> None:
         st.session_state.pop(key, None)
 
 
+def _clear_prefix(prefijo: str) -> None:
+    """Uncheck every per-record confirmation (keys like ``anular_gasto_ok_12``)."""
+
+    for key in [k for k in st.session_state if str(k).startswith(prefijo)]:
+        st.session_state.pop(key, None)
+
+
 def _cotizacion_txt(fila: dict) -> str:
     if not fila.get("tipo_cambio"):
         return "sin cotización"
@@ -265,7 +272,8 @@ def _render_gastos(supabase, gastos: list[dict], rubros_por_id: dict) -> None:
         return
     por_id = {g["id"]: g for g in vigentes}
     if st.session_state.pop("anular_gasto_limpiar", False):
-        _clear(["anular_gasto_ok", "tc_gasto_valor"])
+        _clear(["tc_gasto_valor"])
+        _clear_prefix("anular_gasto_ok_")
     with st.expander("Corregir o anular un gasto"):
         gasto_id = st.selectbox(
             "Gasto",
@@ -292,9 +300,11 @@ def _render_gastos(supabase, gastos: list[dict], rubros_por_id: dict) -> None:
                     st.session_state["anular_gasto_limpiar"] = True
                     st.rerun()
         with st.form("anular_gasto"):
+            # The confirmation belongs to the selected gasto: picking another one
+            # starts unchecked, so a stale tick can't cancel the wrong record.
             confirmado = st.checkbox(
                 "Confirmo que quiero anular este gasto (deja de sumar, pero no se borra)",
-                key="anular_gasto_ok",
+                key=f"anular_gasto_ok_{gasto_id}",
             )
             if st.form_submit_button("Anular gasto"):
                 if not confirmado:
@@ -384,7 +394,8 @@ def _render_presupuesto(
         return
     por_id = {i["id"]: i for i in vigentes}
     if st.session_state.pop("anular_item_limpiar", False):
-        _clear(["anular_item_ok", "tc_item_valor"])
+        _clear(["tc_item_valor"])
+        _clear_prefix("anular_item_ok_")
     st.markdown("**Corregir o anular un ítem**")
     item_id = st.selectbox(
         "Ítem",
@@ -415,7 +426,9 @@ def _render_presupuesto(
                 st.session_state["anular_item_limpiar"] = True
                 st.rerun()
     with st.form("anular_item"):
-        confirmado = st.checkbox("Confirmo que quiero anular este ítem", key="anular_item_ok")
+        confirmado = st.checkbox(
+            "Confirmo que quiero anular este ítem", key=f"anular_item_ok_{item_id}"
+        )
         if st.form_submit_button("Anular ítem"):
             if not confirmado:
                 st.error("Marcá la confirmación para anular el ítem.")

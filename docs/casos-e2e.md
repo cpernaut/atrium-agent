@@ -43,6 +43,8 @@ resultado esperado verificable.
 | F-03-CA-7 | USD 1.000 + ARS 600.000 a 1200 | ARS 1.800.000 o USD 1.500 |
 | F-03-CA-8 | Gasto en USD sin cotización, vista en ARS | No suma y avisa «Total incompleto» |
 | F-03-CA-9 | Anular un gasto | Pide confirmación; deja de sumar, tachado y «Anulado», sigue en la base |
+| F-03-CA-9b | Confirmar un gasto y elegir otro | El segundo no se anula sin su propia confirmación |
+| F-03-CA-9c | Anular un ítem de presupuesto | Confirmación propia de cada ítem; deja de sumar |
 | F-03-CA-10 | Monto 0 o sin descripción | Mensaje claro, nada guardado, el formulario conserva lo escrito |
 | F-03-CA-11 | «Cargá 350 mil pesos de hierro» por chat | Gasto en Estructura con cotización del día; aviso; se ve en 💰 Plata |
 | F-03-CA-11b | Rubro inexistente por chat | No guarda nada; el agente pide aclarar |
@@ -80,6 +82,7 @@ comparta los datos; y que sin login no se vea ni escriba nada.
 | LIVE-15 | Integridad | Gastos inválidos salteando la app | La base los rechaza |
 | LIVE-16 | Gastos | B ve, corrige y anula el gasto de A; borrar | Permitido salvo borrar |
 | LIVE-17 | Rubros | Alta de rubro y duplicado con otras mayúsculas | Se crea; el duplicado se rechaza; no se borra |
+| LIVE-18 | Rubros | «Mamposteria», «MAMPOSTERÍA», «steel   FRAME» salteando la app | La base los rechaza como duplicados |
 
 ## Cómo correr
 

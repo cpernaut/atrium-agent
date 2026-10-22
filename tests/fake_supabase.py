@@ -33,6 +33,7 @@ class _Query:
         self.filters: list = []
         self.orders: list = []
         self.max_rows: int | None = None
+        self.offset = 0
         self.op, self.payload = "select", None
 
     # builders -------------------------------------------------------------
@@ -54,6 +55,10 @@ class _Query:
 
     def limit(self, n):
         self.max_rows = n
+        return self
+
+    def range(self, start, end):
+        self.offset, self.max_rows = start, end - start + 1
         return self
 
     def insert(self, payload):
@@ -85,7 +90,11 @@ class _Query:
             return SimpleNamespace(data=copy.deepcopy(matched))
         for col, desc in reversed(self.orders):
             matched.sort(key=lambda r, c=col: _sort_key(r.get(c)), reverse=desc)
-        return SimpleNamespace(data=copy.deepcopy(matched[: self.max_rows]))
+        limite = self.max_rows
+        if self.db.max_rows_por_respuesta is not None:  # like PostgREST's max-rows
+            limite = min(limite or 10**9, self.db.max_rows_por_respuesta)
+        fin = None if limite is None else self.offset + limite
+        return SimpleNamespace(data=copy.deepcopy(matched[self.offset : fin]))
 
 
 class FakeSupabase:
@@ -93,6 +102,7 @@ class FakeSupabase:
         self.tables: dict[str, list[dict]] = {}
         self.ids = defaultdict(lambda: itertools.count(1))  # one sequence per table
         self.fail: str | None = None
+        self.max_rows_por_respuesta: int | None = None
 
     def table(self, name):
         return _Query(self, name)

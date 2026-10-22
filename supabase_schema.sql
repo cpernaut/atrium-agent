@@ -104,9 +104,28 @@ create table if not exists public.rubros (
     created_at timestamptz not null default now()
 );
 
--- Un rubro por nombre, sin importar mayúsculas ni espacios de más.
-create unique index if not exists rubros_nombre_unico
-    on public.rubros (lower(btrim(nombre)));
+-- Un rubro por nombre, sin importar mayúsculas, tildes ni espacios de más
+-- («Mampostería» = «mamposteria» = «MAMPOSTERÍA  »). Misma regla que
+-- finanzas.normalizar en la app, pero acá vale también ante cargas simultáneas.
+create or replace function public.rubro_clave(nombre text)
+returns text
+language sql
+immutable
+parallel safe
+set search_path = ''
+as $$
+    select pg_catalog.translate(
+        pg_catalog.regexp_replace(pg_catalog.lower(pg_catalog.btrim(nombre)), '\s+', ' ', 'g'),
+        'áàäâãåéèëêíìïîóòöôõúùüûýÿçñ',
+        'aaaaaaeeeeiiiiooooouuuuyycn'
+    )
+$$;
+revoke execute on function public.rubro_clave(text) from public, anon;
+grant execute on function public.rubro_clave(text) to authenticated, service_role;
+
+drop index if exists public.rubros_nombre_unico;
+create unique index if not exists rubros_nombre_clave_unico
+    on public.rubros (public.rubro_clave(nombre));
 
 -- Precarga. Si un rubro ya existe (con cualquier mayúscula) no se duplica.
 insert into public.rubros (nombre, orden) values
