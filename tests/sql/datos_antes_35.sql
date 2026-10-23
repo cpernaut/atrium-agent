@@ -13,6 +13,7 @@ select o.id, r.id, x.descripcion, 10, 'USD', x.anulado, x.proveedor
   from public.obras o, public.rubros r,
        (values ('Estructura', 'Gasto previo con ítem', false, 'Hierros Sur'),
                ('Pintura', 'Gasto previo sin ítem', false, '  hierros   SUR '),
-               ('Pintura', 'Gasto previo anulado', true, 'Pinturería X'))
+               ('Pintura', 'Gasto previo anulado', true, 'Pinturería X'),
+               ('Pintura', 'Gasto previo de una letra', false, 'Y'))
          as x(rubro, descripcion, anulado, proveedor)
  where o.nombre = 'Obra previa' and r.nombre = x.rubro;

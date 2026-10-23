@@ -79,6 +79,7 @@ resultado esperado verificable.
 | F-06-CA-8 | Registrar un gasto | El proveedor se elige de la lista; queda vinculado y se ve en la tabla |
 | F-06-CA-9 | «+ Nuevo proveedor» dentro del gasto | Alta con el rubro del ítem; queda elegido |
 | F-06-CA-10 | Proveedor eliminado | No se ofrece en gastos nuevos; el gasto viejo lo muestra «(eliminado)» |
+| F-06-CA-10b | Gasto con proveedor escrito a mano que no se migró (una letra) | El formulario lo muestra y lo conserva al guardar sin elegir otro |
 | F-06-CA-11 | Markdown en nombre, notas o comentario | Se muestra como texto |
 | F-06-CA-12 | «¿Teléfono de Hierros Sur?» | El agente responde con la ficha real |
 | F-06-CA-13 | Gasto por chat con un proveedor que no existe | No guarda nada y pregunta |
@@ -203,7 +204,7 @@ borrado.
 | LIVE-27 | Obra activa | A guarda su obra activa | Queda en la cuenta de A (se relee al entrar), no en la de B (#49) |
 | LIVE-28 | Proveedores | Anónimo lee proveedores y calificaciones o crea uno | No ve nada y no puede crear (#37) |
 | LIVE-29 | Proveedores | B edita el proveedor de A, repite su nombre, cambia o firma la calificación de A | Edita sí; nombre repetido y calificación ajena rechazados; cada uno la suya |
-| LIVE-30 | Proveedores | Gasto con un proveedor eliminado, salteando la app | Rechazado; el gasto que ya lo tenía lo conserva |
+| LIVE-30 | Proveedores | Gasto o calificación nueva para un proveedor eliminado, salteando la app | Rechazados; el gasto que ya lo tenía lo conserva |
 
 ## Cómo ver los resultados
 

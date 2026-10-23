@@ -331,3 +331,35 @@ def test_describe_para_el_agente(db):
     assert "Hierros Sur" in texto and "Estructura" in texto and "221 555 1234" in texto
     assert "5,0 · 1 calificación" in texto and "«Cumple»" in texto
     assert "Sin compras todavía" in texto
+
+
+def test_gasto_conserva_el_proveedor_escrito_antes(db):
+    """A hand-written proveedor that couldn't be migrated (one letter) is kept on edit."""
+
+    _, item = _obra_con_item(db, "Palmeras 55")
+    gasto, _ = finanzas.add_gasto(
+        db, item["id"], monto=10, moneda="ARS", descripcion="x", tipo_cambio=1200, proveedor="Y"
+    )
+    editado, _ = finanzas.update_gasto(
+        db,
+        gasto["id"],
+        presupuesto_item_id=item["id"],
+        fecha=gasto["fecha"],
+        monto=20,
+        moneda="ARS",
+        descripcion="x",
+        proveedor_id=None,
+    )
+    assert (editado["proveedor"], editado["proveedor_id"]) == ("Y", None)
+    p = proveedores.create_proveedor(db, {"nombre": "Yesería"})
+    elegido, _ = finanzas.update_gasto(
+        db,
+        gasto["id"],
+        presupuesto_item_id=item["id"],
+        fecha=gasto["fecha"],
+        monto=20,
+        moneda="ARS",
+        descripcion="x",
+        proveedor_id=p["id"],
+    )
+    assert (elegido["proveedor"], elegido["proveedor_id"]) == ("Yesería", p["id"])

@@ -385,3 +385,21 @@ def test_f06_ca_14_agente_da_de_alta_si_se_lo_piden(e2e):
     assert "🏢 Proveedor agregado: «Hierros X»" in texts(at)
     nuevo = proveedores.find_proveedores(e2e.db, "hierros x")[0]
     assert finanzas.list_gastos(e2e.db, 1)[0]["proveedor_id"] == nuevo["id"]
+
+
+def test_f06_ca_10b_proveedor_escrito_antes_se_conserva(e2e):
+    """F-06-CA-10b: un gasto con un proveedor escrito a mano antes de la lista (que no
+    se pudo migrar) lo muestra en el formulario y lo conserva al guardar sin elegir otro."""
+
+    _, item = _obra_con_item(e2e)
+    gasto, _ = finanzas.add_gasto(
+        e2e.db, item["id"], monto=10, moneda="ARS", descripcion="Seña", proveedor="Y"
+    )
+    at = abrir_presupuesto(e2e.go_to_obras(e2e.login()), e2e.db)
+    at = at.button(key=f"gasto_editar_{gasto['id']}").click().run()
+    assert "Proveedor anotado antes: «Y»" in texts(at)
+    at.text_input(key=f"editar_gasto_{gasto['id']}_descripcion").input("Seña final")
+    at = at.button(key=f"gasto_guardar_{gasto['id']}_ed").click().run()
+
+    guardado = finanzas.get_gasto(e2e.db, gasto["id"])
+    assert (guardado["descripcion"], guardado["proveedor"]) == ("Seña final", "Y")

@@ -64,8 +64,8 @@ def test_live_29_equipo_comparte_la_lista_y_cada_uno_su_calificacion(users, prov
 
 
 def test_live_30_proveedor_eliminado_no_se_elige_en_gastos(users, obra_de_a, proveedor_de_a):
-    """LIVE-30 (F-06 R1): salteando la app, un gasto no puede elegir un proveedor
-    eliminado; el que ya lo tenía lo conserva."""
+    """LIVE-30 (F-06 R1, R1b): salteando la app, un proveedor eliminado no se elige en
+    un gasto ni recibe calificaciones nuevas; el gasto que ya lo tenía lo conserva."""
 
     estructura = finanzas.find_rubros(users.a.client, "Estructura")[0]["id"]
     item, _ = finanzas.add_presupuesto_item(
@@ -95,6 +95,10 @@ def test_live_30_proveedor_eliminado_no_se_elige_en_gastos(users, obra_de_a, pro
                 "moneda": "ARS",
                 "proveedor_id": proveedor_de_a["id"],
             }
+        ).execute()
+    with pytest.raises(APIError):
+        users.b.client.table("proveedor_calificaciones").insert(
+            {"proveedor_id": proveedor_de_a["id"], "estrellas": 3, "creado_por": users.b.id}
         ).execute()
     users.a.client.table("gastos").update({"monto": "11"}).eq("id", gasto["id"]).execute()
     assert finanzas.get_gasto(users.a.client, gasto["id"])["proveedor_id"] == proveedor_de_a["id"]

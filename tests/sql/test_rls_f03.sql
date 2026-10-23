@@ -46,7 +46,7 @@ select pg_temp.ok(
   'migración: obra sin presupuesto -> «Imprevistos» en 0');
 
 select pg_temp.ok(
-  (select count(*) = 3 and bool_and(g.presupuesto_item_id is not null and i.obra_id = g.obra_id
+  (select count(*) = 4 and bool_and(g.presupuesto_item_id is not null and i.obra_id = g.obra_id
                                     and i.rubro_id = g.rubro_id)
      from public.gastos g join public.presupuesto_items i on i.id = g.presupuesto_item_id
     where g.descripcion like 'Gasto previo%'),
@@ -65,12 +65,16 @@ select pg_temp.ok(
 -- ----- migración #37: proveedores escritos a mano -> lista de proveedores -----
 select pg_temp.ok(
   (select count(*) from public.proveedores) = 2
-  and (select count(*) from public.gastos where proveedor is not null and proveedor_id is null) = 0
+  and exists (select 1 from public.proveedores where nombre = 'Hierros del Sur')
+  and not exists (select 1 from public.proveedores where public.rubro_clave(nombre) = 'hierros sur')
+  and (select proveedor = 'Y' and proveedor_id is null from public.gastos
+        where descripcion = 'Gasto previo de una letra')
+  and (select count(*) from public.gastos where proveedor is not null and proveedor_id is null) = 1
   and (select count(distinct proveedor_id) from public.gastos
         where descripcion in ('Gasto previo con ítem', 'Gasto previo sin ítem')) = 1
   and (select p.nombre from public.gastos g join public.proveedores p on p.id = g.proveedor_id
         where g.descripcion = 'Gasto previo anulado') = 'Pinturería X',
-  'migración #37: un proveedor por nombre (sin importar mayúsculas ni espacios) y sus gastos vinculados');
+  'migración #37: un proveedor por nombre y sus gastos vinculados; renombrar y volver a correr no lo recrea; una letra queda como texto');
 
 -- ----- usuario A logueado -----
 select pg_temp.como('authenticated', '00000000-0000-0000-0000-00000000000a');
@@ -292,9 +296,12 @@ select pg_temp.falla($$insert into public.gastos (presupuesto_item_id, descripci
   select (select id from item_hierro), 'Otro', 10, 'ARS', id
   from public.proveedores where nombre = 'Hierros RLS'$$, '23514');
 update public.gastos set monto = 11 where descripcion = 'Con proveedor';
+select pg_temp.falla($$insert into public.proveedor_calificaciones (proveedor_id, estrellas)
+  select id, 3 from public.proveedores where nombre = 'Hierros RLS'$$, '23514');
+update public.proveedor_calificaciones set comentario = 'Sigue cumpliendo';
 update public.proveedores set archivado = false where nombre = 'Hierros RLS';
 update public.gastos set anulado = true where descripcion = 'Con proveedor';
-select pg_temp.ok(true, 'gastos: proveedor eliminado no se elige; los gastos que lo tenían se editan');
+select pg_temp.ok(true, 'proveedor eliminado: no se elige en gastos ni recibe calificaciones nuevas; lo ya cargado se edita');
 
 -- Editar ítems (F-03 R9): solo rubro, descripción, monto, moneda y cotización.
 -- Si cambia el rubro, los gastos del ítem lo siguen (CA-35).

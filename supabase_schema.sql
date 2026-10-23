@@ -580,6 +580,27 @@ create policy "calificaciones: cada uno edita la suya" on public.proveedor_calif
     for update to authenticated
     using (creado_por = (select auth.uid())) with check (creado_por = (select auth.uid()));
 
+-- Un proveedor eliminado (archivado) no recibe calificaciones nuevas (R1b);
+-- quien ya lo había calificado puede seguir editando la suya.
+create or replace function public.calificacion_proveedor_vigente()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if exists (select 1 from public.proveedores p where p.id = new.proveedor_id and p.archivado) then
+    raise exception 'Ese proveedor fue eliminado: no se puede calificar.' using errcode = '23514';
+  end if;
+  return new;
+end;
+$$;
+revoke execute on function public.calificacion_proveedor_vigente() from public, anon, authenticated;
+
+drop trigger if exists proveedor_calificaciones_vigente on public.proveedor_calificaciones;
+create trigger proveedor_calificaciones_vigente
+    before insert on public.proveedor_calificaciones
+    for each row execute function public.calificacion_proveedor_vigente();
+
 revoke update on public.proveedor_calificaciones from authenticated, anon;
 grant update (estrellas, comentario, autor) on public.proveedor_calificaciones to authenticated;
 revoke insert on public.proveedor_calificaciones from anon;
@@ -616,10 +637,15 @@ create trigger gastos_proveedor_vigente
 
 -- Migración (#37 D4): un proveedor por cada nombre escrito en los gastos
 -- (sin importar mayúsculas, tildes ni espacios) y sus gastos vinculados.
+-- Solo mira gastos que todavía no tienen proveedor de la lista: así, volver a
+-- correr este archivo después de renombrar un proveedor no recrea el nombre
+-- viejo. Un nombre de una sola letra no puede ser proveedor (mínimo 2): queda
+-- como texto en el gasto, que lo conserva hasta que se elija uno de la lista.
 insert into public.proveedores (nombre, creado_por)
 select distinct on (public.rubro_clave(g.proveedor)) btrim(g.proveedor), g.creado_por
   from public.gastos g
- where g.proveedor is not null and char_length(btrim(g.proveedor)) between 2 and 120
+ where g.proveedor_id is null
+   and g.proveedor is not null and char_length(btrim(g.proveedor)) between 2 and 120
    and not exists (select 1 from public.proveedores p
                     where public.rubro_clave(p.nombre) = public.rubro_clave(g.proveedor))
  order by public.rubro_clave(g.proveedor), g.created_at;
@@ -629,4 +655,5 @@ update public.gastos g
   from public.proveedores p
  where g.proveedor_id is null
    and g.proveedor is not null
+   and not p.archivado
    and public.rubro_clave(p.nombre) = public.rubro_clave(g.proveedor);

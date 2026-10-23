@@ -567,6 +567,10 @@ def update_gasto(
         "proveedor": _texto(proveedor, "el proveedor", _PROVEEDOR_MAX, False),
         "proveedor_id": None,
     }
+    if cambios["proveedor"] is None and actual.get("proveedor_id") is None:
+        # A proveedor written by hand before #37 that couldn't become a list entry
+        # (e.g. one letter) is kept until the user picks one from the list.
+        cambios["proveedor"] = actual.get("proveedor")
     if proveedor_id not in (None, ""):
         if int(proveedor_id) == actual.get("proveedor_id"):
             elegido = _run(

@@ -27,7 +27,7 @@ datos de contacto a mano, se ve **cuánto se le compró** en todas las obras y
 - Alta, edición, «Eliminar» (archiva, con confirmación) y «Restaurar».
 - Calificaciones: una por socio, de 1 a 5 estrellas con comentario opcional; promedio visible.
 - Gastos: el proveedor se elige de la lista, con «+ Nuevo proveedor» (alta rápida) en el mismo formulario.
-- Migración: un proveedor por cada nombre escrito en gastos anteriores, con sus gastos vinculados.
+- Migración: un proveedor por cada nombre escrito en gastos anteriores, con sus gastos vinculados. Solo toma gastos sin proveedor de la lista (volver a correr el esquema no recrea nombres viejos); un nombre de una letra queda como texto en el gasto.
 - Agente: `buscar_proveedor`, `crear_proveedor` (solo si se pide) y `registrar_gasto` con proveedor de la lista.
 
 **No incluye** (por ahora)
@@ -96,7 +96,7 @@ Gasto:  Proveedor [Hierros Sur ▾]  + Nuevo proveedor
 - **F-06-CA-7**: compras por obra y moneda, sin anulados.
 - **F-06-CA-8**: el gasto elige el proveedor de la lista; se ve en la tabla.
 - **F-06-CA-9**: alta rápida desde el gasto, con el rubro del ítem; queda elegido.
-- **F-06-CA-10**: un eliminado no se ofrece en gastos nuevos; el gasto viejo lo muestra.
+- **F-06-CA-10**: un eliminado no se ofrece en gastos nuevos; el gasto viejo lo muestra. **CA-10b:** un proveedor escrito a mano que no se pudo migrar (una letra) se conserva.
 - **F-06-CA-11**: Markdown en nombre, notas o comentario se muestra como texto.
 - **F-06-CA-12**: el agente busca un proveedor con datos reales.
 - **F-06-CA-13**: el agente no guarda un gasto de un proveedor desconocido y pregunta.

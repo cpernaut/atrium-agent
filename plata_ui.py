@@ -704,6 +704,11 @@ def _form_editar_gasto(supabase, g: dict, vigentes: list[dict], rubros_por_id: d
             key=f"{prefijo}descripcion",
         )
         proveedor_id = _selector_proveedor(f"{prefijo}proveedor_id", g.get("proveedor_id"))
+        if g.get("proveedor_id") is None and g.get("proveedor"):
+            st.caption(
+                f"Proveedor anotado antes: «{texto_seguro(g['proveedor'])}». Se conserva "
+                "mientras no elijas uno de la lista."
+            )
         tc = st.number_input(
             "Cotización del dólar",
             min_value=0.0,
