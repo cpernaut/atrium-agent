@@ -518,6 +518,27 @@ create trigger proveedores_rubros_validos
     before insert or update of rubro_ids on public.proveedores
     for each row execute function public.proveedor_rubros_validos();
 
+-- Quién lo creó y cuándo los pone la base: nadie puede atribuirle un proveedor a
+-- otra persona ni elegir la fecha. (Sin login, como al correr este archivo, se
+-- conserva el autor que se mande: lo usa la migración de abajo.)
+create or replace function public.proveedor_firmado()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  new.creado_por := coalesce((select auth.uid()), new.creado_por);
+  new.created_at := now();
+  return new;
+end;
+$$;
+revoke execute on function public.proveedor_firmado() from public, anon, authenticated;
+
+drop trigger if exists proveedores_firmado on public.proveedores;
+create trigger proveedores_firmado
+    before insert on public.proveedores
+    for each row execute function public.proveedor_firmado();
+
 alter table public.proveedores enable row level security;
 
 drop policy if exists "proveedores: equipo lee" on public.proveedores;
@@ -525,7 +546,7 @@ create policy "proveedores: equipo lee" on public.proveedores
     for select to authenticated using (true);
 drop policy if exists "proveedores: equipo crea" on public.proveedores;
 create policy "proveedores: equipo crea" on public.proveedores
-    for insert to authenticated with check (true);
+    for insert to authenticated with check (creado_por = (select auth.uid()));
 drop policy if exists "proveedores: equipo edita" on public.proveedores;
 create policy "proveedores: equipo edita" on public.proveedores
     for update to authenticated using (true) with check (true);
@@ -563,8 +584,11 @@ begin
   if tg_op = 'UPDATE' then
     new.editado_en := now();
     new.autor := old.autor;
+    new.created_at := old.created_at;
   else
     new.autor := null;
+    new.created_at := now();
+    new.editado_en := null;
   end if;
   if mail is not null then
     new.autor := mail;

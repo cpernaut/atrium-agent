@@ -90,8 +90,9 @@ def build_proveedor_tools(
         rubro: str | None = None,
     ) -> str:
         """Da de alta un proveedor en la lista del equipo. Usala SOLO si el usuario pide
-        explícitamente dar de alta (agregar, crear) un proveedor, o confirma que querés
-        darlo de alta después de que no lo encontraste. Nunca lo crees por tu cuenta."""
+        explícitamente dar de alta, crear o agregar un proveedor («dalo de alta»,
+        «creá el proveedor X», «agregalo como proveedor»), o confirma que querés darlo
+        de alta después de que no lo encontraste. Nunca lo crees por tu cuenta."""
         if bloqueo := turno.bloqueo("di de alta el proveedor", PROVEEDOR):
             return bloqueo
         try:

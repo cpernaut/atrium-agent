@@ -269,6 +269,12 @@ select pg_temp.falla($$insert into public.proveedores (nombre, cuit) values ('Cu
 select pg_temp.falla($$insert into public.proveedores (nombre, telefono) values ('Tel malo', 'llamame')$$, '23514');
 select pg_temp.falla($$insert into public.proveedores (nombre, rubro_ids) values ('Rubro malo', '{999999}')$$, '23503');
 select pg_temp.falla($$update public.proveedores set creado_por = null where nombre = 'Hierros RLS'$$, '42501');
+insert into public.proveedores (nombre, creado_por, created_at)
+  values ('Firmado por otro', '00000000-0000-0000-0000-00000000000b', '2001-01-01');
+select pg_temp.ok((select creado_por = '00000000-0000-0000-0000-00000000000a'
+                          and created_at > now() - interval '1 hour'
+                     from public.proveedores where nombre = 'Firmado por otro'),
+                  'proveedores: la base pone el autor (el login) y la fecha de creación');
 select pg_temp.falla($$update public.proveedores set created_at = now() where nombre = 'Hierros RLS'$$, '42501');
 delete from public.proveedores where nombre = 'Hierros RLS';
 select pg_temp.ok((select count(*) from public.proveedores where nombre = 'Hierros RLS') = 1,
@@ -286,6 +292,7 @@ select pg_temp.falla($$insert into public.proveedor_calificaciones (proveedor_id
 select pg_temp.falla($$update public.proveedor_calificaciones set estrellas = 6$$, '23514');
 select pg_temp.falla($$update public.proveedor_calificaciones set creado_por = null$$, '42501');
 update public.proveedor_calificaciones set estrellas = 5;
+select pg_temp.falla($$update public.proveedor_calificaciones set created_at = '2001-01-01'$$, '42501');
 select pg_temp.ok((select estrellas = 5 and editado_en is not null and autor = 'a@atrium.test'
                      from public.proveedor_calificaciones),
                   'calificaciones: 1 a 5, una por socio, firmadas con el mail del login (no el que se mande); queda la fecha de edición');
