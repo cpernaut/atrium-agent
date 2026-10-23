@@ -69,19 +69,15 @@ def build_proveedor_tools(
             if len(lista) == 1:
                 p = lista[0]
                 propias = [c for c in calificaciones if c["proveedor_id"] == p["id"]]
-                return turno.datos(
-                    proveedores.describe_proveedor(
-                        p, nombres_rubros, propias, proveedores.compras(client, p["id"])
-                    )
+                return proveedores.describe_proveedor(
+                    p, nombres_rubros, propias, proveedores.compras(client, p["id"])
                 )
             promedios = proveedores.promedios(calificaciones)
-            return turno.datos(
-                "\n".join(
-                    f"- {p['nombre']} · "
-                    f"{proveedores.estrellas_txt(*promedios.get(p['id'], (None, 0)))}"
-                    + (f" · {p['telefono']}" if p.get("telefono") else "")
-                    for p in lista[:30]
-                )
+            return "\n".join(
+                f"- {p['nombre']} · "
+                f"{proveedores.estrellas_txt(*promedios.get(p['id'], (None, 0)))}"
+                + (f" · {p['telefono']}" if p.get("telefono") else "")
+                for p in lista[:30]
             )
         except (proveedores.ProveedoresError, finanzas.FinanzasError) as exc:
             return f"No se pudo leer la lista de proveedores: {exc}"
@@ -110,4 +106,7 @@ def build_proveedor_tools(
         acciones.append(f"🏢 Proveedor agregado: «{nuevo['nombre']}»")
         return f"Proveedor «{nuevo['nombre']}» agregado a la lista (#{nuevo['id']})."
 
-    return [StructuredTool.from_function(fn) for fn in (buscar_proveedor, crear_proveedor)]
+    return [
+        StructuredTool.from_function(turno.herramienta(fn))
+        for fn in (buscar_proveedor, crear_proveedor)
+    ]

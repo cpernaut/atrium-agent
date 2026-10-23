@@ -58,8 +58,9 @@ supabase_schema.sql  todo el esquema, idempotente
   excepciones: devuelven el error como texto. Las que escriben agregan una línea
   a `acciones` y su docstring dice «Usala SOLO si el usuario pide…».
 - Datos cargados por usuarios que vuelven al modelo (notas, comentarios,
-  nombres): las herramientas de lectura los envuelven con `turno.datos(...)` y
-  las de escritura empiezan con `turno.bloqueo(...)` (`atrium/guardia.py`): solo
+  nombres): toda herramienta se registra con `turno.herramienta(fn)`, que marca
+  todo lo que devuelve como dato, y las de escritura empiezan con
+  `turno.bloqueo(..., ACCION)` (`atrium/guardia.py`): solo
   escriben si el mensaje del usuario lo pide, así una pregunta o una instrucción
   escondida en los datos nunca hacen escribir al agente.
 - Las pantallas reciben el `supabase` de la sesión (cliente con el login del

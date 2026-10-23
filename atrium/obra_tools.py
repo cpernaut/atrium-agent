@@ -62,7 +62,7 @@ def build_obra_tools(
         """Lista las obras del tracker. `estado` filtra opcionalmente: Planificación,
         En curso, Pausada, Terminada o Cancelada."""
         try:
-            return turno.datos(obras.describe_obras(obras.list_obras(client, estado or None)))
+            return obras.describe_obras(obras.list_obras(client, estado or None))
         except obras.ObrasError as exc:
             return f"Error al leer las obras: {exc}"
 
@@ -81,7 +81,7 @@ def build_obra_tools(
             texto += "\nÚltimas notas de bitácora:\n" + "\n".join(
                 f"- {n['fecha']} ({n.get('autor') or 's/autor'}): {n['nota']}" for n in notas
             )
-        return turno.datos(texto)
+        return texto
 
     def agregar_nota_bitacora(nota: str, obra: str | None = None, fecha: str | None = None) -> str:
         """Agrega una nota a la bitácora de una obra. Usala SOLO si el usuario pide
@@ -220,10 +220,10 @@ def build_obra_tools(
             res = finanzas.resumen(client, encontrada["id"], moneda)
         except (obras.ObrasError, finanzas.FinanzasError) as exc:
             return f"No se pudo calcular el resumen: {exc}"
-        return turno.datos(finanzas.describe_resumen(res, encontrada["nombre"]))
+        return finanzas.describe_resumen(res, encontrada["nombre"])
 
     return [
-        StructuredTool.from_function(fn)
+        StructuredTool.from_function(turno.herramienta(fn))
         for fn in (
             listar_obras,
             ver_obra,

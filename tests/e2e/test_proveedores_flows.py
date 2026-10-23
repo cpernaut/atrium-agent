@@ -455,7 +455,8 @@ def test_f06_ca_15_instrucciones_en_los_datos_no_escriben(e2e):
 
 def test_f06_ca_15b_si_el_usuario_lo_pide_si_escribe(e2e):
     """F-06-CA-15b: después de leer los datos de un proveedor, si el propio usuario
-    pide cargar el gasto, el agente lo registra."""
+    pide cargar el gasto, el agente lo registra; todo lo que le devuelven las
+    herramientas (también el aviso de éxito) llega marcado como dato."""
 
     _, item = _obra_con_item(e2e)
     p = _proveedor(e2e, "Hierros Sur", notas="Entrega en 48 h")
@@ -473,6 +474,8 @@ def test_f06_ca_15b_si_el_usuario_lo_pide_si_escribe(e2e):
 
     assert not at.exception
     assert finanzas.list_gastos(e2e.db, 1)[0]["proveedor_id"] == p["id"]
+    resultados = [m.content for m in e2e.llm.seen[-1] if m.type == "tool"]
+    assert all(r.startswith("[[DATOS CARGADOS POR USUARIOS") for r in resultados)
 
 
 def test_f06_ca_16_confirmar_una_propuesta_del_agente(e2e):
