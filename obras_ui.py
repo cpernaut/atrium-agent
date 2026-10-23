@@ -240,21 +240,39 @@ def _a_guardar(valores: dict) -> dict:
     return datos
 
 
-def cambios_obra(obra: obras.Obra, valores: dict) -> dict:
-    """Only what the user changed in Detalle (so a save never rewrites the rest)."""
+def cambios_obra(originales: dict, valores: dict) -> dict:
+    """Only what the user changed in Detalle (so a save never rewrites the rest).
+
+    ``originales`` are the values the form was filled with, not the obra as it
+    is now: if someone else (or the agent) changed a field meanwhile, a save
+    that didn't touch that field must not write the old value back (R4).
+    """
 
     nuevos = _a_guardar(valores)
-    actuales = _a_guardar(_valores_obra(obra))
+    antes = _a_guardar(originales)
     # A value the database holds as NULL and the form shows as a default (first
     # municipio, tipo) counts as unchanged unless the user picked something else.
-    return {campo: v for campo, v in nuevos.items() if v != actuales[campo]}
+    return {campo: v for campo, v in nuevos.items() if v != antes[campo]}
+
+
+def _originales(obra_id: int) -> str:
+    """Session key with the values the Detalle form was filled with."""
+
+    return f"{_PREFIJO_DETALLE}_originales_{obra_id}"
 
 
 def _render_detalle(supabase, obra: obras.Obra) -> None:
     obra_id = obra["id"]
     valores = _valores_obra(obra)
-    for campo, valor in valores.items():
-        st.session_state.setdefault(_clave(campo, obra_id), valor)
+    # Fill the form (and remember what it was filled with) only when it is
+    # fresh: while the user edits, their values stay even if the obra changes.
+    claves = [_clave(campo, obra_id) for campo in valores]
+    if _originales(obra_id) not in st.session_state or any(
+        k not in st.session_state for k in claves
+    ):
+        for campo, valor in valores.items():
+            st.session_state[_clave(campo, obra_id)] = valor
+        st.session_state[_originales(obra_id)] = dict(valores)
 
     def clave(campo: str) -> str:
         return _clave(campo, obra_id)
@@ -296,7 +314,10 @@ def _render_detalle(supabase, obra: obras.Obra) -> None:
         olvidar_formularios_de_obra()
         st.rerun()
     if guardar:
-        cambios = cambios_obra(obra, {c: st.session_state[clave(c)] for c in valores})
+        cambios = cambios_obra(
+            st.session_state[_originales(obra_id)],
+            {c: st.session_state[clave(c)] for c in valores},
+        )
         if not cambios:
             st.info("No hay cambios para guardar.")
             return

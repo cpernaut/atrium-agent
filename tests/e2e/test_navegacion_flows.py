@@ -369,3 +369,17 @@ def test_ux_03_ca_16_proveedores_proximamente(e2e):
 
     assert pagina_actual(at) == "Proveedores"
     assert "Próximamente" in texts(at)
+
+
+def test_ux_03_ca_4c_no_pisa_cambios_de_otro_usuario(e2e):
+    """UX-03-CA-4c (R4): si otro usuario cambia el avance mientras edito solo el
+    cliente, al guardar se envía solo el cliente y su avance se conserva."""
+
+    _seed(e2e.db)
+    at = e2e.login()
+    at.text_input(key="det_cliente_1").input("Gómez")
+    obras.update_obra(e2e.db, 1, {"avance": 60})  # otro usuario, mientras tanto
+    at = click(at, "Guardar cambios")
+
+    obra = obras.get_obra(e2e.db, 1)
+    assert (obra["cliente"], obra["avance"]) == ("Gómez", 60)

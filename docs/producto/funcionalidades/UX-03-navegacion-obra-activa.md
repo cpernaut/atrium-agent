@@ -62,8 +62,9 @@ Sin tablas nuevas.
   existe, es la En curso más nueva, nunca una Terminada o Cancelada si hay otra.
 - R3. La obra activa se guarda en la cuenta solo cuando cambia. Si falla, la app
   sigue andando con la obra elegida.
-- R4. Detalle guarda **solo lo que cambió**: así no pisa lo que otro (o el
-  agente) cambió mientras tanto.
+- R4. Detalle guarda **solo lo que el usuario cambió** respecto de los valores
+  con que se abrió el formulario: así no pisa lo que otro (o el agente) cambió
+  mientras tanto.
 - R5. Cambiar el presupuesto de la obra **no** recalcula «Imprevistos» (D5).
 - R6. Cambiar el municipio cambia la normativa que usa el agente (D6).
 - R7. Sin obras cargadas, la app abre en «Nueva obra» con un mensaje de
@@ -98,7 +99,7 @@ Sin herramientas nuevas. Trabaja sobre la obra activa en cualquier pantalla.
 - **UX-03-CA-1** — *Dado* que entro *entonces* el menú tiene el selector de obra activa y las pantallas Obra activa, Obras, Nueva obra, Rubros y Proveedores.
 - **UX-03-CA-2** — *Dado* una obra activa *cuando* recorro todas las pantallas *entonces* arriba se ve su nombre, estado y avance.
 - **UX-03-CA-3** — *Dado* una obra activa *entonces* se ve en Detalle, Bitácora y Presupuesto, y «Plata» no aparece en ninguna pantalla.
-- **UX-03-CA-4** — *Cuando* edito todos los datos en Detalle y guardo *entonces* se guardan solo en esa obra. **CA-4b:** sin cambios, avisa y no escribe.
+- **UX-03-CA-4** — *Cuando* edito todos los datos en Detalle y guardo *entonces* se guardan solo en esa obra. **CA-4b:** sin cambios, avisa y no escribe. **CA-4c:** si otro cambió un dato mientras edito otro, no lo piso.
 - **UX-03-CA-5** — *Cuando* guardo con el nombre vacío *entonces* dice por qué, no guarda y conserva lo escrito.
 - **UX-03-CA-6** — *Cuando* toco «Descartar cambios» *entonces* el formulario vuelve a lo guardado.
 - **UX-03-CA-7** — *Cuando* toco «Abrir» en una obra del listado *entonces* queda activa y se abre su detalle.

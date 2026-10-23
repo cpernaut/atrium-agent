@@ -46,6 +46,7 @@ resultado esperado verificable.
 | UX-03-CA-3 | Abrir la obra activa | Pestañas Detalle, Bitácora y Presupuesto; «Plata» no aparece |
 | UX-03-CA-4 | Editar todos los datos en Detalle | Se guardan en esa obra; la otra no cambia |
 | UX-03-CA-4b | Guardar sin cambios | Avisa «No hay cambios» y no escribe |
+| UX-03-CA-4c | Otro usuario cambia el avance mientras edito el cliente | Se guarda solo el cliente; el avance del otro se conserva |
 | UX-03-CA-5 | Guardar con el nombre vacío | Error, no guarda, conserva lo escrito |
 | UX-03-CA-6 | «Descartar cambios» | Vuelve a lo guardado |
 | UX-03-CA-7 | «Abrir» en el listado | Queda activa y abre su detalle |
