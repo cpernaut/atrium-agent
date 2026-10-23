@@ -872,10 +872,16 @@ language plpgsql
 set search_path = ''
 as $$
 declare
-  mail text := nullif(current_setting('request.jwt.claims', true), '')::json ->> 'email';
+  claims json := nullif(current_setting('request.jwt.claims', true), '')::json;
 begin
-  if mail is not null then
-    new.autor := mail;
+  -- Sin JWT (el propio esquema, una migración) se respeta lo que viene. Con login,
+  -- el autor es siempre su mail; un login sin mail no puede anotar.
+  if claims is not null and claims ->> 'role' is distinct from 'service_role' then
+    if nullif(claims ->> 'email', '') is null then
+      raise exception 'Para anotar en la bitácora hace falta un usuario con mail.'
+        using errcode = '42501';
+    end if;
+    new.autor := claims ->> 'email';
   end if;
   return new;
 end;

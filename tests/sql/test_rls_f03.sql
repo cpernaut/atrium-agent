@@ -271,6 +271,16 @@ insert into public.bitacora (obra_id, nota)
    where nombre = 'Obra RLS';
 select pg_temp.ok((select count(*) = 1 from public.bitacora where nota like 'Llegó el hierro: 12 m²%'),
                   'texto limpio #53: invisibles y marcadores rechazados en la base; texto normal intacto');
+-- #53 R3b: el autor de una nota sale del login; no se puede firmar con otro nombre.
+insert into public.bitacora (obra_id, nota, autor)
+  select id, 'Nota firmada por otro', 'Otra Persona' from public.obras where nombre = 'Obra RLS';
+select pg_temp.ok((select autor from public.bitacora where nota = 'Nota firmada por otro')
+                  = 'a@atrium.test', 'bitácora: el autor es el mail del login, no el que se manda');
+select set_config('request.jwt.claims',
+  '{"sub":"00000000-0000-0000-0000-00000000000a","role":"authenticated"}', false);
+select pg_temp.falla($$insert into public.bitacora (obra_id, nota, autor)
+  select id, 'Sin mail', 'Otra Persona' from public.obras where nombre = 'Obra RLS'$$, '42501');
+select pg_temp.como('authenticated', '00000000-0000-0000-0000-00000000000a');
 
 -- Rubros: alta preparada, nombres únicos sin importar mayúsculas ni espacios.
 insert into public.rubros (nombre, orden) values ('Piscina', 500);
