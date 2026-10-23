@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
+from atrium import sanidad
 from atrium.finanzas import formato_monto, normalizar
 
 if TYPE_CHECKING:
@@ -85,8 +86,8 @@ _TELEFONO = re.compile(r"^[0-9+() -]{6,30}$")
 _WEB = re.compile(r"^https://\S+$")
 
 
-def _texto(valor: Any, que: str, maximo: int) -> str | None:
-    texto = " ".join(str(valor or "").split())
+def _texto(valor: Any, que: str, maximo: int, multilinea: bool = False) -> str | None:
+    texto = sanidad.revisar(valor, que, ProveedoresError, multilinea)  # #53
     if not texto:
         return None
     if len(texto) > maximo:
@@ -95,7 +96,7 @@ def _texto(valor: Any, que: str, maximo: int) -> str | None:
 
 
 def _nombre(valor: Any) -> str:
-    nombre = " ".join(str(valor or "").split())
+    nombre = sanidad.revisar(valor, "el nombre", ProveedoresError) or ""  # #53
     if len(nombre) < NOMBRE_MIN:
         raise ProveedoresError("El proveedor necesita un nombre (al menos 2 letras).")
     if len(nombre) > NOMBRE_MAX:
@@ -138,7 +139,7 @@ def _email(valor: Any) -> str | None:
 
 
 def _web(valor: Any) -> str | None:
-    texto = str(valor or "").strip()
+    texto = sanidad.revisar(valor, "la web", ProveedoresError) or ""  # #53
     if not texto:
         return None
     tiene_esquema = re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*:", texto)
@@ -180,7 +181,7 @@ def _datos(datos: dict[str, Any]) -> Fila:
         elif campo == "rubro_ids":
             limpio[campo] = _rubro_ids(valor)
         else:
-            limpio[campo] = _texto(valor, campo, _TEXTO_MAX[campo])
+            limpio[campo] = _texto(valor, campo, _TEXTO_MAX[campo], multilinea=campo == "notas")
     return limpio
 
 
@@ -323,7 +324,7 @@ def enlaces_contacto(proveedor: Fila) -> list[tuple[str, str]]:
     if email and _EMAIL.fullmatch(email):
         enlaces.append(("✉️ Mail", f"mailto:{email}"))
     web = proveedor.get("web")
-    if web and _WEB.fullmatch(web):
+    if web and _WEB.fullmatch(web) and sanidad.limpiar(web) == web:  # #53: no invisibles
         enlaces.append(("🌐 Web", web))
     return enlaces
 
@@ -362,7 +363,7 @@ def calificar(
         raise ProveedoresError("Elegí de 1 a 5 estrellas.") from exc
     if not 1 <= estrellas <= 5:
         raise ProveedoresError("Elegí de 1 a 5 estrellas.")
-    comentario = _texto(comentario, "el comentario", _COMENTARIO_MAX)
+    comentario = _texto(comentario, "el comentario", _COMENTARIO_MAX, multilinea=True)
     proveedor = get_proveedor(client, proveedor_id)
     mia = _run(
         client.table("proveedor_calificaciones")

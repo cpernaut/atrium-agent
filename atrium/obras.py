@@ -10,6 +10,8 @@ from __future__ import annotations
 from datetime import date
 from typing import TYPE_CHECKING, Any
 
+from atrium import sanidad
+
 if TYPE_CHECKING:
     from supabase import Client
 
@@ -136,7 +138,25 @@ def find_obras(client: Client, texto: str) -> list[Obra]:
     return _run(client.table("obras").select("*").ilike("nombre", f"%{texto}%").limit(10))
 
 
+# Free text of an obra: checked before saving (#53).
+_TEXTOS_OBRA = {
+    "nombre": "el nombre",
+    "cliente": "el cliente",
+    "direccion": "la dirección",
+    "responsable": "el responsable",
+}
+
+
+def _revisar_textos(datos: dict[str, Any]) -> None:
+    for campo, que in _TEXTOS_OBRA.items():
+        if campo in datos and datos[campo] is not None:
+            datos[campo] = sanidad.revisar(datos[campo], que, ObrasError)
+            if datos[campo] and len(datos[campo]) > 200:
+                raise ObrasError(f"{que.capitalize()} puede tener hasta 200 caracteres.")
+
+
 def create_obra(client: Client, datos: dict[str, Any]) -> Obra:
+    _revisar_textos(datos)
     if not str(datos.get("nombre") or "").strip():
         raise ObrasError("La obra necesita un nombre.")
     _validate(datos)
@@ -178,6 +198,7 @@ def validar_cambios(cambios: dict[str, Any]) -> dict[str, Any]:
     otros = sorted(set(cambios) - set(CAMPOS_EDITABLES_OBRA))
     if otros:
         raise ObrasError(f"Esos datos de la obra no se pueden editar: {', '.join(otros)}.")
+    _revisar_textos(cambios)
     if "nombre" in cambios:
         cambios["nombre"] = str(cambios["nombre"] or "").strip()
         if not cambios["nombre"]:
@@ -227,9 +248,11 @@ def list_bitacora(client: Client, obra_id: int, limit: int | None = None) -> lis
 def validar_nota(nota: str) -> str:
     """The note as it would be saved, or ObrasError saying what's wrong."""
 
-    limpia = str(nota or "").strip()
+    limpia = sanidad.revisar(nota, "la nota", ObrasError, multilinea=True)
     if not limpia:
         raise ObrasError("La nota está vacía.")
+    if len(limpia) > 5000:
+        raise ObrasError("La nota puede tener hasta 5000 caracteres.")
     return limpia
 
 

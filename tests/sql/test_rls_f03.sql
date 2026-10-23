@@ -29,7 +29,8 @@ begin
 end $$;
 
 -- ----- precarga -----
-select pg_temp.ok((select count(*) from public.rubros) = 18, 'precarga: 18 rubros');
+select pg_temp.ok((select count(*) from public.rubros where nombre not like 'Acme%' and nombre not like 'Sin nombre%') = 18,
+                  'precarga: 18 rubros (además de los «Acme» de la migración #53)');
 select pg_temp.ok(exists(select 1 from public.rubros where nombre = 'Steel frame' and orden = 50),
                   'precarga: Steel frame');
 
@@ -47,7 +48,7 @@ select pg_temp.ok(
   'migración: obra sin presupuesto -> «Imprevistos» en 0');
 
 select pg_temp.ok(
-  (select count(*) = 4 and bool_and(g.presupuesto_item_id is not null and i.obra_id = g.obra_id
+  (select count(*) = 5 and bool_and(g.presupuesto_item_id is not null and i.obra_id = g.obra_id
                                     and i.rubro_id = g.rubro_id)
      from public.gastos g join public.presupuesto_items i on i.id = g.presupuesto_item_id
     where g.descripcion like 'Gasto previo%'),
@@ -65,7 +66,7 @@ select pg_temp.ok(
 
 -- ----- migración #37: proveedores escritos a mano -> lista de proveedores -----
 select pg_temp.ok(
-  (select count(*) from public.proveedores) = 2
+  (select count(*) from public.proveedores where nombre not like 'Pinturas Z%') = 2
   and exists (select 1 from public.proveedores where nombre = 'Hierros del Sur')
   and not exists (select 1 from public.proveedores where public.rubro_clave(nombre) = 'hierros sur')
   and (select proveedor = 'Y' and proveedor_id is null from public.gastos
@@ -77,6 +78,39 @@ select pg_temp.ok(
   and (select p.nombre from public.gastos g join public.proveedores p on p.id = g.proveedor_id
         where g.descripcion = 'Gasto previo anulado') = 'Pinturería X',
   'migración #37: un proveedor por nombre y sus gastos vinculados; renombrar y volver a correr no lo recrea; una letra queda como texto');
+
+-- ----- #53: texto limpio -----
+select pg_temp.ok(
+  exists (select 1 from public.gastos where descripcion = 'Gasto previo con invisibles y [ [marcas] ]')
+  and not exists (select 1 from public.gastos where not public.texto_limpio(descripcion)),
+  'texto limpio #53: los datos ya guardados se limpian solos (invisibles y marcadores)');
+select pg_temp.ok(
+  public.limpiar_texto(U&'\FF49\FF47\FF4E\FF4F\FF52\3000\FF3B\FF3Bx\FF3D\FF3D') = 'ignor [ [x] ]'
+  and exists (select 1 from public.gastos where descripcion = 'Gasto en ancho completo'),
+  'texto limpio #53: el ancho completo pasa a ASCII, también en los datos ya guardados');
+select pg_temp.ok(
+  exists (select 1 from public.bitacora
+           where nota = E'Llegó el hierro\n\nsegunda línea' and autor = 'caro@x.test')
+  and public.limpiar_texto('  a   b  ') = 'a b',
+  'texto limpio #53: espacios como la app (uno solo, sin bordes, a lo sumo una línea en blanco); el autor también se limpia');
+select pg_temp.ok(
+  exists (select 1 from public.gastos where descripcion = 'Línea uno línea dos')
+  and public.limpiar_linea(E' a\n\n b ') = 'a b' and public.limpiar_texto(E' a\n\n b ') = E'a\n\nb',
+  'texto limpio #53: los campos de una línea no guardan saltos (pasan a espacio); notas y comentarios sí');
+select pg_temp.ok(
+  exists (select 1 from public.obras where nombre = 'Sin nombre' and cliente is null)
+  and exists (select 1 from public.gastos where descripcion = 'Sin descripción' and monto = 5),
+  'texto limpio #53: un texto que queda vacío al limpiarse toma un reemplazo (obligatorio) o queda vacío (opcional)');
+select pg_temp.ok(
+  (select count(*) from public.proveedores where nombre in ('Pinturas Z')
+      or nombre ~ '^Pinturas Z \([0-9]+\)$') = 2
+  and (select count(distinct g.proveedor_id) from public.gastos g
+        where g.descripcion like 'Gasto de Pinturas Z%') = 2
+  and (select count(*) from public.rubros where nombre = 'Acme' or nombre ~ '^Acme \([0-9]+\)$') = 4
+  and (select count(*) from public.rubros where nombre ~ '^Sin nombre( \([0-9]+\))?$') = 2
+  and not exists (select 1 from public.rubros where not public.texto_limpio(nombre))
+  and not exists (select 1 from public.proveedores where not public.texto_limpio(nombre)),
+  'texto limpio #53: nombres que al limpiarse coinciden o quedan vacíos no chocan: número libre o «Sin nombre», cada uno con sus datos');
 
 -- ----- usuario A logueado -----
 select pg_temp.como('authenticated', '00000000-0000-0000-0000-00000000000a');
@@ -217,15 +251,56 @@ insert into public.presupuesto_items (obra_id, rubro_id, monto, moneda, es_impre
 select pg_temp.falla($$update public.presupuesto_items set es_imprevistos = false$$, '42501');
 select pg_temp.ok(true, 'ítems: monto 0 permitido; un «Imprevistos» vigente por obra; se puede volver a crear');
 
+-- #53: la base no acepta caracteres invisibles, de control ni marcadores, aunque
+-- se saltee la app; los textos normales (tildes, ñ, n.º, m², emojis) sí.
+select pg_temp.falla($$insert into public.bitacora (obra_id, nota)
+  select id, E'Llegó\u200B el hierro' from public.obras where nombre = 'Obra RLS'$$, '23514');
+select pg_temp.falla($$insert into public.bitacora (obra_id, nota)
+  select id, 'Nota [[DATOS]] falsa' from public.obras where nombre = 'Obra RLS'$$, '23514');
+select pg_temp.falla($$update public.obras set cliente = E'Pérez\u202E' where nombre = 'Obra RLS'$$, '23514');
+select pg_temp.falla($$insert into public.rubros (nombre) values (E'Pileta\x07')$$, '23514');
+select pg_temp.falla($$insert into public.rubros (nombre) values (E'Pileta\u0085')$$, '23514');
+select pg_temp.falla($$insert into public.rubros (nombre) values (E'Pile\tta')$$, '23514');
+select pg_temp.falla($$insert into public.rubros (nombre) values ('Pileta  doble')$$, '23514');
+select pg_temp.falla($$insert into public.rubros (nombre) values (E'Pile\nta')$$, '23514');
+select pg_temp.falla($$update public.obras set cliente = E'Pérez\nGarcía' where nombre = 'Obra RLS'$$, '23514');
+select pg_temp.falla($$insert into public.bitacora (obra_id, nota)
+  select id, E'\nNota con salto al principio' from public.obras where nombre = 'Obra RLS'$$, '23514');
+select pg_temp.falla($$insert into public.rubros (nombre) values (U&'\FF49\FF47\FF4E\FF4F\FF52a')$$, '23514');
+select pg_temp.falla($$insert into public.bitacora (obra_id, nota)
+  select id, U&'Nota \FF3B\FF3BDATOS\FF3D\FF3D' from public.obras where nombre = 'Obra RLS'$$, '23514');
+select pg_temp.falla($$insert into public.proveedores (nombre, web)
+  values ('Web invisible', E'https://x.test/?q=java\u200Bscript:alert(1)')$$, '23514');
+select pg_temp.falla($$insert into public.rubros (nombre) values (E'Pileta\u061C')$$, '23514');
+select pg_temp.falla($$insert into public.rubros (nombre) values (E'Pileta\u2028')$$, '23514');
+select pg_temp.falla($$insert into public.rubros (nombre) values (E'Pileta\U000E0041')$$, '23514');
+insert into public.bitacora (obra_id, nota)
+  select id, E'Llegó el hierro: 12 m² y caño n.º 3 — «ñandú» 👍\nSegunda línea' from public.obras
+   where nombre = 'Obra RLS';
+select pg_temp.ok((select count(*) = 1 from public.bitacora where nota like 'Llegó el hierro: 12 m²%'),
+                  'texto limpio #53: invisibles y marcadores rechazados en la base; texto normal intacto');
+-- #53 R3b: el autor de una nota sale del login; no se puede firmar con otro nombre.
+insert into public.bitacora (obra_id, nota, autor)
+  select id, 'Nota firmada por otro', 'Otra Persona' from public.obras where nombre = 'Obra RLS';
+select pg_temp.ok((select autor from public.bitacora where nota = 'Nota firmada por otro')
+                  = 'a@atrium.test', 'bitácora: el autor es el mail del login, no el que se manda');
+select set_config('request.jwt.claims',
+  '{"sub":"00000000-0000-0000-0000-00000000000a","role":"authenticated"}', false);
+select pg_temp.falla($$insert into public.bitacora (obra_id, nota, autor)
+  select id, 'Sin mail', 'Otra Persona' from public.obras where nombre = 'Obra RLS'$$, '42501');
+select pg_temp.como('authenticated', '00000000-0000-0000-0000-00000000000a');
+
 -- Rubros: alta preparada, nombres únicos sin importar mayúsculas ni espacios.
 insert into public.rubros (nombre, orden) values ('Piscina', 500);
-select pg_temp.falla($$insert into public.rubros (nombre) values ('  piscina ')$$, '23505');
+select pg_temp.falla($$insert into public.rubros (nombre) values ('Píscina')$$, '23505');
+-- #53: con espacios de más ni siquiera es texto limpio.
+select pg_temp.falla($$insert into public.rubros (nombre) values ('  piscina ')$$, '23514');
 select pg_temp.falla($$insert into public.rubros (nombre) values ('ESTRUCTURA')$$, '23505');
 select pg_temp.falla($$insert into public.rubros (nombre) values ('x')$$, '23514');
 select pg_temp.falla($$insert into public.rubros (nombre) values ('Mamposteria')$$, '23505');
 select pg_temp.falla($$insert into public.rubros (nombre) values ('MAMPOSTERÍA')$$, '23505');
-select pg_temp.falla($$insert into public.rubros (nombre) values ('Steel   Frame')$$, '23505');
-select pg_temp.falla($$insert into public.rubros (nombre) values ('instalacion  ELECTRICA')$$, '23505');
+select pg_temp.falla($$insert into public.rubros (nombre) values ('STEEL frame')$$, '23505');
+select pg_temp.falla($$insert into public.rubros (nombre) values ('instalacion ELECTRICA')$$, '23505');
 update public.rubros set activo = false where nombre = 'Piscina';
 select pg_temp.ok(true, 'rubros: alta, duplicados (mayúsculas, tildes, espacios) rechazados, desactivar');
 
@@ -260,7 +335,8 @@ insert into public.proveedores (nombre, telefono, email, web, cuit, rubro_ids)
          array[(select id from public.rubros where nombre = 'Estructura')];
 select pg_temp.ok((select creado_por from public.proveedores where nombre = 'Hierros RLS')
                   = '00000000-0000-0000-0000-00000000000a', 'proveedor firmado por su autor');
-select pg_temp.falla($$insert into public.proveedores (nombre) values ('  HIERROS   rls ')$$, '23505');
+select pg_temp.falla($$insert into public.proveedores (nombre) values ('HIERROS rls')$$, '23505');
+select pg_temp.falla($$insert into public.proveedores (nombre) values ('  HIERROS   rls ')$$, '23514');
 select pg_temp.falla($$insert into public.proveedores (nombre) values ('x')$$, '23514');
 select pg_temp.falla($$insert into public.proveedores (nombre, email) values ('Mail malo', 'no-es-mail')$$, '23514');
 select pg_temp.falla($$insert into public.proveedores (nombre, email)
@@ -351,7 +427,7 @@ delete from public.rubros;
 select pg_temp.ok((select count(*) from public.gastos where descripcion = 'Hierro') = 1
                   and (select count(*) from public.presupuesto_items i join public.obras o on o.id = i.obra_id
                        where o.nombre = 'Obra RLS') = 6
-                  and (select count(*) from public.rubros) = 20,
+                  and (select count(*) from public.rubros where nombre not like 'Acme%' and nombre not like 'Sin nombre%') = 20,
                   'sin DELETE: gastos, presupuesto y rubros no se borran');
 
 -- Borrar (anular) un ítem anula también sus gastos (R12b).

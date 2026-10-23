@@ -9,7 +9,14 @@ from decimal import Decimal
 import pytest
 
 from atrium import finanzas, obras
-from tests.e2e.conftest import abrir_presupuesto, click, tabla_items, tabla_rubros, texts
+from tests.e2e.conftest import (
+    abrir_presupuesto,
+    click,
+    datos_viejos,
+    tabla_items,
+    tabla_rubros,
+    texts,
+)
 
 PRESUPUESTO = 2  # «Presupuesto» tab in 🏗️ Obra activa (#49)
 
@@ -439,7 +446,8 @@ def test_f03_ca_23_texto_con_markdown_no_se_interpreta(e2e):
     detalle, el diálogo de borrado y el aviso de alta."""
 
     _obra(e2e)
-    item = _item(e2e, "Pintura", 100, descripcion=MALICIOSO)
+    with datos_viejos():
+        item = _item(e2e, "Pintura", 100, descripcion=MALICIOSO)
     at = _plata(e2e)
     crudos = [e.label for e in _tab(at).expander] + [m.value for m in _tab(at).markdown]
     at = _pedir_borrado(at, item["id"])
@@ -700,9 +708,10 @@ def test_tabla_9_ayudas_de_los_iconos_no_interpretan_markdown(e2e):
 
     _obra(e2e)
     malo = e2e.db.table("rubros").insert({"nombre": MALICIOSO, "orden": 5}).execute().data[0]
-    item, _ = finanzas.add_presupuesto_item(
-        e2e.db, 1, monto=10, moneda="ARS", rubro_id=malo["id"], descripcion=MALICIOSO
-    )
+    with datos_viejos():
+        item, _ = finanzas.add_presupuesto_item(
+            e2e.db, 1, monto=10, moneda="ARS", rubro_id=malo["id"], descripcion=MALICIOSO
+        )
     at = _plata(e2e)
 
     ayudas = [b.help for b in _tab(at).button if b.help]

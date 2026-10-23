@@ -14,6 +14,30 @@ select o.id, r.id, x.descripcion, 10, 'USD', x.anulado, x.proveedor
        (values ('Estructura', 'Gasto previo con ítem', false, 'Hierros Sur'),
                ('Pintura', 'Gasto previo sin ítem', false, '  hierros   SUR '),
                ('Pintura', 'Gasto previo anulado', true, 'Pinturería X'),
-               ('Pintura', 'Gasto previo de una letra', false, 'Y'))
+               ('Pintura', 'Gasto previo de una letra', false, 'Y'),
+               ('Pintura', E'Gasto previo con invisibles\u200B y [[marcas]]', false, null),
+               ('Pintura', 'Gasto de Pinturas Z', false, 'Pinturas Z'),
+               ('Pintura', 'Gasto de Pinturas Z con invisible', false, E'Pinturas\u200B Z'))
          as x(rubro, descripcion, anulado, proveedor)
  where o.nombre = 'Obra previa' and r.nombre = x.rubro;
+-- #53: rubros que solo difieren por un invisible o un control C1.
+insert into public.rubros (nombre) values ('Acme'), (E'Acme\u200B'), (E'Ac\u0085me'),
+    ('Acme (2)'), (E'\u200B\u200B\u200B'), (E'\u200B\u200C');
+-- #53: una obra cuyo nombre son solo invisibles, y un gasto igual.
+insert into public.obras (nombre, cliente) values (E'\u200B\u2060', E'\t\u061C');
+insert into public.gastos (obra_id, rubro_id, descripcion, monto, moneda)
+select o.id, r.id, E'\u200B', 5, 'USD' from public.obras o, public.rubros r
+ where o.nombre = 'Obra previa' and r.nombre = 'Pintura';
+-- #53: texto guardado en ancho completo.
+insert into public.gastos (obra_id, rubro_id, descripcion, monto, moneda)
+select o.id, r.id, U&'Gasto en \FF41\FF4E\FF43\FF48\FF4F completo', 7, 'USD'
+  from public.obras o, public.rubros r
+ where o.nombre = 'Obra previa' and r.nombre = 'Pintura';
+-- #53: espacios de más y autor con invisibles.
+insert into public.bitacora (obra_id, nota, autor)
+select id, E'  Llegó   el\u00A0hierro  \n\n\n\n segunda   línea ', E'caro\u200B@x.test'
+  from public.obras where nombre = 'Obra previa';
+-- #53: una descripción (campo de una línea) con saltos.
+insert into public.gastos (obra_id, rubro_id, descripcion, monto, moneda)
+select o.id, r.id, E'Línea uno\n\nlínea dos', 3, 'USD' from public.obras o, public.rubros r
+ where o.nombre = 'Obra previa' and r.nombre = 'Pintura';

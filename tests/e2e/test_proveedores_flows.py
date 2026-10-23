@@ -12,6 +12,7 @@ from tests.e2e.conftest import (
     botones_propuesta,
     click,
     confirmar_propuestas,
+    datos_viejos,
     texts,
 )
 from tests.fakes import tool_call
@@ -320,8 +321,9 @@ def test_f06_ca_11_texto_de_usuario_no_se_interpreta(e2e):
     """F-06-CA-11: un nombre, notas o comentario con Markdown se muestran como texto
     (no cargan imágenes ni links)."""
 
-    p = _proveedor(e2e, "![x](https://evil.test/a.png) Prov", notas="[link](https://evil.test)")
-    proveedores.calificar(e2e.db, p["id"], "id-socio", 4, "![y](https://evil.test/b.png)")
+    with datos_viejos():
+        p = _proveedor(e2e, "![x](https://evil.test/a.png) Prov", notas="[link](https://evil.test)")
+        proveedores.calificar(e2e.db, p["id"], "id-socio", 4, "![y](https://evil.test/b.png)")
     at = _ficha(e2e, p["id"])
     crudos = [m.value for m in at.markdown] + [c.value for c in at.caption]
     assert not any("](https://evil.test" in c and "\\]" not in c for c in crudos)
@@ -424,7 +426,8 @@ def test_f06_ca_11b_nombre_de_obra_con_markdown_en_compras(e2e):
     aunque tenga Markdown (no carga imágenes ni links)."""
 
     p = _proveedor(e2e, "Hierros Sur")
-    _, item = _obra_con_item(e2e, "![x](https://evil.test/a.png) Obra")
+    with datos_viejos():
+        _, item = _obra_con_item(e2e, "![x](https://evil.test/a.png) Obra")
     finanzas.add_gasto(
         e2e.db, item["id"], monto=10, moneda="ARS", descripcion="x", proveedor_id=p["id"]
     )

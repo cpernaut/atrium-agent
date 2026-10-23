@@ -722,3 +722,224 @@ update public.gastos g
    and not p.archivado
    and public.rubro_clave(p.nombre) = public.rubro_clave(g.proveedor);
 alter table public.gastos enable trigger gastos_editado;
+
+
+-- --------------------------------------------------------------------------- --
+-- #53 · Texto limpio: lo que se guarda no lleva caracteres de control ni
+-- invisibles (ancho cero, cambio de dirección, BOM), ni controles C0, DEL y C1
+-- (U+0080–U+009F) como atrium/sanidad.py, ni los marcadores [[ ]] con
+-- los que la app le entrega datos al agente. La app además rechaza textos que
+-- parecen órdenes para el agente (atrium/sanidad.py).
+-- --------------------------------------------------------------------------- --
+
+-- Igual que sanidad.limpiar(): tabulación -> espacio, CR -> salto de línea, ancho
+-- completo -> ASCII, y fuera
+-- los controles (C0 salvo el salto de línea, DEL, C1) y los caracteres de formato,
+-- uso privado y separadores de línea/párrafo (categorías Unicode Cf, Co, Zl, Zp;
+-- rangos generados con unicodedata de Python).
+create or replace function public.limpiar_texto(t text)
+returns text
+language sql
+immutable
+parallel safe
+set search_path = ''
+as $$
+    -- Primero CR/tab, ancho completo y caracteres prohibidos; después los espacios
+    -- como sanidad.limpiar: cada tramo (también los Unicode) es uno solo, sin
+    -- espacios al borde de las líneas, a lo sumo una línea en blanco seguida y nada
+    -- al principio o al final; por último los marcadores.
+    select replace(replace(
+        pg_catalog.btrim(
+            pg_catalog.regexp_replace(
+                pg_catalog.regexp_replace(
+                    pg_catalog.regexp_replace(
+                        pg_catalog.regexp_replace(
+                            pg_catalog.translate(
+                                replace(replace(replace(t, E'\r\n', E'\n'), E'\r', E'\n'), E'\t', ' '),
+                                -- Ancho completo («ｉｇｎｏｒá», «［［») -> ASCII, como sanidad.limpiar.
+                                U&'\FF01\FF02\FF03\FF04\FF05\FF06\FF07\FF08\FF09\FF0A\FF0B\FF0C\FF0D\FF0E\FF0F\FF10\FF11\FF12\FF13\FF14\FF15\FF16\FF17\FF18\FF19\FF1A\FF1B\FF1C\FF1D\FF1E\FF1F\FF20\FF21\FF22\FF23\FF24\FF25\FF26\FF27\FF28\FF29\FF2A\FF2B\FF2C\FF2D\FF2E\FF2F\FF30\FF31\FF32\FF33\FF34\FF35\FF36\FF37\FF38\FF39\FF3A\FF3B\FF3C\FF3D\FF3E\FF3F\FF40\FF41\FF42\FF43\FF44\FF45\FF46\FF47\FF48\FF49\FF4A\FF4B\FF4C\FF4D\FF4E\FF4F\FF50\FF51\FF52\FF53\FF54\FF55\FF56\FF57\FF58\FF59\FF5A\FF5B\FF5C\FF5D\FF5E\3000',
+                                U&'\0021\0022\0023\0024\0025\0026\0027\0028\0029\002A\002B\002C\002D\002E\002F\0030\0031\0032\0033\0034\0035\0036\0037\0038\0039\003A\003B\003C\003D\003E\003F\0040\0041\0042\0043\0044\0045\0046\0047\0048\0049\004A\004B\004C\004D\004E\004F\0050\0051\0052\0053\0054\0055\0056\0057\0058\0059\005A\005B\005C\005D\005E\005F\0060\0061\0062\0063\0064\0065\0066\0067\0068\0069\006A\006B\006C\006D\006E\006F\0070\0071\0072\0073\0074\0075\0076\0077\0078\0079\007A\007B\007C\007D\007E\0020'),
+                            '[\x01-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F\u00AD\u0600-\u0605\u061C\u06DD\u070F\u0890-\u0891\u08E2\u180E\u200B-\u200F\u2028-\u202E\u2060-\u2064\u2066-\u206F\uE000-\uF8FF\uFEFF\uFFF9-\uFFFB\U000110BD\U000110CD\U00013430-\U0001343F\U0001BCA0-\U0001BCA3\U0001D173-\U0001D17A\U000E0001\U000E0020-\U000E007F\U000F0000-\U000FFFFD\U00100000-\U0010FFFD]',
+                            '', 'g'),
+                        '[ \u00A0\u1680\u2000-\u200A\u202F\u205F]+', ' ', 'g'),
+                    ' ?\n ?', E'\n', 'g'),
+                '\n{3,}', E'\n\n', 'g'),
+            E' \n'),
+        '[[', '[ ['), ']]', '] ]')
+$$;
+revoke execute on function public.limpiar_texto(text) from public, anon;
+grant execute on function public.limpiar_texto(text) to authenticated, service_role;
+
+create or replace function public.texto_limpio(t text)
+returns boolean
+language sql
+immutable
+parallel safe
+set search_path = ''
+as $$
+    select t is null or t = public.limpiar_texto(t)
+$$;
+revoke execute on function public.texto_limpio(text) from public, anon;
+grant execute on function public.texto_limpio(text) to authenticated, service_role;
+
+-- Campos de una línea (nombres, descripciones, contacto…): como sanidad.limpiar sin
+-- multilinea, los saltos de línea también pasan a ser un espacio. Los textos largos
+-- (nota, notas, comentario) usan limpiar_texto / texto_limpio y conservan sus líneas.
+create or replace function public.limpiar_linea(t text)
+returns text
+language sql
+immutable
+parallel safe
+set search_path = ''
+as $$
+    select pg_catalog.btrim(
+        pg_catalog.regexp_replace(public.limpiar_texto(t), '[ \n]+', ' ', 'g'))
+$$;
+revoke execute on function public.limpiar_linea(text) from public, anon;
+grant execute on function public.limpiar_linea(text) to authenticated, service_role;
+
+create or replace function public.linea_limpia(t text)
+returns boolean
+language sql
+immutable
+parallel safe
+set search_path = ''
+as $$
+    select t is null or t = public.limpiar_linea(t)
+$$;
+revoke execute on function public.linea_limpia(text) from public, anon;
+grant execute on function public.linea_limpia(text) to authenticated, service_role;
+
+-- Datos ya guardados (#53 D2): se limpian solos. No es una edición de nadie: los
+-- triggers que registran ediciones no corren mientras tanto.
+alter table public.gastos disable trigger gastos_editado;
+alter table public.proveedor_calificaciones disable trigger proveedor_calificaciones_firmada;
+-- Un texto obligatorio que queda vacío al limpiarse (solo tenía invisibles) toma un
+-- reemplazo («Sin nombre», «Sin descripción», «(sin texto)»); uno opcional, null.
+update public.obras
+   set nombre = coalesce(nullif(btrim(public.limpiar_linea(nombre)), ''), 'Sin nombre')
+ where not public.linea_limpia(nombre);
+update public.obras set cliente = nullif(btrim(public.limpiar_linea(cliente)), '')
+ where not public.linea_limpia(cliente);
+update public.obras set direccion = nullif(btrim(public.limpiar_linea(direccion)), '')
+ where not public.linea_limpia(direccion);
+update public.obras set responsable = nullif(btrim(public.limpiar_linea(responsable)), '')
+ where not public.linea_limpia(responsable);
+update public.bitacora set autor = nullif(public.limpiar_linea(autor), '')
+ where not public.linea_limpia(autor);
+update public.bitacora
+   set nota = coalesce(nullif(btrim(public.limpiar_texto(nota)), ''), '(sin texto)')
+ where not public.texto_limpio(nota);
+update public.presupuesto_items
+   set descripcion = nullif(btrim(public.limpiar_linea(descripcion)), '')
+ where not public.linea_limpia(descripcion);
+update public.gastos
+   set descripcion = coalesce(nullif(btrim(public.limpiar_linea(descripcion)), ''), 'Sin descripción')
+ where not public.linea_limpia(descripcion);
+update public.gastos set proveedor = nullif(btrim(public.limpiar_linea(proveedor)), '')
+ where not public.linea_limpia(proveedor);
+-- Rubros y proveedores tienen nombre único (rubro_clave) y un largo mínimo. Fila
+-- por fila, cada nombre sucio toma su versión limpia; si queda vacío o corto pasa a
+-- «Sin nombre», y si coincide con otro (por ejemplo «Acme» y «Acme» con un
+-- invisible) se le suma un número libre: «Acme (2)», «Acme (3)»… Nada se fusiona
+-- ni se pierde: cada uno conserva sus gastos, ítems y calificaciones.
+do $$
+declare
+    t record;
+    fila record;
+    base text;
+    candidato text;
+    n int;
+    ocupado boolean;
+begin
+    for t in select * from (values ('rubros', 60), ('proveedores', 120)) as x(tabla, largo) loop
+        for fila in execute format(
+            'select id, nombre from public.%I where not public.linea_limpia(nombre) order by id',
+            t.tabla)
+        loop
+            base := btrim(public.limpiar_linea(fila.nombre));
+            if char_length(base) < 2 then
+                base := 'Sin nombre';
+            end if;
+            candidato := left(base, t.largo);
+            n := 1;
+            loop
+                execute format(
+                    'select exists (select 1 from public.%I where id <> $1 '
+                    'and public.rubro_clave(nombre) = public.rubro_clave($2))', t.tabla)
+                    into ocupado using fila.id, candidato;
+                exit when not ocupado;
+                n := n + 1;
+                candidato := left(base, t.largo - char_length(' (' || n || ')')) || ' (' || n || ')';
+            end loop;
+            execute format('update public.%I set nombre = $1 where id = $2', t.tabla)
+                using candidato, fila.id;
+        end loop;
+    end loop;
+end
+$$;
+update public.proveedores set contacto = nullif(btrim(public.limpiar_linea(contacto)), '')
+ where not public.linea_limpia(contacto);
+update public.proveedores set zona = nullif(btrim(public.limpiar_linea(zona)), '')
+ where not public.linea_limpia(zona);
+update public.proveedores set web = nullif(btrim(public.limpiar_linea(web)), '')
+ where not public.linea_limpia(web);
+update public.proveedores set notas = nullif(btrim(public.limpiar_texto(notas)), '')
+ where not public.texto_limpio(notas);
+update public.proveedor_calificaciones
+   set comentario = nullif(btrim(public.limpiar_texto(comentario)), '')
+ where not public.texto_limpio(comentario);
+alter table public.gastos enable trigger gastos_editado;
+alter table public.proveedor_calificaciones enable trigger proveedor_calificaciones_firmada;
+
+-- El autor de una nota de bitácora sale del login (el mail del JWT), como en las
+-- calificaciones: nadie firma una nota con otro nombre ni con texto propio.
+create or replace function public.bitacora_firmada()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+declare
+  claims json := nullif(current_setting('request.jwt.claims', true), '')::json;
+begin
+  -- Sin JWT (el propio esquema, una migración) se respeta lo que viene. Con login,
+  -- el autor es siempre su mail; un login sin mail no puede anotar.
+  if claims is not null and claims ->> 'role' is distinct from 'service_role' then
+    if nullif(claims ->> 'email', '') is null then
+      raise exception 'Para anotar en la bitácora hace falta un usuario con mail.'
+        using errcode = '42501';
+    end if;
+    new.autor := claims ->> 'email';
+  end if;
+  return new;
+end;
+$$;
+revoke execute on function public.bitacora_firmada() from public, anon, authenticated;
+drop trigger if exists bitacora_firmada on public.bitacora;
+create trigger bitacora_firmada
+    before insert on public.bitacora
+    for each row execute function public.bitacora_firmada();
+
+-- Y de acá en más la base no acepta texto sucio, aunque se saltee la app.
+alter table public.obras drop constraint if exists obras_textos_limpios;
+alter table public.obras add constraint obras_textos_limpios check (
+    public.linea_limpia(nombre) and public.linea_limpia(cliente)
+    and public.linea_limpia(direccion) and public.linea_limpia(responsable));
+alter table public.bitacora drop constraint if exists bitacora_texto_limpio;
+alter table public.bitacora add constraint bitacora_texto_limpio
+    check (public.texto_limpio(nota) and public.linea_limpia(autor));
+alter table public.presupuesto_items drop constraint if exists presupuesto_texto_limpio;
+alter table public.presupuesto_items add constraint presupuesto_texto_limpio
+    check (public.linea_limpia(descripcion));
+alter table public.gastos drop constraint if exists gastos_textos_limpios;
+alter table public.gastos add constraint gastos_textos_limpios
+    check (public.linea_limpia(descripcion) and public.linea_limpia(proveedor));
+alter table public.rubros drop constraint if exists rubros_texto_limpio;
+alter table public.rubros add constraint rubros_texto_limpio check (public.linea_limpia(nombre));
+alter table public.proveedores drop constraint if exists proveedores_textos_limpios;
+alter table public.proveedores add constraint proveedores_textos_limpios check (
+    public.linea_limpia(nombre) and public.linea_limpia(contacto)
+    and public.linea_limpia(zona) and public.texto_limpio(notas) and public.linea_limpia(web));
+alter table public.proveedor_calificaciones drop constraint if exists calificaciones_texto_limpio;
+alter table public.proveedor_calificaciones add constraint calificaciones_texto_limpio
+    check (public.texto_limpio(comentario));

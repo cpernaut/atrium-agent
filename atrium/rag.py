@@ -27,6 +27,7 @@ from langgraph.graph import END, START, StateGraph
 
 from atrium import obras
 from atrium.config import settings
+from atrium.guardia import Turno
 from atrium.obra_tools import build_obra_tools
 from atrium.vectorstore import get_vector_store
 
@@ -140,12 +141,15 @@ def _create_llm() -> ChatOpenAI:
 def _obra_block(obra: obras.Obra | None) -> str:
     if obra is None:
         return "No hay una obra activa seleccionada."
-    texto = "Obra activa:\n" + obras.describe_obra(obra)
+    # Names, client, address… are written by people (and may predate #53): they go
+    # inside the data markers, with suspicious lines flagged, like tool results.
+    texto = "Obra activa:\n" + Turno().datos(obras.describe_obra(obra))
     if obras.normativa_source(obra):
+        # Only municipios with a loaded code get here (a fixed list), so naming it is safe.
         texto += f"\nEl contexto recuperado es del código de edificación de {obra['municipio']}."
     elif obra.get("municipio"):
         texto += (
-            f"\nNo hay normativa cargada para {obra['municipio']}: aclaralo si la "
+            "\nNo hay normativa cargada para el municipio de la obra: aclaralo si la "
             "pregunta es de normativa."
         )
     return texto

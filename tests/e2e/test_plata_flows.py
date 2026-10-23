@@ -16,6 +16,7 @@ from tests.e2e.conftest import (
     abrir_presupuesto,
     click,
     confirmar_propuestas,
+    datos_viejos,
     tabla_items,
     tabla_rubros,
     texts,
@@ -720,8 +721,9 @@ def test_f03_seg_3_avisos_del_chat_escapan_nombres(e2e):
     """F-03-SEG-3: las propuestas del agente y los avisos de lo que guardó no
     interpretan Markdown de nombres de obra o ítem, tampoco en el historial."""
 
-    _obra(e2e, nombre="![o](https://evil.test/o.png)")
-    _item(e2e, "Otros", 100, descripcion="![r](https://evil.test/r.png)")
+    with datos_viejos():
+        _obra(e2e, nombre="![o](https://evil.test/o.png)")
+        _item(e2e, "Otros", 100, descripcion="![r](https://evil.test/r.png)")
     at = _chat(
         e2e,
         "Cargá 10",

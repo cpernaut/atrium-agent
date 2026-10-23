@@ -14,6 +14,7 @@ Nothing touches the network, so the suite is fast, free and deterministic.
 
 from __future__ import annotations
 
+import contextlib
 import re
 from datetime import date, timedelta
 from pathlib import Path
@@ -28,7 +29,7 @@ import atrium.auth
 import atrium.rag
 import atrium.vectorstore
 import navegacion
-from atrium import cotizaciones, finanzas
+from atrium import cotizaciones, finanzas, sanidad
 from tests.fake_supabase import FakeSupabase, seed_rubros
 from tests.fakes import RecordingStore, ToolCallingFake
 
@@ -134,6 +135,22 @@ class Harness:
         """The obra activa picker in the left menu (UX-02, #49)."""
 
         return at.selectbox(key="obra_elegida").set_value(obra_id).run()
+
+
+@contextlib.contextmanager
+def datos_viejos():
+    """Seed text the way it could exist before #53 (or saved bypassing the app).
+
+    The sanity check refuses Markdown images and the like on save; tests about
+    how the screens *show* such stored text seed it inside this block.
+    """
+
+    original = sanidad.motivo_sospecha
+    sanidad.motivo_sospecha = lambda texto: None
+    try:
+        yield
+    finally:
+        sanidad.motivo_sospecha = original
 
 
 def ir_a(at: AppTest, url: str) -> AppTest:
