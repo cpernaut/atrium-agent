@@ -484,3 +484,22 @@ def test_agente_3_una_pregunta_no_escribe(e2e):
     assert all(r.startswith("No ") for r in resultados)
     assert obras.get_obra(e2e.db, 1)["avance"] == 30
     assert obras.list_bitacora(e2e.db, 1) == []
+
+
+def test_agente_3b_pregunta_con_verbo_no_escribe(e2e):
+    """AGENTE-3b (#51): una pregunta sobre algo hecho («¿se cargó el gasto?», «¿anotaron
+    algo?») no autoriza escribir aunque el modelo lo intente."""
+
+    _seed(e2e.db)
+    e2e.script(
+        tool_call("agregar_nota_bitacora", {"nota": "x"}, "c1"),
+        AIMessage(content="No hay notas nuevas."),
+        tool_call("agregar_nota_bitacora", {"nota": "y"}, "c2"),
+        AIMessage(content="Ok."),
+    )
+    at = e2e.abrir_agente(e2e.elegir_obra(e2e.login(), 1))
+    at = at.chat_input(key="agente_input").set_value("¿Se anotó algo de la platea?").run()
+    at = at.chat_input(key="agente_input").set_value("Ya cargué la seña ayer").run()
+
+    assert not at.exception
+    assert obras.list_bitacora(e2e.db, 1) == []

@@ -17,6 +17,9 @@ from atrium.guardia import FIN, INICIO, Turno, pide_escritura
         "Cambiá el estado a Pausada",
         "Agregalo como proveedor",
         "Crealo",
+        "¿Podés cargar 1000 de hierro?",
+        "¿Me anotás que llegó el hierro?",
+        "Quiero que cargues la seña",
     ],
 )
 def test_pedidos_de_escritura(pedido):
@@ -36,6 +39,11 @@ def test_pedidos_de_escritura(pedido):
         "Avance 70",
         "Sí, pero ¿qué tal es?",
         "No cargues ese gasto",
+        "¿Se cargó el gasto?",
+        "¿Cargaste la seña?",
+        "Ya cargué la seña",
+        "¿Está cargado el hierro?",
+        "¿Anotaron algo ayer?",
         "No lo anotes todavía",
         "Nunca des de alta proveedores sin preguntarme",
         "Sí",
