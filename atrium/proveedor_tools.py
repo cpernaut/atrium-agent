@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 from langchain_core.tools import BaseTool, StructuredTool
 
 from atrium import finanzas, proveedores
-from atrium.guardia import Turno
+from atrium.guardia import PROVEEDOR, Turno
 
 if TYPE_CHECKING:
     from supabase import Client
@@ -96,7 +96,7 @@ def build_proveedor_tools(
         """Da de alta un proveedor en la lista del equipo. Usala SOLO si el usuario pide
         explícitamente dar de alta (agregar, crear) un proveedor, o confirma que querés
         darlo de alta después de que no lo encontraste. Nunca lo crees por tu cuenta."""
-        if bloqueo := turno.bloqueo("di de alta el proveedor"):
+        if bloqueo := turno.bloqueo("di de alta el proveedor", PROVEEDOR):
             return bloqueo
         try:
             datos = {"nombre": nombre, "telefono": telefono, "email": email, "contacto": contacto}

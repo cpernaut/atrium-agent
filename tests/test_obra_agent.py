@@ -83,7 +83,7 @@ def test_agent_writes_note_and_progress_on_active_obra():
     )
 
     result = app.invoke(
-        {"mensajes": ["Anotá que hoy se hormigonó la platea, avance 40%"], "obra_id": 1},
+        {"mensajes": ["Anotá que hoy se hormigonó la platea y pasá el avance a 40%"], "obra_id": 1},
         {"configurable": {"thread_id": "t4"}},
     )
 

@@ -25,7 +25,7 @@ resultado esperado verificable.
 | E2E-11 | Agente | Pregunta con obra activa | Busca solo en el código del municipio; la ficha de la obra va al modelo |
 | E2E-12 | Agente | Pregunta sin obra activa | Búsqueda sin filtro; el modelo sabe que no hay obra activa |
 | E2E-13 | Agente | «¿Qué obras tengo en curso?» | Responde con datos reales del tracker, filtrados por estado |
-| E2E-14 | Agente | «Anotá… avance 40%» con obra activa | Nota y avance guardados; avisos visibles; se ven luego en el encabezado, Detalle y Bitácora |
+| E2E-14 | Agente | «Anotá… y pasá el avance a 40%» con obra activa | Nota y avance guardados; avisos visibles; se ven luego en el encabezado, Detalle y Bitácora |
 | E2E-15 | Agente | Pedido con obra ambigua | No escribe nada; pide aclarar |
 | E2E-16 | Historial | Una pregunta en el chat | Pregunta y respuesta guardadas para el usuario |
 | E2E-17 | Marca | Abrir la app | Nombre «Atrium Studio» con la etiqueta «Versión beta»; logo en el login y arriba a la izquierda; isotipo como favicon |
@@ -37,6 +37,7 @@ resultado esperado verificable.
 | AGENTE-2b | Agente | Cambiar el avance por chat y después guardar el estado en Detalle | El formulario muestra el avance nuevo y no lo pisa |
 | AGENTE-3 | Agente | «¿Cómo viene el avance?» y el modelo intenta actualizar la obra y anotar | No guarda nada: solo escribe si el mensaje del usuario lo pide (#51) |
 | AGENTE-3b | Agente | «¿Se anotó algo?» o «Ya cargué la seña» y el modelo intenta anotar | No guarda: solo cuentan pedidos («anotá», «¿podés anotar…?») |
+| AGENTE-3c | Agente | «Cambiá el avance a 50; no registres ese gasto» y el modelo intenta registrar el gasto | Actualiza la obra; el gasto no (cada pedido autoriza solo su acción) |
 | E2E-18 | Historial | Sesión con la carga del historial interrumpida | La app no se rompe: vuelve a cargarlo |
 
 ## E2E simulado — UX-03 Menú y obra activa (`tests/e2e/test_navegacion_flows.py`, #49)

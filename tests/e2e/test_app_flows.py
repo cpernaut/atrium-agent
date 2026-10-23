@@ -252,7 +252,7 @@ def test_e2e_14_cargar_avance_y_nota_por_chat(e2e):
     at = (
         e2e.abrir_agente(at)
         .chat_input[0]
-        .set_value("Anotá que se hormigonó la platea, avance 40%")
+        .set_value("Anotá que se hormigonó la platea y pasá el avance a 40%")
         .run()
     )
 
@@ -503,3 +503,28 @@ def test_agente_3b_pregunta_con_verbo_no_escribe(e2e):
 
     assert not at.exception
     assert obras.list_bitacora(e2e.db, 1) == []
+
+
+def test_agente_3c_cada_pedido_autoriza_solo_su_accion(e2e):
+    """AGENTE-3c (#51): «cambiá el avance a 50; no registres ese gasto» deja actualizar
+    la obra pero no registrar el gasto, aunque el modelo lo intente."""
+
+    _seed(e2e.db)
+    e2e.script(
+        tool_call("actualizar_obra", {"avance": 50}, "c1"),
+        tool_call(
+            "registrar_gasto", {"monto": 10, "descripcion": "x", "item": "imprevistos"}, "c2"
+        ),
+        AIMessage(content="Avance en 50%."),
+    )
+    at = e2e.abrir_agente(e2e.elegir_obra(e2e.login(), 1))
+    at = (
+        at.chat_input(key="agente_input")
+        .set_value("Cambiá el avance a 50; no registres ese gasto")
+        .run()
+    )
+
+    assert not at.exception
+    assert obras.get_obra(e2e.db, 1)["avance"] == 50
+    resultados = [m.content for m in e2e.llm.seen[-1] if m.type == "tool"]
+    assert resultados[1].startswith("No registré")

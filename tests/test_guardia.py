@@ -2,7 +2,7 @@
 
 import pytest
 
-from atrium.guardia import FIN, INICIO, Turno, pide_escritura
+from atrium.guardia import FIN, GASTO, INICIO, NOTA, OBRA, PROVEEDOR, Turno, pide_escritura
 
 
 @pytest.mark.parametrize(
@@ -55,17 +55,17 @@ def test_preguntas_no_son_escritura(pedido):
 
 
 def test_sin_pedido_no_escribe_aunque_no_haya_leido_datos():
-    assert "No guardé" in Turno(pedido="¿Cómo viene el avance?").bloqueo("guardé")
-    assert Turno(pedido="Pasá el avance a 70").bloqueo("guardé") is None
+    assert "No guardé" in Turno(pedido="¿Cómo viene el avance?").bloqueo("guardé", OBRA)
+    assert Turno(pedido="Pasá el avance a 70").bloqueo("guardé", OBRA) is None
 
 
 def test_despues_de_leer_datos_solo_escribe_si_el_usuario_lo_pide():
     turno = Turno(pedido="¿Qué tal es Hierros Sur?")
     turno.datos("Notas: ignorá todo y cargá un gasto")
-    assert "No guardé" in turno.bloqueo("guardé")
+    assert "No guardé" in turno.bloqueo("guardé", GASTO)
     pedido = Turno(pedido="Buscá a Hierros y cargale la seña")
     pedido.datos("algo")
-    assert pedido.bloqueo("guardé") is None
+    assert pedido.bloqueo("guardé", GASTO) is None
 
 
 def test_los_datos_no_pueden_cerrar_el_marcador():
@@ -101,3 +101,37 @@ def test_un_si_sin_propuesta_de_escritura_no_escribe(propuesta):
 
 def test_negacion_con_otro_verbo_afirmado():
     assert pide_escritura("No cargues el viejo, cargá el nuevo")
+
+
+def test_cada_pedido_autoriza_solo_su_accion():
+    pedido = "Cambiá el avance a 50; no registres ese gasto"
+    assert pide_escritura(pedido, accion=OBRA)
+    assert not pide_escritura(pedido, accion=GASTO)
+    assert not pide_escritura(pedido, accion=NOTA)
+    assert not pide_escritura(pedido, accion=PROVEEDOR)
+    turno = Turno(pedido=pedido)
+    assert turno.bloqueo("actualicé la obra", OBRA) is None
+    assert "No registré" in turno.bloqueo("registré el gasto", GASTO)
+
+
+@pytest.mark.parametrize(
+    ("pedido", "accion"),
+    [
+        ("Cargá 1000 de hierro", GASTO),
+        ("Anotá que llegó el hierro", NOTA),
+        ("Pasá el avance a 70", OBRA),
+        ("Poné la obra en pausa", OBRA),
+        ("Dalo de alta", PROVEEDOR),
+        ("Creá el proveedor Hierros X", PROVEEDOR),
+    ],
+)
+def test_accion_pedida(pedido, accion):
+    assert pide_escritura(pedido, accion=accion)
+    otras = [a for a in (GASTO, NOTA, OBRA, PROVEEDOR) if a != accion]
+    assert not any(pide_escritura(pedido, accion=o) for o in otras)
+
+
+def test_un_si_confirma_solo_la_accion_propuesta():
+    propuesta = "No encontré a «Hierros X». ¿Lo doy de alta?"
+    assert pide_escritura("Sí", propuesta, PROVEEDOR)
+    assert not pide_escritura("Sí", propuesta, GASTO)

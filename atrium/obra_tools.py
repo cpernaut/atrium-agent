@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING
 from langchain_core.tools import BaseTool, StructuredTool
 
 from atrium import finanzas, obras, proveedores
-from atrium.guardia import Turno
+from atrium.guardia import GASTO, NOTA, OBRA, Turno
 from atrium.proveedor_tools import build_proveedor_tools, resolver_proveedor
 
 if TYPE_CHECKING:
@@ -86,7 +86,7 @@ def build_obra_tools(
     def agregar_nota_bitacora(nota: str, obra: str | None = None, fecha: str | None = None) -> str:
         """Agrega una nota a la bitácora de una obra. Usala SOLO si el usuario pide
         explícitamente anotar o registrar algo. `fecha` en formato AAAA-MM-DD (vacío = hoy)."""
-        if bloqueo := turno.bloqueo("guardé la nota"):
+        if bloqueo := turno.bloqueo("guardé la nota", NOTA):
             return bloqueo
         try:
             encontrada, problema = _resolver(obra)
@@ -105,7 +105,7 @@ def build_obra_tools(
     ) -> str:
         """Actualiza el avance (0-100) y/o el estado de una obra. Usala SOLO si el
         usuario pide explícitamente cambiar esos datos."""
-        if bloqueo := turno.bloqueo("actualicé la obra"):
+        if bloqueo := turno.bloqueo("actualicé la obra", OBRA):
             return bloqueo
         cambios: dict = {}
         if avance is not None:
@@ -170,7 +170,7 @@ def build_obra_tools(
         `proveedor` (opcional) tiene que estar en la lista de proveedores del equipo.
         Si hay varios ítems o proveedores posibles, o ninguno, no guarda nada y hay que
         preguntar."""
-        if bloqueo := turno.bloqueo("registré el gasto"):
+        if bloqueo := turno.bloqueo("registré el gasto", GASTO):
             return bloqueo
         try:
             encontrada, problema = _resolver(obra)
