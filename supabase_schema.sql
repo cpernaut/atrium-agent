@@ -778,34 +778,46 @@ update public.gastos set descripcion = public.limpiar_texto(descripcion)
  where not public.texto_limpio(descripcion);
 update public.gastos set proveedor = public.limpiar_texto(proveedor)
  where not public.texto_limpio(proveedor);
--- Rubros y proveedores tienen nombre único (rubro_clave): si al limpiar un nombre
--- queda igual a otro («Acme» y «Acme» con un invisible), no se fusionan ni se
--- pierde nada: el primero toma el nombre limpio y los demás le suman su número
--- («Acme (7)»), cada uno con sus gastos, ítems y calificaciones.
-update public.rubros r set nombre = public.limpiar_texto(r.nombre)
- where not public.texto_limpio(r.nombre)
-   and not exists (select 1 from public.rubros o
-                    where o.id <> r.id and public.texto_limpio(o.nombre)
-                      and public.rubro_clave(o.nombre)
-                          = public.rubro_clave(public.limpiar_texto(r.nombre)))
-   and r.id = (select min(d.id) from public.rubros d
-                where not public.texto_limpio(d.nombre)
-                  and public.rubro_clave(public.limpiar_texto(d.nombre))
-                      = public.rubro_clave(public.limpiar_texto(r.nombre)));
-update public.rubros set nombre = left(public.limpiar_texto(nombre), 48) || ' (' || id || ')'
- where not public.texto_limpio(nombre);
-update public.proveedores p set nombre = public.limpiar_texto(p.nombre)
- where not public.texto_limpio(p.nombre)
-   and not exists (select 1 from public.proveedores o
-                    where o.id <> p.id and public.texto_limpio(o.nombre)
-                      and public.rubro_clave(o.nombre)
-                          = public.rubro_clave(public.limpiar_texto(p.nombre)))
-   and p.id = (select min(d.id) from public.proveedores d
-                where not public.texto_limpio(d.nombre)
-                  and public.rubro_clave(public.limpiar_texto(d.nombre))
-                      = public.rubro_clave(public.limpiar_texto(p.nombre)));
-update public.proveedores set nombre = left(public.limpiar_texto(nombre), 100) || ' (' || id || ')'
- where not public.texto_limpio(nombre);
+-- Rubros y proveedores tienen nombre único (rubro_clave) y un largo mínimo. Fila
+-- por fila, cada nombre sucio toma su versión limpia; si queda vacío o corto pasa a
+-- «Sin nombre», y si coincide con otro (por ejemplo «Acme» y «Acme» con un
+-- invisible) se le suma un número libre: «Acme (2)», «Acme (3)»… Nada se fusiona
+-- ni se pierde: cada uno conserva sus gastos, ítems y calificaciones.
+do $$
+declare
+    t record;
+    fila record;
+    base text;
+    candidato text;
+    n int;
+    ocupado boolean;
+begin
+    for t in select * from (values ('rubros', 60), ('proveedores', 120)) as x(tabla, largo) loop
+        for fila in execute format(
+            'select id, nombre from public.%I where not public.texto_limpio(nombre) order by id',
+            t.tabla)
+        loop
+            base := btrim(public.limpiar_texto(fila.nombre));
+            if char_length(base) < 2 then
+                base := 'Sin nombre';
+            end if;
+            candidato := left(base, t.largo);
+            n := 1;
+            loop
+                execute format(
+                    'select exists (select 1 from public.%I where id <> $1 '
+                    'and public.rubro_clave(nombre) = public.rubro_clave($2))', t.tabla)
+                    into ocupado using fila.id, candidato;
+                exit when not ocupado;
+                n := n + 1;
+                candidato := left(base, t.largo - char_length(' (' || n || ')')) || ' (' || n || ')';
+            end loop;
+            execute format('update public.%I set nombre = $1 where id = $2', t.tabla)
+                using candidato, fila.id;
+        end loop;
+    end loop;
+end
+$$;
 update public.proveedores set contacto = public.limpiar_texto(contacto)
  where not public.texto_limpio(contacto);
 update public.proveedores set zona = public.limpiar_texto(zona) where not public.texto_limpio(zona);

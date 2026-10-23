@@ -21,4 +21,5 @@ select o.id, r.id, x.descripcion, 10, 'USD', x.anulado, x.proveedor
          as x(rubro, descripcion, anulado, proveedor)
  where o.nombre = 'Obra previa' and r.nombre = x.rubro;
 -- #53: rubros que solo difieren por un invisible o un control C1.
-insert into public.rubros (nombre) values ('Acme'), (E'Acme\u200B'), (E'Ac\u0085me');
+insert into public.rubros (nombre) values ('Acme'), (E'Acme\u200B'), (E'Ac\u0085me'),
+    ('Acme (2)'), (E'\u200B\u200B\u200B'), (E'\u200B\u200C');

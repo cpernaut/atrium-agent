@@ -363,7 +363,7 @@ def calificar(
         raise ProveedoresError("Elegí de 1 a 5 estrellas.") from exc
     if not 1 <= estrellas <= 5:
         raise ProveedoresError("Elegí de 1 a 5 estrellas.")
-    comentario = _texto(comentario, "el comentario", _COMENTARIO_MAX)
+    comentario = _texto(comentario, "el comentario", _COMENTARIO_MAX, multilinea=True)
     proveedor = get_proveedor(client, proveedor_id)
     mia = _run(
         client.table("proveedor_calificaciones")

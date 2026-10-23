@@ -371,3 +371,13 @@ def test_gasto_conserva_el_proveedor_escrito_antes(db):
 def test_mail_con_destinatarios_ocultos_no_arma_boton():
     enlaces = dict(proveedores.enlaces_contacto({"email": "x@example.com?bcc=a%40evil.test"}))
     assert "✉️ Mail" not in enlaces
+
+
+def test_comentario_de_calificacion_conserva_los_saltos_de_linea(db):
+    """SEG-01 R1: los textos largos (notas, comentarios) conservan sus líneas."""
+
+    p = proveedores.create_proveedor(db, {"nombre": "Hierros Sur"})
+    guardada = proveedores.calificar(
+        db, p["id"], "id-a", 4, "Buen precio.\n\nEntrega  lenta​.", autor="a@x"
+    )
+    assert guardada["comentario"] == "Buen precio.\n\nEntrega lenta."
