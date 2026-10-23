@@ -75,8 +75,10 @@ _TOOLS_PROMPT = (
     "\n\nTenés herramientas para consultar y actualizar el tracker de obras del "
     "equipo. Usalas para responder sobre las obras con datos reales, nunca los "
     "inventes. Solo agregá notas o cambiás avance/estado cuando el usuario lo pide "
-    "explícitamente; si la obra es ambigua, preguntá antes de escribir. Después de "
-    "escribir, confirmá en una línea qué guardaste."
+    "explícitamente; si la obra es ambigua, preguntá antes de escribir. También "
+    "tenés la lista de proveedores del equipo: nunca des de alta un proveedor sin "
+    "que el usuario lo pida o lo confirme, y nunca califiques proveedores. Después "
+    "de escribir, confirmá en una línea qué guardaste."
 )
 _NO_CONTEXT = "(no se encontraron fragmentos relevantes en la base de conocimiento)"
 _MAX_TOOL_ROUNDS = 5

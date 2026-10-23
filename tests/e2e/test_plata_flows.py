@@ -11,7 +11,7 @@ from datetime import timedelta
 import pytest
 from langchain_core.messages import AIMessage
 
-from atrium import finanzas, obras
+from atrium import finanzas, obras, proveedores
 from tests.e2e.conftest import abrir_presupuesto, click, tabla_items, tabla_rubros, texts
 from tests.fakes import tool_call
 
@@ -106,8 +106,14 @@ def _cargar_gasto(at, item_id, monto, descripcion, moneda=None, **mas):
     if "fecha" in mas:
         at.date_input(key=f"{k}fecha").set_value(mas["fecha"])
     if "proveedor" in mas:
-        at.text_input(key=f"{k}proveedor").input(mas["proveedor"])
+        at.selectbox(key=f"{k}proveedor_id").set_value(mas["proveedor"])
     return at.button(key=f"gasto_guardar_{item_id}").click().run()
+
+
+def _proveedor(e2e, nombre, **datos):
+    """A proveedor of the shared list (#37)."""
+
+    return proveedores.create_proveedor(e2e.db, {"nombre": nombre, **datos})
 
 
 def _seed_gasto(e2e, monto, moneda, rubro, tipo_cambio=None, item=None, **mas):
@@ -146,14 +152,16 @@ def test_f03_ca_27_agregar_gasto_en_un_item(e2e):
 
     _obra(e2e)
     item = _item(e2e, "Estructura", 1_000_000, descripcion="Hierro del 8")
+    hierros = _proveedor(e2e, "Hierros Sur")
     at = _cargar_gasto(
-        _plata(e2e), item["id"], 350_000.0, "Primera entrega", proveedor="Hierros Sur"
+        _plata(e2e), item["id"], 350_000.0, "Primera entrega", proveedor=hierros["id"]
     )
 
     assert not at.exception
     assert "Gasto registrado en «Hierro del 8»: ARS 350.000" in visible(at)
     gasto = finanzas.list_gastos(e2e.db, 1)[0]
     assert gasto["presupuesto_item_id"] == item["id"]
+    assert gasto["proveedor_id"] == hierros["id"]
     pantalla = visible(at)
     assert "Primera entrega" in pantalla and "Hierros Sur" in pantalla
     assert _titulos(at) == [
@@ -671,7 +679,7 @@ def test_f03_a11y_1_todos_los_campos_tienen_etiqueta(e2e):
     item = _item(e2e, "Otros", 100)
     at = _abrir_gasto(_plata(e2e), item["id"])
     tab = at.tabs[PRESUPUESTO]
-    campos = [*tab.number_input, *tab.text_input, *tab.date_input, *tab.radio]
+    campos = [*tab.number_input, *tab.text_input, *tab.date_input, *tab.radio, *tab.selectbox]
     propios = [c for c in campos if c.key and c.key.startswith("nuevo_gasto_")]
 
     assert len(propios) == 6
@@ -774,7 +782,8 @@ def test_f03_ca_36_editar_gasto_muestra_sus_datos(e2e):
     _obra(e2e)
     item = _item(e2e, "Estructura", 1_000_000, descripcion="Hierro")
     gasto = _seed_gasto(e2e, 350_000, "ARS", "", tipo_cambio=1200, item=item, descripcion="Seña")
-    e2e.db.table("gastos").update({"proveedor": "Hierros Sur"}).eq("id", gasto["id"]).execute()
+    hierros = _proveedor(e2e, "Hierros Sur")
+    e2e.db.table("gastos").update({"proveedor_id": hierros["id"]}).eq("id", gasto["id"]).execute()
     at = _plata(e2e).button(key=f"gasto_editar_{gasto['id']}").click().run()
     k = f"editar_gasto_{gasto['id']}_"
 
@@ -783,7 +792,8 @@ def test_f03_ca_36_editar_gasto_muestra_sus_datos(e2e):
     assert at.number_input(key=f"{k}monto").value == 350_000.0
     assert at.radio(key=f"{k}moneda").value == "ARS"
     assert at.text_input(key=f"{k}descripcion").value == "Seña"
-    assert at.text_input(key=f"{k}proveedor").value == "Hierros Sur"
+    assert at.selectbox(key=f"{k}proveedor_id").value == hierros["id"]
+    assert "Hierros Sur" in at.selectbox(key=f"{k}proveedor_id").options
     assert at.number_input(key=f"{k}tc").value == 1200.0
     assert "Editar el gasto «Seña»" in visible(at)
 
@@ -823,13 +833,14 @@ def test_f03_ca_38_cancelar_y_error_conservan(e2e):
 
     _obra(e2e)
     gasto = _seed_gasto(e2e, 1000, "ARS", "Pintura", tipo_cambio=1200, descripcion="Látex")
+    pintureria = _proveedor(e2e, "Pinturerías X")
     at = _plata(e2e).button(key=f"gasto_editar_{gasto['id']}").click().run()
     k = f"editar_gasto_{gasto['id']}_"
     at.text_input(key=f"{k}descripcion").input("   ")
-    at.text_input(key=f"{k}proveedor").input("Pinturerías X")
+    at.selectbox(key=f"{k}proveedor_id").set_value(pintureria["id"])
     at = at.button(key=f"gasto_guardar_{gasto['id']}_ed").click().run()
     assert "No se guardaron los cambios: escribí una descripción." in visible(at)
-    assert at.text_input(key=f"{k}proveedor").value == "Pinturerías X"
+    assert at.selectbox(key=f"{k}proveedor_id").value == pintureria["id"]
 
     at = at.button(key=f"gasto_cancelar_{gasto['id']}_ed").click().run()
     assert finanzas.get_gasto(e2e.db, gasto["id"])["descripcion"] == "Látex"

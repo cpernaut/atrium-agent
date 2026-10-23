@@ -468,3 +468,165 @@ drop trigger if exists rubros_otros_activo on public.rubros;
 create trigger rubros_otros_activo
     before update of activo on public.rubros
     for each row execute function public.rubro_otros_activo();
+
+
+-- --------------------------------------------------------------------------- --
+-- F-06 · Proveedores (#37): lista compartida por el equipo, calificaciones y
+-- proveedor de cada gasto. Sin DELETE: «Eliminar» archiva.
+-- --------------------------------------------------------------------------- --
+
+create table if not exists public.proveedores (
+    id         bigint generated always as identity primary key,
+    nombre     text not null check (char_length(btrim(nombre)) between 2 and 120),
+    contacto   text check (contacto is null or char_length(contacto) <= 120),
+    telefono   text check (telefono is null or telefono ~ '^[0-9+() -]{6,30}$'),
+    email      text check (email is null or (char_length(email) <= 120
+                                             and email ~ '^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$')),
+    web        text check (web is null or (char_length(web) <= 300 and web ~ '^https://[^[:space:]]+$')),
+    cuit       text check (cuit is null or cuit ~ '^[0-9]{2}-[0-9]{8}-[0-9]$'),
+    zona       text check (zona is null or char_length(zona) <= 120),
+    notas      text check (notas is null or char_length(notas) <= 1000),
+    rubro_ids  bigint[] not null default '{}',
+    archivado  boolean not null default false,
+    creado_por uuid references auth.users (id) default auth.uid(),
+    created_at timestamptz not null default now()
+);
+
+-- Un proveedor por nombre, sin importar mayúsculas, tildes ni espacios (misma
+-- normalización que los rubros).
+create unique index if not exists proveedores_nombre_clave_unico
+    on public.proveedores (public.rubro_clave(nombre));
+
+-- Los rubros que atiende tienen que existir (es un arreglo: la FK no alcanza).
+create or replace function public.proveedor_rubros_validos()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if exists (select 1 from unnest(new.rubro_ids) as r(id)
+              where not exists (select 1 from public.rubros x where x.id = r.id)) then
+    raise exception 'Un rubro del proveedor no existe.' using errcode = '23503';
+  end if;
+  return new;
+end;
+$$;
+revoke execute on function public.proveedor_rubros_validos() from public, anon, authenticated;
+
+drop trigger if exists proveedores_rubros_validos on public.proveedores;
+create trigger proveedores_rubros_validos
+    before insert or update of rubro_ids on public.proveedores
+    for each row execute function public.proveedor_rubros_validos();
+
+alter table public.proveedores enable row level security;
+
+drop policy if exists "proveedores: equipo lee" on public.proveedores;
+create policy "proveedores: equipo lee" on public.proveedores
+    for select to authenticated using (true);
+drop policy if exists "proveedores: equipo crea" on public.proveedores;
+create policy "proveedores: equipo crea" on public.proveedores
+    for insert to authenticated with check (true);
+drop policy if exists "proveedores: equipo edita" on public.proveedores;
+create policy "proveedores: equipo edita" on public.proveedores
+    for update to authenticated using (true) with check (true);
+
+revoke update on public.proveedores from authenticated, anon;
+grant update (nombre, contacto, telefono, email, web, cuit, zona, notas, rubro_ids, archivado)
+    on public.proveedores to authenticated;
+revoke insert on public.proveedores from anon;
+
+-- Calificaciones: una por socio y proveedor; cada uno edita solo la suya.
+create table if not exists public.proveedor_calificaciones (
+    id           bigint generated always as identity primary key,
+    proveedor_id bigint not null references public.proveedores (id),
+    estrellas    smallint not null check (estrellas between 1 and 5),
+    comentario   text check (comentario is null or char_length(comentario) <= 500),
+    autor        text check (autor is null or char_length(autor) <= 200),
+    creado_por   uuid not null references auth.users (id) default auth.uid(),
+    created_at   timestamptz not null default now(),
+    editado_en   timestamptz
+);
+
+create unique index if not exists proveedor_calificaciones_una_por_socio
+    on public.proveedor_calificaciones (proveedor_id, creado_por);
+
+create or replace function public.calificacion_editada()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  new.editado_en := now();
+  return new;
+end;
+$$;
+revoke execute on function public.calificacion_editada() from public, anon, authenticated;
+
+drop trigger if exists proveedor_calificaciones_editada on public.proveedor_calificaciones;
+create trigger proveedor_calificaciones_editada
+    before update on public.proveedor_calificaciones
+    for each row execute function public.calificacion_editada();
+
+alter table public.proveedor_calificaciones enable row level security;
+
+drop policy if exists "calificaciones: equipo lee" on public.proveedor_calificaciones;
+create policy "calificaciones: equipo lee" on public.proveedor_calificaciones
+    for select to authenticated using (true);
+drop policy if exists "calificaciones: cada uno crea la suya" on public.proveedor_calificaciones;
+create policy "calificaciones: cada uno crea la suya" on public.proveedor_calificaciones
+    for insert to authenticated with check (creado_por = (select auth.uid()));
+drop policy if exists "calificaciones: cada uno edita la suya" on public.proveedor_calificaciones;
+create policy "calificaciones: cada uno edita la suya" on public.proveedor_calificaciones
+    for update to authenticated
+    using (creado_por = (select auth.uid())) with check (creado_por = (select auth.uid()));
+
+revoke update on public.proveedor_calificaciones from authenticated, anon;
+grant update (estrellas, comentario, autor) on public.proveedor_calificaciones to authenticated;
+revoke insert on public.proveedor_calificaciones from anon;
+
+-- El proveedor de cada gasto sale de la lista. La columna de texto `proveedor`
+-- queda como historial de lo que se escribía antes.
+alter table public.gastos add column if not exists proveedor_id bigint
+    references public.proveedores (id);
+create index if not exists gastos_proveedor_idx on public.gastos (proveedor_id);
+grant update (proveedor_id) on public.gastos to authenticated;
+
+-- Un proveedor eliminado (archivado) no se elige en gastos nuevos ni editados;
+-- los gastos que ya lo tenían lo conservan.
+create or replace function public.gasto_proveedor_vigente()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if new.proveedor_id is not null
+     and (tg_op = 'INSERT' or new.proveedor_id is distinct from old.proveedor_id)
+     and exists (select 1 from public.proveedores p where p.id = new.proveedor_id and p.archivado) then
+    raise exception 'Ese proveedor fue eliminado.' using errcode = '23514';
+  end if;
+  return new;
+end;
+$$;
+revoke execute on function public.gasto_proveedor_vigente() from public, anon, authenticated;
+
+drop trigger if exists gastos_proveedor_vigente on public.gastos;
+create trigger gastos_proveedor_vigente
+    before insert or update of proveedor_id on public.gastos
+    for each row execute function public.gasto_proveedor_vigente();
+
+-- Migración (#37 D4): un proveedor por cada nombre escrito en los gastos
+-- (sin importar mayúsculas, tildes ni espacios) y sus gastos vinculados.
+insert into public.proveedores (nombre, creado_por)
+select distinct on (public.rubro_clave(g.proveedor)) btrim(g.proveedor), g.creado_por
+  from public.gastos g
+ where g.proveedor is not null and char_length(btrim(g.proveedor)) between 2 and 120
+   and not exists (select 1 from public.proveedores p
+                    where public.rubro_clave(p.nombre) = public.rubro_clave(g.proveedor))
+ order by public.rubro_clave(g.proveedor), g.created_at;
+
+update public.gastos g
+   set proveedor_id = p.id
+  from public.proveedores p
+ where g.proveedor_id is null
+   and g.proveedor is not null
+   and public.rubro_clave(p.nombre) = public.rubro_clave(g.proveedor);

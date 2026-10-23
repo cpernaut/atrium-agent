@@ -14,7 +14,8 @@ from typing import TYPE_CHECKING
 
 from langchain_core.tools import BaseTool, StructuredTool
 
-from atrium import finanzas, obras
+from atrium import finanzas, obras, proveedores
+from atrium.proveedor_tools import build_proveedor_tools, resolver_proveedor
 
 if TYPE_CHECKING:
     from supabase import Client
@@ -152,7 +153,9 @@ def build_obra_tools(
         «imprevistos»; `rubro` opcional ayuda a desambiguar. `monto` es un número
         (350 mil = 350000). `moneda` es ARS o USD (vacío = la del ítem). `fecha` en
         formato AAAA-MM-DD (vacío = hoy). La cotización del dólar MEP se completa sola.
-        Si hay varios ítems posibles o ninguno, no guarda nada y hay que preguntar."""
+        `proveedor` (opcional) tiene que estar en la lista de proveedores del equipo.
+        Si hay varios ítems o proveedores posibles, o ninguno, no guarda nada y hay que
+        preguntar."""
         try:
             encontrada, problema = _resolver(obra)
             if problema:
@@ -160,6 +163,12 @@ def build_obra_tools(
             elegido, problema = _item(encontrada, item, rubro)
             if problema:
                 return problema
+            proveedor_id = None
+            if proveedor and proveedor.strip():
+                del_proveedor, problema = resolver_proveedor(client, proveedor)
+                if problema:
+                    return problema
+                proveedor_id = del_proveedor["id"]
             gasto, aviso = finanzas.add_gasto(
                 client,
                 elegido["id"],
@@ -167,9 +176,9 @@ def build_obra_tools(
                 moneda=moneda or elegido["moneda"],
                 descripcion=descripcion,
                 fecha=fecha or None,
-                proveedor=proveedor,
+                proveedor_id=proveedor_id,
             )
-        except (obras.ObrasError, finanzas.FinanzasError) as exc:
+        except (obras.ObrasError, finanzas.FinanzasError, proveedores.ProveedoresError) as exc:
             return f"No se pudo registrar el gasto: {exc}"
         monto_txt = finanzas.formato_monto(gasto["monto"], gasto["moneda"])
         nombre = elegido.get("descripcion") or "Sin descripción"
@@ -207,4 +216,4 @@ def build_obra_tools(
             registrar_gasto,
             resumen_plata,
         )
-    ]
+    ] + build_proveedor_tools(client, acciones)

@@ -64,6 +64,26 @@ resultado esperado verificable.
 | UX-03-CA-15b | Rubro repetido | No se agrega; conserva lo escrito |
 | UX-03-CA-16 | Proveedores | «Próximamente» |
 
+## E2E simulado — F-06 Proveedores (`tests/e2e/test_proveedores_flows.py`, #37)
+
+| ID | Caso | Resultado esperado |
+|---|---|---|
+| F-06-CA-1 | Alta con todos los datos | En la lista y en su ficha con rubros, contacto y botones Llamar/WhatsApp/Mail/Web |
+| F-06-CA-2 | Nombre repetido o mail inválido | No guarda, dice por qué, conserva lo escrito |
+| F-06-CA-3 | Buscar por nombre, contacto o rubro; filtrar por rubro | Quedan solo los que coinciden |
+| F-06-CA-4 | Editar | Formulario con los datos actuales; guarda los cambios |
+| F-06-CA-5 | Eliminar (cancelar y confirmar), mostrar eliminados, restaurar | Confirmación; archivado, no borrado; se restaura |
+| F-06-CA-6 | Calificar, ver el promedio y cambiar la mía | Promedio con número y cantidad; la de cada socio con su comentario |
+| F-06-CA-6b | Guardar sin estrellas | Avisa y no guarda |
+| F-06-CA-7 | Compras en dos obras y dos monedas, con un gasto anulado | Total por moneda y por obra; sin el anulado |
+| F-06-CA-8 | Registrar un gasto | El proveedor se elige de la lista; queda vinculado y se ve en la tabla |
+| F-06-CA-9 | «+ Nuevo proveedor» dentro del gasto | Alta con el rubro del ítem; queda elegido |
+| F-06-CA-10 | Proveedor eliminado | No se ofrece en gastos nuevos; el gasto viejo lo muestra «(eliminado)» |
+| F-06-CA-11 | Markdown en nombre, notas o comentario | Se muestra como texto |
+| F-06-CA-12 | «¿Teléfono de Hierros Sur?» | El agente responde con la ficha real |
+| F-06-CA-13 | Gasto por chat con un proveedor que no existe | No guarda nada y pregunta |
+| F-06-CA-14 | «Dalo de alta y cargá la seña» | Alta del proveedor y gasto vinculado, con aviso |
+
 ## E2E simulado — F-03 Presupuesto y gastos (`tests/e2e/test_plata_flows.py` y `test_presupuesto_flows.py`)
 
 | ID | Caso | Resultado esperado |
@@ -181,6 +201,9 @@ borrado.
 | LIVE-25 | Obras | B edita todos los datos de la obra de A; intenta cambiar autor, fecha de creación, nombre vacío, presupuesto negativo; anónimo edita | Datos del alta sí; lo demás rechazado (#49) |
 | LIVE-26 | Rubros | Ordenar, desactivar, reactivar; renombrar y desactivar «Otros» salteando la app | Orden y activo sí; nombre y «Otros» rechazados (#49) |
 | LIVE-27 | Obra activa | A guarda su obra activa | Queda en la cuenta de A (se relee al entrar), no en la de B (#49) |
+| LIVE-28 | Proveedores | Anónimo lee proveedores y calificaciones o crea uno | No ve nada y no puede crear (#37) |
+| LIVE-29 | Proveedores | B edita el proveedor de A, repite su nombre, cambia o firma la calificación de A | Edita sí; nombre repetido y calificación ajena rechazados; cada uno la suya |
+| LIVE-30 | Proveedores | Gasto con un proveedor eliminado, salteando la app | Rechazado; el gasto que ya lo tenía lo conserva |
 
 ## Cómo ver los resultados
 

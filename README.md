@@ -20,6 +20,9 @@ Streamlit, login, historial y obras en Supabase.
   12?», «anotá que hoy se hormigonó la platea y poné el avance en 40%». El agente
   lee y escribe el tracker con herramientas; solo escribe si se lo pedís.
 - **Listado, alta y bitácora** — para todo el equipo con el mismo login.
+- **🏢 Proveedores** — lista compartida con contacto (llamar, WhatsApp, mail),
+  rubros, compras en todas las obras y estrellas de cada socio. Cada gasto elige
+  su proveedor de la lista.
 - **Presupuesto** — presupuesto por rubro y gastos en ARS o USD, con la cotización
   del dólar MEP de cada fecha, desvíos por rubro y carga por chat («cargá 350 mil
   pesos de hierro»).
@@ -41,7 +44,7 @@ obras_ui.py             obra activa (selector y encabezado), Detalle, Bitácora,
                         listado de Obras y Nueva obra
 plata_ui.py             pestaña Presupuesto (presupuesto y gastos)
 rubros_ui.py            pantalla de Rubros (agregar, ordenar, desactivar)
-proveedores_ui.py       pantalla de Proveedores (próximamente, #37)
+proveedores_ui.py       pantalla de Proveedores: lista, ficha, alta, calificaciones
 agente_ui.py            agente flotante (abajo a la derecha) e historial
 .streamlit/config.toml  tema visual (claro, color primario con buen contraste)
 ingest.py               CLI: python ingest.py
@@ -55,6 +58,8 @@ atrium/
   persistence.py        historial de chat en la tabla `mensajes`
   obras.py              tracker: tablas `obras` y `bitacora`
   obra_tools.py         herramientas del agente para leer/escribir obras
+  proveedores.py        F-06: lista de proveedores, calificaciones y compras
+  proveedor_tools.py    herramientas del agente para proveedores
   observability.py      tracing con LangSmith
 tests/                  pytest (sin llamadas a APIs reales)
 supabase_schema.sql     tablas `mensajes`, `obras`, `bitacora` + RLS

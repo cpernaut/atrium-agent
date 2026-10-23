@@ -221,7 +221,7 @@ pagina = navegacion.construir(
         navegacion.OBRAS: lambda: obras_ui.render_lista_page(lista, obra),
         navegacion.NUEVA: lambda: obras_ui.render_nueva_page(supabase, sin_obras),
         navegacion.RUBROS: lambda: render_rubros_page(supabase),
-        navegacion.PROVEEDORES: render_proveedores_page,
+        navegacion.PROVEEDORES: lambda: render_proveedores_page(supabase, user),
     },
     por_defecto=navegacion.OBRA,
 )

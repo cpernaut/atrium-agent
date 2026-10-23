@@ -62,6 +62,16 @@ select pg_temp.ok(
   and (select anulado from public.gastos where descripcion = 'Gasto previo anulado'),
   'migración: usa el ítem del mismo rubro o crea «Gastos anteriores» en 0; respeta anulados');
 
+-- ----- migración #37: proveedores escritos a mano -> lista de proveedores -----
+select pg_temp.ok(
+  (select count(*) from public.proveedores) = 2
+  and (select count(*) from public.gastos where proveedor is not null and proveedor_id is null) = 0
+  and (select count(distinct proveedor_id) from public.gastos
+        where descripcion in ('Gasto previo con ítem', 'Gasto previo sin ítem')) = 1
+  and (select p.nombre from public.gastos g join public.proveedores p on p.id = g.proveedor_id
+        where g.descripcion = 'Gasto previo anulado') = 'Pinturería X',
+  'migración #37: un proveedor por nombre (sin importar mayúsculas ni espacios) y sus gastos vinculados');
+
 -- ----- usuario A logueado -----
 select pg_temp.como('authenticated', '00000000-0000-0000-0000-00000000000a');
 insert into public.obras (nombre) values ('Obra RLS'), ('Obra ajena');
@@ -238,6 +248,54 @@ select pg_temp.ok((select municipio = 'Quilmes' and moneda = 'USD' and presupues
                    from public.obras where nombre = 'Obra RLS'),
                   'obras: todos los datos del alta se editan; autor y fecha de creación no; nombre no vacío');
 
+-- #37 · Proveedores: lista compartida, nombre único, datos validados, sin DELETE.
+insert into public.proveedores (nombre, telefono, email, web, cuit, rubro_ids)
+  select 'Hierros RLS', '221 555-1234', 'ventas@hierros.test', 'https://hierros.test', '30-71234567-1',
+         array[(select id from public.rubros where nombre = 'Estructura')];
+select pg_temp.ok((select creado_por from public.proveedores where nombre = 'Hierros RLS')
+                  = '00000000-0000-0000-0000-00000000000a', 'proveedor firmado por su autor');
+select pg_temp.falla($$insert into public.proveedores (nombre) values ('  HIERROS   rls ')$$, '23505');
+select pg_temp.falla($$insert into public.proveedores (nombre) values ('x')$$, '23514');
+select pg_temp.falla($$insert into public.proveedores (nombre, email) values ('Mail malo', 'no-es-mail')$$, '23514');
+select pg_temp.falla($$insert into public.proveedores (nombre, web) values ('Web mala', 'http://x.test')$$, '23514');
+select pg_temp.falla($$insert into public.proveedores (nombre, web) values ('Web js', 'javascript:alert(1)')$$, '23514');
+select pg_temp.falla($$insert into public.proveedores (nombre, cuit) values ('Cuit malo', '123')$$, '23514');
+select pg_temp.falla($$insert into public.proveedores (nombre, telefono) values ('Tel malo', 'llamame')$$, '23514');
+select pg_temp.falla($$insert into public.proveedores (nombre, rubro_ids) values ('Rubro malo', '{999999}')$$, '23503');
+select pg_temp.falla($$update public.proveedores set creado_por = null where nombre = 'Hierros RLS'$$, '42501');
+select pg_temp.falla($$update public.proveedores set created_at = now() where nombre = 'Hierros RLS'$$, '42501');
+delete from public.proveedores where nombre = 'Hierros RLS';
+select pg_temp.ok((select count(*) from public.proveedores where nombre = 'Hierros RLS') = 1,
+                  'proveedores: nombre único y datos validados en la base; sin DELETE; autor fijo');
+
+-- Calificaciones: una por socio; cada uno escribe solo la suya.
+insert into public.proveedor_calificaciones (proveedor_id, estrellas, comentario)
+  select id, 4, 'Cumple' from public.proveedores where nombre = 'Hierros RLS';
+select pg_temp.falla($$insert into public.proveedor_calificaciones (proveedor_id, estrellas)
+  select id, 5 from public.proveedores where nombre = 'Hierros RLS'$$, '23505');
+select pg_temp.falla($$insert into public.proveedor_calificaciones (proveedor_id, estrellas, creado_por)
+  select id, 5, '00000000-0000-0000-0000-00000000000b' from public.proveedores where nombre = 'Hierros RLS'$$,
+  '42501');
+select pg_temp.falla($$update public.proveedor_calificaciones set estrellas = 6$$, '23514');
+select pg_temp.falla($$update public.proveedor_calificaciones set creado_por = null$$, '42501');
+update public.proveedor_calificaciones set estrellas = 5;
+select pg_temp.ok((select estrellas = 5 and editado_en is not null from public.proveedor_calificaciones),
+                  'calificaciones: 1 a 5, una por socio, nadie la firma por otro; queda la fecha de edición');
+
+-- El gasto elige un proveedor vigente; uno eliminado (archivado) no se elige,
+-- pero los gastos que ya lo tenían lo conservan y se siguen editando.
+insert into public.gastos (presupuesto_item_id, descripcion, monto, moneda, proveedor_id)
+  select (select id from item_hierro), 'Con proveedor', 10, 'ARS', id
+  from public.proveedores where nombre = 'Hierros RLS';
+update public.proveedores set archivado = true where nombre = 'Hierros RLS';
+select pg_temp.falla($$insert into public.gastos (presupuesto_item_id, descripcion, monto, moneda, proveedor_id)
+  select (select id from item_hierro), 'Otro', 10, 'ARS', id
+  from public.proveedores where nombre = 'Hierros RLS'$$, '23514');
+update public.gastos set monto = 11 where descripcion = 'Con proveedor';
+update public.proveedores set archivado = false where nombre = 'Hierros RLS';
+update public.gastos set anulado = true where descripcion = 'Con proveedor';
+select pg_temp.ok(true, 'gastos: proveedor eliminado no se elige; los gastos que lo tenían se editan');
+
 -- Editar ítems (F-03 R9): solo rubro, descripción, monto, moneda y cotización.
 -- Si cambia el rubro, los gastos del ítem lo siguen (CA-35).
 update public.presupuesto_items set monto = 1500, moneda = 'USD',
@@ -283,6 +341,11 @@ select pg_temp.como('authenticated', '00000000-0000-0000-0000-00000000000b');
 select pg_temp.ok((select count(*) from public.gastos where descripcion = 'Hierro') = 1
                   and (select count(*) from public.presupuesto_items) >= 4,
                   'equipo: B ve gastos y presupuesto de A');
+update public.proveedor_calificaciones set estrellas = 1;
+select pg_temp.ok((select count(*) from public.proveedores where nombre = 'Hierros RLS') = 1
+                  and (select estrellas from public.proveedor_calificaciones
+                        where creado_por = '00000000-0000-0000-0000-00000000000a') = 5,
+                  'equipo: B ve los proveedores y calificaciones de A, pero no cambia la calificación de A');
 
 -- ----- anónimo (F-03-CA-13) -----
 reset role;
@@ -298,6 +361,12 @@ select pg_temp.falla($$insert into public.presupuesto_items (obra_id, rubro_id, 
   values (1, 1, 10, 'ARS')$$, '42501');
 select pg_temp.falla($$update public.gastos set monto = 1$$, '42501');
 select pg_temp.falla($$update public.obras set nombre = 'x'$$, '42501');
+select pg_temp.ok((select count(*) from public.proveedores) = 0
+                  and (select count(*) from public.proveedor_calificaciones) = 0,
+                  'anon: no ve proveedores ni calificaciones');
+select pg_temp.falla($$insert into public.proveedores (nombre) values ('Intruso')$$, '42501');
+select pg_temp.falla($$insert into public.proveedor_calificaciones (proveedor_id, estrellas) values (1, 5)$$, '42501');
+select pg_temp.falla($$update public.proveedores set nombre = 'x'$$, '42501');
 select pg_temp.falla($$update public.rubros set orden = 1$$, '42501');
 reset role;
 select pg_temp.ok((select monto from public.gastos where descripcion = 'Hierro') = 350000,

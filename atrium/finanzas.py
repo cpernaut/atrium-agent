@@ -409,8 +409,12 @@ def add_gasto(
     fecha: date | str | None = None,
     proveedor: str | None = None,
     tipo_cambio: Any = None,
+    proveedor_id: Any = None,
 ) -> tuple[Fila, str | None]:
     """Insert a gasto of a budget item (#35 R11). Returns (row, aviso).
+
+    ``proveedor_id`` is a proveedor of the shared list (#37); its name is also
+    kept in ``proveedor`` (the old free-text column).
 
     The obra and the rubro come from the item (the database enforces it too);
     ``aviso`` is set when no rate was found.
@@ -443,9 +447,28 @@ def add_gasto(
         "descripcion": _texto(descripcion, "la descripción", _DESCRIPCION_MAX, True),
         "proveedor": _texto(proveedor, "el proveedor", _PROVEEDOR_MAX, False),
     }
+    if proveedor_id not in (None, ""):
+        elegido = _proveedor_vigente(client, proveedor_id)
+        fila["proveedor_id"] = elegido["id"]
+        fila["proveedor"] = elegido["nombre"]
     aviso = _con_cotizacion(fila, fecha_gasto, tipo_cambio)
     filas = _run(client.table("gastos").insert(fila))
     return (filas[0] if filas else fila), aviso
+
+
+def _proveedor_vigente(client: Client, proveedor_id: Any) -> Fila:
+    """A proveedor of the list that can be chosen (not eliminated)."""
+
+    try:
+        proveedor_id = int(proveedor_id)
+    except (TypeError, ValueError) as exc:
+        raise FinanzasError("Elegí un proveedor de la lista.") from exc
+    filas = _run(client.table("proveedores").select("*").eq("id", proveedor_id).limit(1))
+    if not filas:
+        raise FinanzasError("El proveedor elegido no existe.")
+    if filas[0].get("archivado"):
+        raise FinanzasError(f"El proveedor «{filas[0]['nombre']}» fue eliminado: elegí otro.")
+    return filas[0]
 
 
 def list_gastos(client: Client, obra_id: int, limit: int | None = None) -> list[Fila]:
@@ -480,6 +503,7 @@ CAMPOS_EDITABLES_GASTO = (
     "fecha",
     "descripcion",
     "proveedor",
+    "proveedor_id",
     "monto",
     "moneda",
     "tipo_cambio",
@@ -498,8 +522,12 @@ def update_gasto(
     descripcion: str,
     proveedor: str | None = None,
     tipo_cambio: Any = None,
+    proveedor_id: Any = None,
 ) -> tuple[Fila, str | None]:
     """Edit every field of a gasto (#25). Returns (row, aviso).
+
+    ``proveedor_id``: the proveedor of the list (#37), or None for none. A gasto
+    keeps an eliminated proveedor it already had, but can't be moved to one.
 
     - It can move to another vigent item of the same obra (rubro follows the item).
     - ``tipo_cambio``: a different value replaces the rate and marks it ``manual``.
@@ -537,7 +565,18 @@ def update_gasto(
         "moneda": _moneda(moneda),
         "descripcion": _texto(descripcion, "la descripción", _DESCRIPCION_MAX, True),
         "proveedor": _texto(proveedor, "el proveedor", _PROVEEDOR_MAX, False),
+        "proveedor_id": None,
     }
+    if proveedor_id not in (None, ""):
+        if int(proveedor_id) == actual.get("proveedor_id"):
+            elegido = _run(
+                client.table("proveedores").select("*").eq("id", int(proveedor_id)).limit(1)
+            )
+            nombre = elegido[0]["nombre"] if elegido else actual.get("proveedor")
+            cambios["proveedor_id"], cambios["proveedor"] = int(proveedor_id), nombre
+        else:
+            elegido = _proveedor_vigente(client, proveedor_id)
+            cambios["proveedor_id"], cambios["proveedor"] = elegido["id"], elegido["nombre"]
     aviso = None
     previo = actual.get("tipo_cambio")
     if tipo_cambio is not None and not (isinstance(tipo_cambio, str) and not tipo_cambio.strip()):

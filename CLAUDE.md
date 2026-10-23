@@ -41,8 +41,10 @@ ui_utils.py       helpers de pantalla (texto_seguro)
 atrium/           dominio. NUNCA importa streamlit
   obras.py        acceso a datos de un área: funciones que reciben el `client`
   finanzas.py     F-03: rubros, gastos, presupuesto, conversión y resumen
+  proveedores.py  F-06: lista de proveedores, calificaciones y compras
   cotizaciones.py dólar MEP desde una fuente pública (único acceso a internet)
   obra_tools.py   herramientas del agente: cierran sobre el client del usuario
+                  (las de proveedores, en proveedor_tools.py)
   rag.py          grafo LangGraph: classify -> retrieve -> agente_obra (+ tools)
 supabase_schema.sql  todo el esquema, idempotente
 ```
