@@ -41,7 +41,9 @@ class ConfigError(RuntimeError):
 class Settings:
     """Non-secret configuration with sensible defaults."""
 
-    chat_model: str = "gpt-5-mini"
+    # GPT-6 Luna: the cheapest current OpenAI model with tool calling ($0.10 / $0.50
+    # per million tokens in/out, Oct 2026). Before: gpt-5-mini.
+    chat_model: str = "gpt-6-luna"
     embedding_model: str = "text-embedding-3-small"
     retrieval_k: int = 4
     chunk_size: int = 1000

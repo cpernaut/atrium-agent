@@ -96,6 +96,8 @@ jobs:
         uses: openai/codex-action@v1
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          # The default (GPT-6.1 Sol) ran out the credit: Luna is ~20 times cheaper.
+          model: gpt-6-luna
           prompt: |
             Revisá el pull request #${{ github.event.pull_request.number }} de Atrium Agent
             (Streamlit + LangGraph + Supabase). Los cambios son los de este checkout
