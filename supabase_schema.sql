@@ -741,7 +741,7 @@ as $$
     select replace(replace(
         pg_catalog.regexp_replace(
             t,
-            '[\x01-\x08\x0B\x0C\x0E-\x1F\x7F­​-‏‪-‮⁠-⁤⁦-⁩﻿]',
+            '[\x01-\x08\x0B\x0C\x0E-\x1F\x7F\u00AD\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF]',
             '', 'g'),
         '[[', '[ ['), ']]', '] ]')
 $$;
