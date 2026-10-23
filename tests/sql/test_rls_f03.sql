@@ -47,7 +47,7 @@ select pg_temp.ok(
   'migración: obra sin presupuesto -> «Imprevistos» en 0');
 
 select pg_temp.ok(
-  (select count(*) = 4 and bool_and(g.presupuesto_item_id is not null and i.obra_id = g.obra_id
+  (select count(*) = 5 and bool_and(g.presupuesto_item_id is not null and i.obra_id = g.obra_id
                                     and i.rubro_id = g.rubro_id)
      from public.gastos g join public.presupuesto_items i on i.id = g.presupuesto_item_id
     where g.descripcion like 'Gasto previo%'),
@@ -77,6 +77,12 @@ select pg_temp.ok(
   and (select p.nombre from public.gastos g join public.proveedores p on p.id = g.proveedor_id
         where g.descripcion = 'Gasto previo anulado') = 'Pinturería X',
   'migración #37: un proveedor por nombre y sus gastos vinculados; renombrar y volver a correr no lo recrea; una letra queda como texto');
+
+-- ----- #53: texto limpio -----
+select pg_temp.ok(
+  exists (select 1 from public.gastos where descripcion = 'Gasto previo con invisibles y [ [marcas] ]')
+  and not exists (select 1 from public.gastos where not public.texto_limpio(descripcion)),
+  'texto limpio #53: los datos ya guardados se limpian solos (invisibles y marcadores)');
 
 -- ----- usuario A logueado -----
 select pg_temp.como('authenticated', '00000000-0000-0000-0000-00000000000a');
@@ -216,6 +222,20 @@ insert into public.presupuesto_items (obra_id, rubro_id, monto, moneda, es_impre
   select id, 1, 0, 'ARS', true from public.obras where nombre = 'Obra RLS';
 select pg_temp.falla($$update public.presupuesto_items set es_imprevistos = false$$, '42501');
 select pg_temp.ok(true, 'ítems: monto 0 permitido; un «Imprevistos» vigente por obra; se puede volver a crear');
+
+-- #53: la base no acepta caracteres invisibles, de control ni marcadores, aunque
+-- se saltee la app; los textos normales (tildes, ñ, n.º, m², emojis) sí.
+select pg_temp.falla($$insert into public.bitacora (obra_id, nota)
+  select id, E'Llegó\u200B el hierro' from public.obras where nombre = 'Obra RLS'$$, '23514');
+select pg_temp.falla($$insert into public.bitacora (obra_id, nota)
+  select id, 'Nota [[DATOS]] falsa' from public.obras where nombre = 'Obra RLS'$$, '23514');
+select pg_temp.falla($$update public.obras set cliente = E'Pérez\u202E' where nombre = 'Obra RLS'$$, '23514');
+select pg_temp.falla($$insert into public.rubros (nombre) values (E'Pileta\x07')$$, '23514');
+insert into public.bitacora (obra_id, nota)
+  select id, E'Llegó el hierro: 12 m² y caño n.º 3 — «ñandú» 👍\nSegunda línea' from public.obras
+   where nombre = 'Obra RLS';
+select pg_temp.ok((select count(*) = 1 from public.bitacora where nota like 'Llegó el hierro: 12 m²%'),
+                  'texto limpio #53: invisibles y marcadores rechazados en la base; texto normal intacto');
 
 -- Rubros: alta preparada, nombres únicos sin importar mayúsculas ni espacios.
 insert into public.rubros (nombre, orden) values ('Piscina', 500);

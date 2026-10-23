@@ -8,7 +8,7 @@ from datetime import date
 from langchain_core.messages import AIMessage
 
 from atrium import finanzas, obras
-from tests.e2e.conftest import EMAIL, click, pagina_actual, texts
+from tests.e2e.conftest import EMAIL, click, datos_viejos, pagina_actual, texts
 
 PANTALLAS = ["obra", "obras", "nueva-obra", "rubros", "proveedores"]
 
@@ -310,7 +310,8 @@ def test_ux_03_ca_14_texto_de_usuario_no_se_interpreta(e2e):
     """UX-03-CA-14: un nombre de obra con Markdown se muestra como texto en el
     encabezado y en el listado (no carga imágenes ni links)."""
 
-    obras.create_obra(e2e.db, {"nombre": "![x](https://evil.test/a.png) **Obra**"})
+    with datos_viejos():
+        obras.create_obra(e2e.db, {"nombre": "![x](https://evil.test/a.png) **Obra**"})
     at = e2e.login()
     crudos = [m.value for m in at.markdown]
     assert not any("](https://evil.test" in c and "\\]" not in c for c in crudos)

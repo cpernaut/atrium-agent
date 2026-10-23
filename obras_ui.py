@@ -334,16 +334,18 @@ def _render_detalle(supabase, obra: obras.Obra) -> None:
 def _render_bitacora(supabase, user, obra: obras.Obra) -> None:
     obra_id = obra["id"]
 
-    with st.form("nota_bitacora", clear_on_submit=True):
+    with st.form("nota_bitacora"):
         fecha = st.date_input("Fecha", value=date.today(), format="DD/MM/YYYY", key="nota_fecha")
         nota = st.text_area("Nota de obra (obligatorio)", key="nota_texto")
-        if st.form_submit_button("Agregar nota"):
-            try:
-                obras.add_nota(supabase, obra_id, nota, autor=user.email, fecha=fecha)
-            except obras.ObrasError as exc:
-                st.error(texto_seguro(exc))
-            else:
-                st.rerun()
+        agregar = st.form_submit_button("Agregar nota")
+    if agregar:
+        try:
+            obras.add_nota(supabase, obra_id, nota, autor=user.email, fecha=fecha)
+        except obras.ObrasError as exc:
+            st.error(texto_seguro(exc))  # the form keeps what was typed
+        else:
+            st.session_state.pop("nota_texto", None)  # empty after saving
+            st.rerun()
 
     try:
         notas = obras.list_bitacora(supabase, obra_id)

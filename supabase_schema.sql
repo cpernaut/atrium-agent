@@ -722,3 +722,93 @@ update public.gastos g
    and not p.archivado
    and public.rubro_clave(p.nombre) = public.rubro_clave(g.proveedor);
 alter table public.gastos enable trigger gastos_editado;
+
+
+-- --------------------------------------------------------------------------- --
+-- #53 · Texto limpio: lo que se guarda no lleva caracteres de control ni
+-- invisibles (ancho cero, cambio de dirección, BOM) ni los marcadores [[ ]] con
+-- los que la app le entrega datos al agente. La app además rechaza textos que
+-- parecen órdenes para el agente (atrium/sanidad.py).
+-- --------------------------------------------------------------------------- --
+
+create or replace function public.limpiar_texto(t text)
+returns text
+language sql
+immutable
+parallel safe
+set search_path = ''
+as $$
+    select replace(replace(
+        pg_catalog.regexp_replace(
+            t,
+            '[\x01-\x08\x0B\x0C\x0E-\x1F\x7F­​-‏‪-‮⁠-⁤⁦-⁩﻿]',
+            '', 'g'),
+        '[[', '[ ['), ']]', '] ]')
+$$;
+revoke execute on function public.limpiar_texto(text) from public, anon;
+grant execute on function public.limpiar_texto(text) to authenticated, service_role;
+
+create or replace function public.texto_limpio(t text)
+returns boolean
+language sql
+immutable
+parallel safe
+set search_path = ''
+as $$
+    select t is null or t = public.limpiar_texto(t)
+$$;
+revoke execute on function public.texto_limpio(text) from public, anon;
+grant execute on function public.texto_limpio(text) to authenticated, service_role;
+
+-- Datos ya guardados (#53 D2): se limpian solos. No es una edición de nadie: los
+-- triggers que registran ediciones no corren mientras tanto.
+alter table public.gastos disable trigger gastos_editado;
+alter table public.proveedor_calificaciones disable trigger proveedor_calificaciones_firmada;
+update public.obras set nombre = public.limpiar_texto(nombre) where not public.texto_limpio(nombre);
+update public.obras set cliente = public.limpiar_texto(cliente) where not public.texto_limpio(cliente);
+update public.obras set direccion = public.limpiar_texto(direccion)
+ where not public.texto_limpio(direccion);
+update public.obras set responsable = public.limpiar_texto(responsable)
+ where not public.texto_limpio(responsable);
+update public.bitacora set nota = public.limpiar_texto(nota) where not public.texto_limpio(nota);
+update public.presupuesto_items set descripcion = public.limpiar_texto(descripcion)
+ where not public.texto_limpio(descripcion);
+update public.gastos set descripcion = public.limpiar_texto(descripcion)
+ where not public.texto_limpio(descripcion);
+update public.gastos set proveedor = public.limpiar_texto(proveedor)
+ where not public.texto_limpio(proveedor);
+update public.rubros set nombre = public.limpiar_texto(nombre) where not public.texto_limpio(nombre);
+update public.proveedores set nombre = public.limpiar_texto(nombre)
+ where not public.texto_limpio(nombre);
+update public.proveedores set contacto = public.limpiar_texto(contacto)
+ where not public.texto_limpio(contacto);
+update public.proveedores set zona = public.limpiar_texto(zona) where not public.texto_limpio(zona);
+update public.proveedores set notas = public.limpiar_texto(notas) where not public.texto_limpio(notas);
+update public.proveedor_calificaciones set comentario = public.limpiar_texto(comentario)
+ where not public.texto_limpio(comentario);
+alter table public.gastos enable trigger gastos_editado;
+alter table public.proveedor_calificaciones enable trigger proveedor_calificaciones_firmada;
+
+-- Y de acá en más la base no acepta texto sucio, aunque se saltee la app.
+alter table public.obras drop constraint if exists obras_textos_limpios;
+alter table public.obras add constraint obras_textos_limpios check (
+    public.texto_limpio(nombre) and public.texto_limpio(cliente)
+    and public.texto_limpio(direccion) and public.texto_limpio(responsable));
+alter table public.bitacora drop constraint if exists bitacora_texto_limpio;
+alter table public.bitacora add constraint bitacora_texto_limpio
+    check (public.texto_limpio(nota));
+alter table public.presupuesto_items drop constraint if exists presupuesto_texto_limpio;
+alter table public.presupuesto_items add constraint presupuesto_texto_limpio
+    check (public.texto_limpio(descripcion));
+alter table public.gastos drop constraint if exists gastos_textos_limpios;
+alter table public.gastos add constraint gastos_textos_limpios
+    check (public.texto_limpio(descripcion) and public.texto_limpio(proveedor));
+alter table public.rubros drop constraint if exists rubros_texto_limpio;
+alter table public.rubros add constraint rubros_texto_limpio check (public.texto_limpio(nombre));
+alter table public.proveedores drop constraint if exists proveedores_textos_limpios;
+alter table public.proveedores add constraint proveedores_textos_limpios check (
+    public.texto_limpio(nombre) and public.texto_limpio(contacto)
+    and public.texto_limpio(zona) and public.texto_limpio(notas));
+alter table public.proveedor_calificaciones drop constraint if exists calificaciones_texto_limpio;
+alter table public.proveedor_calificaciones add constraint calificaciones_texto_limpio
+    check (public.texto_limpio(comentario));

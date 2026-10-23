@@ -138,6 +138,10 @@ ruff check . && ruff format --check .
   formato pero nunca carga imágenes).
 - Llamadas a internet solo a URLs fijas en `Settings`, con timeout, y
   validando la respuesta como dato no confiable.
+- Todo texto libre que se guarda pasa por `sanidad.revisar(...)` en el dominio
+  (limpia invisibles y rechaza órdenes para el agente, #53), y su columna lleva
+  `check (public.texto_limpio(col))` en el esquema. Al sumar un campo de texto,
+  sumar las dos cosas y su test.
 
 ## Entorno
 

@@ -21,7 +21,7 @@ from datetime import date, datetime, timedelta, timezone
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import TYPE_CHECKING, Any
 
-from atrium import cotizaciones
+from atrium import cotizaciones, sanidad
 from atrium.obras import MONEDAS
 
 if TYPE_CHECKING:
@@ -194,7 +194,7 @@ def _moneda(valor: Any) -> str:
 
 
 def _texto(valor: Any, campo: str, maximo: int, obligatorio: bool) -> str | None:
-    texto = " ".join(str(valor or "").split())
+    texto = sanidad.revisar(valor, campo, FinanzasError)  # #53: no injection, no invisibles
     if not texto:
         if obligatorio:
             raise FinanzasError(f"Falta {campo}.")
