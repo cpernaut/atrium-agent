@@ -81,13 +81,16 @@ def cleanup(admin: Client, user_ids: list[str]) -> None:
 
     Never by name: an obra called «[E2E] …» by someone else (or by another
     run) must survive. Child rows first, then obras (their cascade takes any
-    rows other users added to them), rubros, history and the users.
+    rows other users added to them), proveedores, rubros, history and the users.
     """
 
+    # Rows that point at other users' rows first (B's rating of A's proveedor).
     for user_id in user_ids:
-        for tabla in ("gastos", "presupuesto_items", "bitacora"):
+        for tabla in ("gastos", "presupuesto_items", "bitacora", "proveedor_calificaciones"):
             admin.table(tabla).delete().eq("creado_por", user_id).execute()
+    for user_id in user_ids:
         admin.table("obras").delete().eq("creado_por", user_id).execute()
+        admin.table("proveedores").delete().eq("creado_por", user_id).execute()
         admin.table("rubros").delete().eq("creado_por", user_id).execute()
         admin.table("mensajes").delete().eq("user_id", user_id).execute()
         admin.auth.admin.delete_user(user_id)

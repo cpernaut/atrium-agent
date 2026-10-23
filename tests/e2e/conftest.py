@@ -184,6 +184,20 @@ def click(at: AppTest, label: str) -> AppTest:
     return matches[0].click().run()
 
 
+def botones_propuesta(at: AppTest, accion: str = "confirmar") -> list:
+    """The «Confirmar» (or «Cancelar») buttons of the agent's pending propuestas."""
+
+    return [b for b in at.button if str(b.key or "").startswith(f"propuesta_{accion}_")]
+
+
+def confirmar_propuestas(at: AppTest) -> AppTest:
+    """Click «Confirmar» on every pending propuesta of the agent, one by one."""
+
+    while botones := botones_propuesta(at):
+        at = botones[0].click().run()
+    return at
+
+
 def texts(at: AppTest) -> str:
     """Everything visible as text, to assert on what the user would read."""
 

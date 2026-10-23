@@ -8,7 +8,14 @@ from datetime import date
 from langchain_core.messages import AIMessage
 
 from atrium import obras
-from tests.e2e.conftest import EMAIL, click, pagina_actual, texts
+from tests.e2e.conftest import (
+    EMAIL,
+    botones_propuesta,
+    click,
+    confirmar_propuestas,
+    pagina_actual,
+    texts,
+)
 from tests.fakes import tool_call
 
 
@@ -238,8 +245,8 @@ def test_e2e_13_consultar_obras_por_chat(e2e):
 
 
 def test_e2e_14_cargar_avance_y_nota_por_chat(e2e):
-    """E2E-14: pedido por chat -> nota + avance guardados, avisos visibles y
-    los cambios se ven después en la obra activa."""
+    """E2E-14: pedido por chat -> el agente propone la nota y el avance; al
+    confirmarlos se guardan, se avisa y los cambios se ven en la obra activa."""
 
     _seed(e2e.db)
     e2e.script(
@@ -252,11 +259,17 @@ def test_e2e_14_cargar_avance_y_nota_por_chat(e2e):
     at = (
         e2e.abrir_agente(at)
         .chat_input[0]
-        .set_value("Anotá que se hormigonó la platea, avance 40%")
+        .set_value("Anotá que se hormigonó la platea y pasá el avance a 40%")
         .run()
     )
 
     assert not at.exception
+    pantalla = texts(at)
+    assert "Propuesta, sin guardar:" in pantalla and "«Hormigonado de platea»" in pantalla
+    assert "Actualizar «Casa Lote 12»: avance → 40%" in pantalla
+    assert obras.list_bitacora(e2e.db, 1) == []  # nada guardado sin confirmar
+
+    at = confirmar_propuestas(at)
     pantalla = texts(at)
     assert "📝 Nota agregada a la bitácora de «Casa Lote 12»" in pantalla
     assert "✏️ «Casa Lote 12» actualizada: avance → 40%" in pantalla
@@ -440,6 +453,8 @@ def test_agente_flotante_actualiza_la_pantalla(e2e):
     )
     at = e2e.abrir_agente(e2e.elegir_obra(e2e.login(), 1))
     at = at.chat_input(key="agente_input").set_value("Pasá el avance a 70").run()
+    assert "30 % de avance" in _encabezado(at)
+    at = confirmar_propuestas(at)
 
     assert "70 % de avance" in _encabezado(at)
     assert at.slider(key="det_avance_1").value == 70
@@ -457,10 +472,81 @@ def test_agente_2b_el_formulario_no_pisa_lo_que_cargo_el_agente(e2e):
     )
     at = e2e.elegir_obra(e2e.login(), 1)
     assert at.slider(key="det_avance_1").value == 30
-    at = e2e.abrir_agente(at).chat_input(key="agente_input").set_value("Avance 70").run()
+    at = e2e.abrir_agente(at).chat_input(key="agente_input").set_value("Pasá el avance a 70").run()
+    at = confirmar_propuestas(at)
 
     assert at.slider(key="det_avance_1").value == 70  # el formulario muestra el dato nuevo
     at.selectbox(key="det_estado_1").set_value("Pausada")
     at = click(at, "Guardar cambios")
     obra = obras.get_obra(e2e.db, 1)
     assert (obra["estado"], obra["avance"]) == ("Pausada", 70)
+
+
+def test_agente_3_nada_se_guarda_sin_confirmar(e2e):
+    """AGENTE-3 (#51): aunque el modelo intente escribir ante una pregunta, nada se guarda:
+    queda una propuesta con «Confirmar» y «Cancelar», y al cancelarla dice que no se guardó."""
+
+    _seed(e2e.db)
+    e2e.script(
+        tool_call("actualizar_obra", {"avance": 99}, "c1"),
+        tool_call("agregar_nota_bitacora", {"nota": "x"}, "c2"),
+        AIMessage(content="Viene al 30%."),
+    )
+    at = e2e.abrir_agente(e2e.elegir_obra(e2e.login(), 1))
+    at = at.chat_input(key="agente_input").set_value("¿Cómo viene el avance?").run()
+
+    assert not at.exception
+    resultados = [m.content for m in e2e.llm.seen[-1] if m.type == "tool"]
+    assert all("Todavía NO está guardado" in r for r in resultados)
+    assert [b.label for b in botones_propuesta(at)] == ["✅ Confirmar"] * 2
+    assert [b.label for b in botones_propuesta(at, "cancelar")] == ["✖️ Cancelar"] * 2
+
+    while cancelar := botones_propuesta(at, "cancelar"):
+        at = cancelar[0].click().run()
+    assert "✖️ Cancelado, no se guardó: Actualizar «Casa Lote 12»: avance → 99%" in texts(at)
+    assert not botones_propuesta(at)
+    assert obras.get_obra(e2e.db, 1)["avance"] == 30
+    assert obras.list_bitacora(e2e.db, 1) == []
+
+
+def test_agente_3b_se_confirma_cada_propuesta_por_separado(e2e):
+    """AGENTE-3b (#51): con dos propuestas, se puede confirmar una y cancelar la otra;
+    solo se guarda la confirmada."""
+
+    _seed(e2e.db)
+    e2e.script(
+        tool_call("actualizar_obra", {"avance": 50}, "c1"),
+        tool_call("agregar_nota_bitacora", {"nota": "Seña pagada"}, "c2"),
+        AIMessage(content="Te dejé las dos propuestas."),
+    )
+    at = e2e.abrir_agente(e2e.elegir_obra(e2e.login(), 1))
+    at = at.chat_input(key="agente_input").set_value("Pasá el avance a 50 y anotá la seña").run()
+    at = botones_propuesta(at)[0].click().run()
+    at = botones_propuesta(at, "cancelar")[0].click().run()
+
+    assert not at.exception
+    assert obras.get_obra(e2e.db, 1)["avance"] == 50
+    assert obras.list_bitacora(e2e.db, 1) == []
+    pantalla = texts(at)
+    assert "✅ Confirmado. ✏️ «Casa Lote 12» actualizada: avance → 50%" in pantalla
+    assert "✖️ Cancelado, no se guardó: Anotar en la bitácora" in pantalla
+
+
+def test_agente_3c_una_propuesta_se_guarda_una_sola_vez(e2e):
+    """AGENTE-3c (#51): una propuesta confirmada ya no muestra botones: no se puede
+    guardar dos veces, ni aunque el agente responda otra cosa después."""
+
+    _seed(e2e.db)
+    e2e.script(
+        tool_call("agregar_nota_bitacora", {"nota": "Llegó el hierro"}, "c1"),
+        AIMessage(content="Te dejé la nota para confirmar."),
+        AIMessage(content="De nada."),
+    )
+    at = e2e.abrir_agente(e2e.elegir_obra(e2e.login(), 1))
+    at = at.chat_input(key="agente_input").set_value("Anotá que llegó el hierro").run()
+    at = confirmar_propuestas(at)
+    at = at.chat_input(key="agente_input").set_value("Gracias").run()
+
+    assert not botones_propuesta(at)
+    assert [n["nota"] for n in obras.list_bitacora(e2e.db, 1)] == ["Llegó el hierro"]
+    assert "✅ Confirmado. 📝 Nota agregada a la bitácora de «Casa Lote 12»" in texts(at)

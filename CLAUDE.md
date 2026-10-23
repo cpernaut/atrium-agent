@@ -41,8 +41,10 @@ ui_utils.py       helpers de pantalla (texto_seguro)
 atrium/           dominio. NUNCA importa streamlit
   obras.py        acceso a datos de un área: funciones que reciben el `client`
   finanzas.py     F-03: rubros, gastos, presupuesto, conversión y resumen
+  proveedores.py  F-06: lista de proveedores, calificaciones y compras
   cotizaciones.py dólar MEP desde una fuente pública (único acceso a internet)
   obra_tools.py   herramientas del agente: cierran sobre el client del usuario
+                  (las de proveedores, en proveedor_tools.py)
   rag.py          grafo LangGraph: classify -> retrieve -> agente_obra (+ tools)
 supabase_schema.sql  todo el esquema, idempotente
 ```
@@ -53,8 +55,15 @@ supabase_schema.sql  todo el esquema, idempotente
   con mensajes en español listos para mostrar.
 - Las herramientas nuevas del agente van en `atrium/obra_tools.py` (o un
   `*_tools.py` hermano) y se registran en `build_obra_tools`. Nunca lanzan
-  excepciones: devuelven el error como texto. Las que escriben agregan una línea
-  a `acciones` y su docstring dice «Usala SOLO si el usuario pide…».
+  excepciones: devuelven el error como texto. Las que escriben **nunca guardan**:
+  validan y agregan una propuesta (`atrium/propuestas.py`: `nueva` + un caso en
+  `ejecutar`, que vuelve a validar) que el usuario confirma con un botón; su
+  docstring dice «Usala SOLO si el usuario pide…».
+- Datos cargados por usuarios que vuelven al modelo (notas, comentarios,
+  nombres): toda herramienta se registra con `turno.herramienta(fn)`
+  (`atrium/guardia.py`), que marca todo lo que devuelve como dato. Como nada se
+  guarda sin «Confirmar», una instrucción escondida en los datos nunca hace
+  escribir al agente.
 - Las pantallas reciben el `supabase` de la sesión (cliente con el login del
   usuario): así aplica RLS. **No** usar la clave service_role en la app.
 

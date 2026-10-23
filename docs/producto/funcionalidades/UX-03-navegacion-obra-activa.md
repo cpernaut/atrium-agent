@@ -36,7 +36,7 @@ pantallas. La obra activa queda **siempre a la vista**, y al elegirla se ve su
 - 📋 Obras: métricas, filtro por estado y una tarjeta por obra con «Abrir».
 - La obra activa se recuerda por usuario, entre sesiones y dispositivos.
 - 🏷️ Rubros: agregar, subir o bajar, desactivar y reactivar.
-- 🏢 Proveedores: aviso «Próximamente».
+- 🏢 Proveedores: aviso «Próximamente» (después, F-06 la completó).
 
 **No incluye** (por ahora)
 - Archivar o eliminar obras (#26).

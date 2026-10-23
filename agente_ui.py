@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import streamlit as st
 
-from atrium import obras, observability, persistence
+from atrium import obras, observability, persistence, propuestas
 from obras_ui import olvidar_formularios_de_obra
 from ui_utils import respuesta_segura, texto_seguro
 
@@ -113,22 +113,61 @@ def render_agente(supabase, user, obra: obras.Obra | None) -> None:
                         "Probá con: «¿qué retiro de frente pide el código?», «anotá que "
                         "llegó el hierro» o «¿cuánto llevamos gastado?»."
                     )
-                render_history()
+                render_history(supabase, user)
             prompt = st.chat_input("Preguntá o pedí algo…", key="agente_input")
             if prompt:
                 with mensajes:
                     handle_prompt(supabase, user, prompt, obra["id"] if obra else None)
 
 
-def render_history() -> None:
-    for message in st.session_state.get("history", []):
+def render_history(supabase=None, user=None) -> None:
+    for i, message in enumerate(st.session_state.get("history", [])):
         with st.chat_message(message["role"]):
             st.markdown(respuesta_segura(message["content"]))
             for accion in message.get("acciones", []):
                 st.caption(texto_seguro(accion))
+            for j, propuesta in enumerate(message.get("propuestas", [])):
+                render_propuesta(supabase, user, propuesta, f"{i}_{j}")
             if message.get("context"):
                 with st.expander("📄 Contexto recuperado"):
                     st.markdown(message["context"])
+
+
+def render_propuesta(supabase, user, propuesta: dict, clave: str) -> None:
+    """A write the agent proposed: nothing is saved until «Confirmar» (#51)."""
+
+    with st.container(border=True, key=f"propuesta_{clave}"):
+        estado = propuesta["estado"]
+        if estado == propuestas.PENDIENTE:
+            st.markdown(f"**Propuesta, sin guardar:** {texto_seguro(propuesta['resumen'])}")
+            c1, c2 = st.columns(2)
+            if c1.button(
+                "✅ Confirmar",
+                key=f"propuesta_confirmar_{clave}",
+                type="primary",
+                width="stretch",
+                disabled=supabase is None,
+            ):
+                try:
+                    propuesta["resultado"] = propuestas.ejecutar(
+                        supabase, getattr(user, "email", None), propuesta
+                    )
+                    propuesta["estado"] = propuestas.CONFIRMADA
+                except propuestas.ERRORES as exc:
+                    propuesta["resultado"] = str(exc)
+                    propuesta["estado"] = propuestas.FALLIDA
+                # The screen behind the chat shows this data (avance, notas, gastos).
+                olvidar_formularios_de_obra()
+                st.rerun()
+            if c2.button("✖️ Cancelar", key=f"propuesta_cancelar_{clave}", width="stretch"):
+                propuesta["estado"] = propuestas.CANCELADA
+                st.rerun()
+        elif estado == propuestas.CONFIRMADA:
+            st.caption(f"✅ Confirmado. {texto_seguro(propuesta['resultado'])}")
+        elif estado == propuestas.CANCELADA:
+            st.caption(f"✖️ Cancelado, no se guardó: {texto_seguro(propuesta['resumen'])}")
+        else:
+            st.caption(f"⚠️ No se pudo guardar: {texto_seguro(propuesta['resultado'])}")
 
 
 def handle_prompt(supabase, user, prompt: str, obra_id: int | None) -> None:
@@ -157,22 +196,17 @@ def handle_prompt(supabase, user, prompt: str, obra_id: int | None) -> None:
 
         answer = result["mensajes"][-1]
         context = result.get("context", "")
-        acciones = result.get("acciones") or []
+        pendientes = result.get("propuestas") or []
         st.markdown(respuesta_segura(answer))
-        for accion in acciones:
-            st.caption(texto_seguro(accion))
         with st.expander("📄 Contexto recuperado"):
             st.markdown(context or "_(vacío)_")
         if run_url:
             st.caption(f"[🔎 Ver traza en LangSmith]({run_url})")
 
     st.session_state.history.append(
-        {"role": "assistant", "content": answer, "context": context, "acciones": acciones}
+        {"role": "assistant", "content": answer, "context": context, "propuestas": pendientes}
     )
     save_exchange(supabase, user.id, st.session_state.thread_id, prompt, answer)
-    if acciones:
-        # The agent changed data shown on the page (avance, notes, gastos): reload
-        # so the screen behind the chat is up to date, forms included. The answer
-        # stays in history.
-        olvidar_formularios_de_obra()
+    if pendientes:
+        # Show the propuestas with their buttons (they live in the history).
         st.rerun()

@@ -362,13 +362,14 @@ def test_ux_03_ca_15b_rubro_duplicado_conserva_lo_escrito(e2e):
     assert at.text_input(key="rubro_nuevo_nombre").value == "ESTRUCTURA"
 
 
-def test_ux_03_ca_16_proveedores_proximamente(e2e):
-    """UX-03-CA-16: Proveedores avisa que llega próximamente (#37)."""
+def test_ux_03_ca_16_proveedores(e2e):
+    """UX-03-CA-16: Proveedores abre la lista compartida (antes decía «Próximamente»;
+    ahora es F-06)."""
 
     at = e2e.ir_a(e2e.login(), "proveedores")
 
     assert pagina_actual(at) == "Proveedores"
-    assert "Próximamente" in texts(at)
+    assert "Todavía no hay proveedores" in texts(at)
 
 
 def test_ux_03_ca_4c_no_pisa_cambios_de_otro_usuario(e2e):

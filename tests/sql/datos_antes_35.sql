@@ -7,10 +7,13 @@ insert into public.presupuesto_items (obra_id, rubro_id, descripcion, monto, mon
 select o.id, r.id, 'Hierro previo', 100, 'USD'
   from public.obras o, public.rubros r
  where o.nombre = 'Obra previa' and r.nombre = 'Estructura';
-insert into public.gastos (obra_id, rubro_id, descripcion, monto, moneda, anulado)
-select o.id, r.id, x.descripcion, 10, 'USD', x.anulado
+-- Proveedor escrito a mano (antes de #37): dos formas del mismo nombre y otro.
+insert into public.gastos (obra_id, rubro_id, descripcion, monto, moneda, anulado, proveedor)
+select o.id, r.id, x.descripcion, 10, 'USD', x.anulado, x.proveedor
   from public.obras o, public.rubros r,
-       (values ('Estructura', 'Gasto previo con ítem', false),
-               ('Pintura', 'Gasto previo sin ítem', false),
-               ('Pintura', 'Gasto previo anulado', true)) as x(rubro, descripcion, anulado)
+       (values ('Estructura', 'Gasto previo con ítem', false, 'Hierros Sur'),
+               ('Pintura', 'Gasto previo sin ítem', false, '  hierros   SUR '),
+               ('Pintura', 'Gasto previo anulado', true, 'Pinturería X'),
+               ('Pintura', 'Gasto previo de una letra', false, 'Y'))
+         as x(rubro, descripcion, anulado, proveedor)
  where o.nombre = 'Obra previa' and r.nombre = x.rubro;

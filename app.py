@@ -108,7 +108,7 @@ def get_supabase():
 
 def get_graph(supabase, user):
     if "graph" not in st.session_state:
-        graph = build_graph(obras_client=supabase, autor=user.email)
+        graph = build_graph(obras_client=supabase)
         st.session_state.graph = graph.compile(checkpointer=MemorySaver())
     return st.session_state.graph
 
@@ -221,7 +221,7 @@ pagina = navegacion.construir(
         navegacion.OBRAS: lambda: obras_ui.render_lista_page(lista, obra),
         navegacion.NUEVA: lambda: obras_ui.render_nueva_page(supabase, sin_obras),
         navegacion.RUBROS: lambda: render_rubros_page(supabase),
-        navegacion.PROVEEDORES: render_proveedores_page,
+        navegacion.PROVEEDORES: lambda: render_proveedores_page(supabase, user),
     },
     por_defecto=navegacion.OBRA,
 )

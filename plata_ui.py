@@ -14,7 +14,8 @@ from datetime import date
 
 import streamlit as st
 
-from atrium import finanzas
+import proveedores_ui
+from atrium import finanzas, proveedores
 from ui_utils import texto_seguro
 
 _SCHEMA_HINT = (
@@ -22,6 +23,7 @@ _SCHEMA_HINT = (
     "tablas `rubros`, `presupuesto_items` y `gastos`."
 )
 _FLASH = "plata_flash"
+_PROVEEDORES = "plata_proveedores"  # the proveedores list, read once per run (#37)
 # Input limits matching the database columns (numeric(14,2) and numeric(12,4)).
 _MONTO_MAX = 999_999_999_999.0
 _TC_MAX = 99_999_999.0
@@ -104,6 +106,12 @@ def render_plata(supabase, obra_id: int | None) -> None:
         return
 
     rubros_por_id = {r["id"]: r for r in rubros}
+    try:
+        st.session_state[_PROVEEDORES] = proveedores.list_proveedores(
+            supabase, incluir_archivados=True
+        )
+    except proveedores.ProveedoresError:
+        st.session_state[_PROVEEDORES] = []  # the gasto shows its saved name instead
     activos = [r for r in rubros if r.get("activo", True)]
     resumen = finanzas.calcular_resumen(items, gastos, rubros, moneda)
 
@@ -545,8 +553,9 @@ def _fila_item(
 
 def _fila_gasto(supabase, g: dict, moneda: str, vigentes: list[dict], rubros_por_id: dict) -> None:
     texto = f"{_fecha_txt(g['fecha'])} · {g['descripcion']}"
-    if g.get("proveedor"):
-        texto += f" · {g['proveedor']}"
+    proveedor = _proveedor_txt(g)
+    if proveedor:
+        texto += f" · {proveedor}"
     valor = finanzas.convertir(g["monto"], g["moneda"], g.get("tipo_cambio"), moneda)
     original = finanzas.formato_monto(g["monto"], g["moneda"])
     gastado = (
@@ -581,6 +590,36 @@ def _fila_gasto(supabase, g: dict, moneda: str, vigentes: list[dict], rubros_por
             st.rerun()
     if st.session_state.get(_GASTO_EDITANDO) == g["id"]:
         _form_editar_gasto(supabase, g, vigentes, rubros_por_id)
+
+
+def _lista_proveedores() -> list[dict]:
+    return st.session_state.get(_PROVEEDORES) or []
+
+
+def _proveedor_txt(g: dict) -> str:
+    """The gasto's proveedor: its current name in the list, else the saved text."""
+
+    if g.get("proveedor_id") is not None:
+        lista = _lista_proveedores()
+        if any(p["id"] == g["proveedor_id"] for p in lista):
+            return proveedores_ui.nombre(lista, g["proveedor_id"])
+    return g.get("proveedor") or ""
+
+
+def _selector_proveedor(clave: str, actual: int | None = None) -> int | None:
+    """The proveedor of a gasto, chosen from the shared list (#37 D3)."""
+
+    lista = _lista_proveedores()
+    opciones = proveedores_ui.selector_opciones(lista, actual)
+    if clave not in st.session_state or st.session_state[clave] not in opciones:
+        st.session_state[clave] = actual if actual in opciones else None
+    return st.selectbox(
+        "Proveedor",
+        opciones,
+        format_func=lambda pid: proveedores_ui.nombre(lista, pid),
+        key=clave,
+        help="Elegilo de la lista de 🏢 Proveedores, o agregá uno nuevo con «+ Nuevo proveedor».",
+    )
 
 
 def _dialogos(supabase, vigentes: list[dict], gastos: list[dict], rubros_por_id: dict) -> None:
@@ -621,6 +660,9 @@ def _form_editar_gasto(supabase, g: dict, vigentes: list[dict], rubros_por_id: d
             return "Ítem actual"
         return f"{_rubro_nombre(rubros_por_id, item['rubro_id'])} · {_item_nombre(item)}"
 
+    proveedores_ui.alta_rapida(
+        supabase, f"{prefijo}proveedor_id", f"{prefijo}nuevo_prov_", g.get("rubro_id")
+    )
     with st.form(f"form_editar_gasto_{gasto_id}", border=True):
         st.markdown(f"**Editar el gasto «{texto_seguro(g['descripcion'])}»**")
         item_id = st.selectbox(
@@ -661,9 +703,12 @@ def _form_editar_gasto(supabase, g: dict, vigentes: list[dict], rubros_por_id: d
             max_chars=200,
             key=f"{prefijo}descripcion",
         )
-        proveedor = st.text_input(
-            "Proveedor", value=g.get("proveedor") or "", max_chars=120, key=f"{prefijo}proveedor"
-        )
+        proveedor_id = _selector_proveedor(f"{prefijo}proveedor_id", g.get("proveedor_id"))
+        if g.get("proveedor_id") is None and g.get("proveedor"):
+            st.caption(
+                f"Proveedor anotado antes: «{texto_seguro(g['proveedor'])}». Se conserva "
+                "mientras no elijas uno de la lista."
+            )
         tc = st.number_input(
             "Cotización del dólar",
             min_value=0.0,
@@ -709,7 +754,7 @@ def _form_editar_gasto(supabase, g: dict, vigentes: list[dict], rubros_por_id: d
             monto=monto,
             moneda=moneda,
             descripcion=descripcion,
-            proveedor=proveedor,
+            proveedor_id=proveedor_id,
             tipo_cambio=tc,  # empty -> None; 0 is rejected (not taken as empty)
         )
     except finanzas.FinanzasError as exc:
@@ -736,6 +781,9 @@ def _form_editar_gasto(supabase, g: dict, vigentes: list[dict], rubros_por_id: d
 def _form_nuevo_gasto(supabase, item: dict) -> None:
     item_id = item["id"]
     prefijo = _gasto_prefijo(item_id)
+    proveedores_ui.alta_rapida(
+        supabase, f"{prefijo}proveedor_id", f"{prefijo}nuevo_prov_", item.get("rubro_id")
+    )
     with st.form(f"form_nuevo_gasto_{item_id}", border=True):
         st.markdown(f"**Nuevo gasto en «{texto_seguro(_item_nombre(item))}»**")
         fecha = st.date_input(
@@ -769,7 +817,7 @@ def _form_nuevo_gasto(supabase, item: dict) -> None:
             placeholder="Ej.: seña, primera entrega",
             key=f"{prefijo}descripcion",
         )
-        proveedor = st.text_input("Proveedor", max_chars=120, key=f"{prefijo}proveedor")
+        proveedor_id = _selector_proveedor(f"{prefijo}proveedor_id")
         tc = st.number_input(
             "Cotización del dólar (opcional)",
             min_value=0.0,
@@ -813,7 +861,7 @@ def _form_nuevo_gasto(supabase, item: dict) -> None:
             moneda=moneda,
             descripcion=descripcion,
             fecha=fecha,
-            proveedor=proveedor,
+            proveedor_id=proveedor_id,
             tipo_cambio=tc or None,
         )
     except finanzas.FinanzasError as exc:

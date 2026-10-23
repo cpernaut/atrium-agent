@@ -3,7 +3,7 @@
 from langchain_core.messages import AIMessage, ToolMessage
 from langgraph.checkpoint.memory import MemorySaver
 
-from atrium import obras
+from atrium import obras, propuestas
 from atrium.rag import build_graph
 from tests.fake_supabase import FakeSupabase
 from tests.fakes import RecordingStore, ToolCallingFake, tool_call
@@ -13,9 +13,7 @@ _call = tool_call
 
 def _app(db, replies, store=None):
     llm = ToolCallingFake(messages=iter(replies), seen=[])
-    graph = build_graph(
-        llm=llm, vector_store=store or RecordingStore(), obras_client=db, autor="caro@x.com"
-    )
+    graph = build_graph(llm=llm, vector_store=store or RecordingStore(), obras_client=db)
     return graph.compile(checkpointer=MemorySaver()), llm
 
 
@@ -40,7 +38,7 @@ def test_active_obra_limits_normativa_and_reaches_prompt():
     assert store.filters == [{"source": "Codigo Edificacion de La Plata.pdf"}]
     system_prompt = llm.seen[0][0].content
     assert "Casa Lote 12" in system_prompt and "La Plata" in system_prompt
-    assert result["acciones"] == []
+    assert result["propuestas"] == []
 
 
 def test_without_active_obra_search_is_unfiltered():
@@ -71,7 +69,7 @@ def test_agent_reads_obras_through_tool():
     assert result["mensajes"][-1] == "Tenés 1 obra en curso: Casa Lote 12."
 
 
-def test_agent_writes_note_and_progress_on_active_obra():
+def test_agent_proposes_note_and_progress_and_saves_only_when_confirmed():
     db = _db()
     app, _ = _app(
         db,
@@ -83,14 +81,18 @@ def test_agent_writes_note_and_progress_on_active_obra():
     )
 
     result = app.invoke(
-        {"mensajes": ["Anotá que hoy se hormigonó la platea, avance 40%"], "obra_id": 1},
+        {"mensajes": ["Anotá que hoy se hormigonó la platea y pasá el avance a 40%"], "obra_id": 1},
         {"configurable": {"thread_id": "t4"}},
     )
 
+    assert [p["tipo"] for p in result["propuestas"]] == [propuestas.NOTA, propuestas.OBRA]
+    assert obras.list_bitacora(db, 1) == [] and obras.get_obra(db, 1)["avance"] == 30
+
+    hechos = [propuestas.ejecutar(db, "caro@x.com", p) for p in result["propuestas"]]
     nota = obras.list_bitacora(db, 1)[0]
     assert nota["nota"] == "Hormigonado de platea" and nota["autor"] == "caro@x.com"
     assert obras.get_obra(db, 1)["avance"] == 40
-    assert len(result["acciones"]) == 2
+    assert hechos[1] == "✏️ «Casa Lote 12» actualizada: avance → 40%"
 
 
 def test_ambiguous_obra_is_not_written():
@@ -110,7 +112,7 @@ def test_ambiguous_obra_is_not_written():
     )
 
     assert "varias obras" in [m for m in llm.seen[1] if isinstance(m, ToolMessage)][0].content
-    assert obras.list_bitacora(db, 1) == [] and result["acciones"] == []
+    assert obras.list_bitacora(db, 1) == [] and result["propuestas"] == []
 
 
 def test_tool_errors_reach_the_model_instead_of_crashing():

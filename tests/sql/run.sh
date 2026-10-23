@@ -39,6 +39,9 @@ principal() {
 "${PSQL[@]}" -d "$DB" -f supabase_schema.sql 2>/dev/null
 "${PSQL[@]}" -d "$DB" -f supabase_schema.sql 2>/dev/null
 echo "OK  actualización desde el esquema anterior a #35, con datos, dos veces sin errores"
+# #37: renombrar un proveedor migrado y volver a correr el esquema no recrea el nombre viejo.
+"${PSQL[@]}" -d "$DB" -c "update public.proveedores set nombre = 'Hierros del Sur' where nombre = 'Hierros Sur'" >/dev/null
+"${PSQL[@]}" -d "$DB" -f supabase_schema.sql 2>/dev/null
 # Instalación desde cero (proyecto nuevo), también dos veces.
 "${PSQL[@]}" -d postgres -c "drop database if exists ${DB}_nuevo" -c "create database ${DB}_nuevo encoding 'UTF8' lc_collate 'C.UTF-8' lc_ctype 'C.UTF-8' template template0" >/dev/null 2>&1
 "${PSQL[@]}" -d "${DB}_nuevo" -f tests/sql/supabase_stub.sql >/dev/null

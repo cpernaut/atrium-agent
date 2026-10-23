@@ -16,6 +16,7 @@ _DEFAULTS = {
     "rubros": {"orden": 1000, "activo": True},
     "presupuesto_items": {"anulado": False, "es_imprevistos": False},
     "gastos": {"anulado": False},
+    "proveedores": {"archivado": False, "rubro_ids": []},
 }
 
 

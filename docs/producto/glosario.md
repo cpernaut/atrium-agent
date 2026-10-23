@@ -21,6 +21,7 @@ Convención: el código (funciones, módulos, docstrings) está en inglés, pero
 | **Detalle (de la obra)** | Pestaña con todos los datos de la obra activa, editables. El autor y la fecha de creación no cambian. | `obras.CAMPOS_EDITABLES_OBRA` |
 | **Normativa** | Códigos de edificación municipales cargados en `docs/` e indexados. | Chroma, colección `obra` |
 | **Agente** | El asistente de chat. Responde normativa y lee o escribe obras con herramientas. | `atrium/rag.py` · `atrium/obra_tools.py` |
+| **Propuesta (del agente)** | Lo que el agente quiere guardar (nota, avance/estado, gasto, proveedor), mostrado en palabras bajo su respuesta con «Confirmar» y «Cancelar». El agente nunca guarda sin ese clic. Estados: pendiente, confirmada, cancelada, fallida. | `atrium/propuestas.py` · `propuesta_confirmar_*` |
 | **Equipo** | Los usuarios con login. Todos ven y editan todas las obras. | rol `authenticated` en RLS |
 
 ## Presupuesto y gastos (F-03)
@@ -31,6 +32,9 @@ Convención: el código (funciones, módulos, docstrings) está en inglés, pero
 | **Presupuesto** | Lo que se prevé gastar en una obra, desglosado en **ítems** por rubro, cada uno con su moneda. También es el nombre de la pestaña con presupuesto y gastos (antes «💰 Plata», #49). | tabla `presupuesto_items` · `plata_ui.py` |
 | **Ítem (del presupuesto)** | Una línea del presupuesto: rubro, descripción, monto (puede ser 0) y moneda. Los gastos se cargan dentro de su ítem. | `presupuesto_items` · `FilaItem` |
 | **Gasto** | Un pago real de un **ítem** del presupuesto: fecha, descripción, monto, moneda y proveedor opcional. El rubro y la obra son los del ítem. | tabla `gastos` · `presupuesto_item_id` |
+| **Proveedor** | Empresa o persona a la que se le compra. Lista compartida por el equipo, con contacto, rubros y calificaciones. «Eliminar» lo archiva. | tabla `proveedores` · `gastos.proveedor_id` · `atrium/proveedores.py` |
+| **Calificación (de proveedor)** | Estrellas de 1 a 5 con comentario que pone cada socio a un proveedor; se muestra el promedio. | tabla `proveedor_calificaciones` |
+| **Compras (de un proveedor)** | Sus gastos no anulados en todas las obras, por obra y por moneda. | `proveedores.compras` |
 | **Imprevistos** | El ítem por defecto de cada obra (rubro Otros, 10 % del presupuesto de la obra) para los gastos que no tienen otro ítem. | `es_imprevistos` · `crear_imprevistos` |
 | **Editar (gasto)** | Cambiar cualquier dato de un gasto, incluso pasarlo a otro ítem de la obra. Queda registro de quién y cuándo. Un anulado no se edita. | `update_gasto` · `editado_por` · `editado_en` |
 | **Saldo** | Total del ítem − gastado. | `FilaItem.saldo` |

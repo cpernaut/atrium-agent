@@ -163,6 +163,16 @@ CAMPOS_EDITABLES_OBRA = (
 
 
 def update_obra(client: Client, obra_id: int, cambios: dict[str, Any]) -> Obra:
+    validar_cambios(cambios)
+    rows = _run(client.table("obras").update(cambios).eq("id", obra_id))
+    if not rows:
+        raise ObrasError(f"No se encontró la obra #{obra_id}.")
+    return rows[0]
+
+
+def validar_cambios(cambios: dict[str, Any]) -> dict[str, Any]:
+    """Check (and normalize in place) the changes to an obra, without saving them."""
+
     if not cambios:
         raise ObrasError("No hay cambios para guardar.")
     otros = sorted(set(cambios) - set(CAMPOS_EDITABLES_OBRA))
@@ -173,10 +183,7 @@ def update_obra(client: Client, obra_id: int, cambios: dict[str, Any]) -> Obra:
         if not cambios["nombre"]:
             raise ObrasError("La obra necesita un nombre.")
     _validate(cambios)
-    rows = _run(client.table("obras").update(cambios).eq("id", obra_id))
-    if not rows:
-        raise ObrasError(f"No se encontró la obra #{obra_id}.")
-    return rows[0]
+    return cambios
 
 
 def _validate(datos: dict[str, Any]) -> None:
@@ -217,6 +224,15 @@ def list_bitacora(client: Client, obra_id: int, limit: int | None = None) -> lis
     return _run(query)
 
 
+def validar_nota(nota: str) -> str:
+    """The note as it would be saved, or ObrasError saying what's wrong."""
+
+    limpia = str(nota or "").strip()
+    if not limpia:
+        raise ObrasError("La nota está vacía.")
+    return limpia
+
+
 def add_nota(
     client: Client,
     obra_id: int,
@@ -224,9 +240,7 @@ def add_nota(
     autor: str | None = None,
     fecha: date | str | None = None,
 ) -> dict:
-    if not nota.strip():
-        raise ObrasError("La nota está vacía.")
-    fila: dict[str, Any] = {"obra_id": obra_id, "nota": nota.strip(), "autor": autor}
+    fila: dict[str, Any] = {"obra_id": obra_id, "nota": validar_nota(nota), "autor": autor}
     if fecha:
         fila["fecha"] = fecha.isoformat() if isinstance(fecha, date) else str(fecha)
     rows = _run(client.table("bitacora").insert(fila))
