@@ -493,6 +493,12 @@ create table if not exists public.proveedores (
 
 -- Mail estricto (como atrium/proveedores.py): sin «?», «&», «#» ni «%», que en el
 -- botón Mail (mailto:) podrían sumar destinatarios ocultos.
+-- Teléfono con al menos seis dígitos (como atrium/proveedores.py): «++++++» no es
+-- un teléfono aunque cumpla el largo.
+alter table public.proveedores drop constraint if exists proveedores_telefono_digitos;
+alter table public.proveedores add constraint proveedores_telefono_digitos check (
+    telefono is null or char_length(regexp_replace(telefono, '[^0-9]', '', 'g')) >= 6);
+
 alter table public.proveedores drop constraint if exists proveedores_email_check;
 alter table public.proveedores drop constraint if exists proveedores_email_valido;
 alter table public.proveedores add constraint proveedores_email_valido check (

@@ -11,6 +11,7 @@ Tools never raise: errors come back as text so the model can explain them.
 from __future__ import annotations
 
 from collections.abc import Callable
+from decimal import Decimal
 from typing import TYPE_CHECKING
 
 from langchain_core.tools import BaseTool, StructuredTool
@@ -168,7 +169,7 @@ def build_obra_tools(
         return f"«{item.get('descripcion') or 'Sin descripción'}»"
 
     def registrar_gasto(
-        monto: float,
+        monto: Decimal,
         descripcion: str,
         item: str,
         moneda: str | None = None,
@@ -182,7 +183,8 @@ def build_obra_tools(
         registrar un gasto. Todo gasto va a un
         ítem: `item` es la descripción (o parte) del ítem, por ejemplo «hierro» o
         «imprevistos»; `rubro` opcional ayuda a desambiguar. `monto` es un número
-        (350 mil = 350000). `moneda` es ARS o USD (vacío = la del ítem). `fecha` en
+        (350 mil = 350000; con centavos, punto decimal: 1234.56). `moneda` es ARS o
+        USD (vacío = la del ítem). `fecha` en
         formato AAAA-MM-DD (vacío = hoy). La cotización del dólar MEP se completa sola.
         `proveedor` (opcional) tiene que estar en la lista de proveedores del equipo.
         Si hay varios ítems o proveedores posibles, o ninguno, no propone nada y hay

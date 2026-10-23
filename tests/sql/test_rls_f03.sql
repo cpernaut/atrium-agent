@@ -269,6 +269,8 @@ select pg_temp.falla($$insert into public.proveedores (nombre, web) values ('Web
 select pg_temp.falla($$insert into public.proveedores (nombre, web) values ('Web js', 'javascript:alert(1)')$$, '23514');
 select pg_temp.falla($$insert into public.proveedores (nombre, cuit) values ('Cuit malo', '123')$$, '23514');
 select pg_temp.falla($$insert into public.proveedores (nombre, telefono) values ('Tel malo', 'llamame')$$, '23514');
+select pg_temp.falla($$insert into public.proveedores (nombre, telefono) values ('Tel sin dígitos', '++++++')$$, '23514');
+select pg_temp.falla($$insert into public.proveedores (nombre, telefono) values ('Tel corto', '(221) 55')$$, '23514');
 select pg_temp.falla($$insert into public.proveedores (nombre, rubro_ids) values ('Rubro malo', '{999999}')$$, '23503');
 select pg_temp.falla($$update public.proveedores set creado_por = null where nombre = 'Hierros RLS'$$, '42501');
 insert into public.proveedores (nombre, creado_por, created_at)
