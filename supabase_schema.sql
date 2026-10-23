@@ -626,6 +626,15 @@ alter table public.gastos add column if not exists proveedor_id bigint
 create index if not exists gastos_proveedor_idx on public.gastos (proveedor_id);
 grant update (proveedor_id) on public.gastos to authenticated;
 
+-- Cambiar el proveedor es editar el gasto (#25): queda registrado quién y cuándo,
+-- y un gasto anulado no se toca. Se recrea acá porque la columna es de F-06.
+drop trigger if exists gastos_editado on public.gastos;
+create trigger gastos_editado
+    before update of presupuesto_item_id, fecha, descripcion, proveedor, proveedor_id, monto,
+                     moneda, tipo_cambio, tipo_cambio_origen
+    on public.gastos
+    for each row execute function public.gasto_editado();
+
 -- Un proveedor eliminado (archivado) no se elige en gastos nuevos ni editados;
 -- los gastos que ya lo tenían lo conservan.
 create or replace function public.gasto_proveedor_vigente()
@@ -649,6 +658,10 @@ create trigger gastos_proveedor_vigente
     before insert or update of proveedor_id on public.gastos
     for each row execute function public.gasto_proveedor_vigente();
 
+-- Migración (#37 D4): un proveedor por cada nombre escrito en los gastos.
+-- Vincular no es editar: durante la migración no corre gastos_editado (así no
+-- marca los gastos como editados ni frena en los anulados).
+alter table public.gastos disable trigger gastos_editado;
 -- Migración (#37 D4): un proveedor por cada nombre escrito en los gastos
 -- (sin importar mayúsculas, tildes ni espacios) y sus gastos vinculados.
 -- Solo mira gastos que todavía no tienen proveedor de la lista: así, volver a
@@ -671,3 +684,4 @@ update public.gastos g
    and g.proveedor is not null
    and not p.archivado
    and public.rubro_clave(p.nombre) = public.rubro_clave(g.proveedor);
+alter table public.gastos enable trigger gastos_editado;

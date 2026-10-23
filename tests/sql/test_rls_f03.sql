@@ -71,6 +71,7 @@ select pg_temp.ok(
   and (select proveedor = 'Y' and proveedor_id is null from public.gastos
         where descripcion = 'Gasto previo de una letra')
   and (select count(*) from public.gastos where proveedor is not null and proveedor_id is null) = 1
+  and not exists (select 1 from public.gastos where descripcion like 'Gasto previo%' and editado_en is not null)
   and (select count(distinct proveedor_id) from public.gastos
         where descripcion in ('Gasto previo con ítem', 'Gasto previo sin ítem')) = 1
   and (select p.nombre from public.gastos g join public.proveedores p on p.id = g.proveedor_id
@@ -303,7 +304,15 @@ select pg_temp.falla($$insert into public.proveedor_calificaciones (proveedor_id
   select id, 3 from public.proveedores where nombre = 'Hierros RLS'$$, '23514');
 update public.proveedor_calificaciones set comentario = 'Sigue cumpliendo';
 update public.proveedores set archivado = false where nombre = 'Hierros RLS';
-update public.gastos set anulado = true where descripcion = 'Con proveedor';
+insert into public.gastos (presupuesto_item_id, descripcion, monto, moneda)
+  select id, 'Sin proveedor todavía', 10, 'ARS' from item_hierro;
+update public.gastos set proveedor_id = (select id from public.proveedores where nombre = 'Hierros RLS')
+  where descripcion = 'Sin proveedor todavía';
+select pg_temp.ok((select editado_en is not null and editado_por = '00000000-0000-0000-0000-00000000000a'
+                     from public.gastos where descripcion = 'Sin proveedor todavía'),
+                  'gastos: cambiar el proveedor queda registrado como edición');
+update public.gastos set anulado = true where descripcion in ('Con proveedor', 'Sin proveedor todavía');
+select pg_temp.falla($$update public.gastos set proveedor_id = null where descripcion = 'Con proveedor'$$, '23514');
 select pg_temp.ok(true, 'proveedor eliminado: no se elige en gastos ni recibe calificaciones nuevas; lo ya cargado se edita');
 
 -- Editar ítems (F-03 R9): solo rubro, descripción, monto, moneda y cotización.
