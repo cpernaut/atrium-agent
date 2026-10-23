@@ -94,6 +94,10 @@ select pg_temp.ok(
   and public.limpiar_texto('  a   b  ') = 'a b',
   'texto limpio #53: espacios como la app (uno solo, sin bordes, a lo sumo una línea en blanco); el autor también se limpia');
 select pg_temp.ok(
+  exists (select 1 from public.gastos where descripcion = 'Línea uno línea dos')
+  and public.limpiar_linea(E' a\n\n b ') = 'a b' and public.limpiar_texto(E' a\n\n b ') = E'a\n\nb',
+  'texto limpio #53: los campos de una línea no guardan saltos (pasan a espacio); notas y comentarios sí');
+select pg_temp.ok(
   exists (select 1 from public.obras where nombre = 'Sin nombre' and cliente is null)
   and exists (select 1 from public.gastos where descripcion = 'Sin descripción' and monto = 5),
   'texto limpio #53: un texto que queda vacío al limpiarse toma un reemplazo (obligatorio) o queda vacío (opcional)');
@@ -258,6 +262,10 @@ select pg_temp.falla($$insert into public.rubros (nombre) values (E'Pileta\x07')
 select pg_temp.falla($$insert into public.rubros (nombre) values (E'Pileta\u0085')$$, '23514');
 select pg_temp.falla($$insert into public.rubros (nombre) values (E'Pile\tta')$$, '23514');
 select pg_temp.falla($$insert into public.rubros (nombre) values ('Pileta  doble')$$, '23514');
+select pg_temp.falla($$insert into public.rubros (nombre) values (E'Pile\nta')$$, '23514');
+select pg_temp.falla($$update public.obras set cliente = E'Pérez\nGarcía' where nombre = 'Obra RLS'$$, '23514');
+select pg_temp.falla($$insert into public.bitacora (obra_id, nota)
+  select id, E'\nNota con salto al principio' from public.obras where nombre = 'Obra RLS'$$, '23514');
 select pg_temp.falla($$insert into public.rubros (nombre) values (U&'\FF49\FF47\FF4E\FF4F\FF52a')$$, '23514');
 select pg_temp.falla($$insert into public.bitacora (obra_id, nota)
   select id, U&'Nota \FF3B\FF3BDATOS\FF3D\FF3D' from public.obras where nombre = 'Obra RLS'$$, '23514');

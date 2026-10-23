@@ -782,6 +782,34 @@ $$;
 revoke execute on function public.texto_limpio(text) from public, anon;
 grant execute on function public.texto_limpio(text) to authenticated, service_role;
 
+-- Campos de una línea (nombres, descripciones, contacto…): como sanidad.limpiar sin
+-- multilinea, los saltos de línea también pasan a ser un espacio. Los textos largos
+-- (nota, notas, comentario) usan limpiar_texto / texto_limpio y conservan sus líneas.
+create or replace function public.limpiar_linea(t text)
+returns text
+language sql
+immutable
+parallel safe
+set search_path = ''
+as $$
+    select pg_catalog.btrim(
+        pg_catalog.regexp_replace(public.limpiar_texto(t), '[ \n]+', ' ', 'g'))
+$$;
+revoke execute on function public.limpiar_linea(text) from public, anon;
+grant execute on function public.limpiar_linea(text) to authenticated, service_role;
+
+create or replace function public.linea_limpia(t text)
+returns boolean
+language sql
+immutable
+parallel safe
+set search_path = ''
+as $$
+    select t is null or t = public.limpiar_linea(t)
+$$;
+revoke execute on function public.linea_limpia(text) from public, anon;
+grant execute on function public.linea_limpia(text) to authenticated, service_role;
+
 -- Datos ya guardados (#53 D2): se limpian solos. No es una edición de nadie: los
 -- triggers que registran ediciones no corren mientras tanto.
 alter table public.gastos disable trigger gastos_editado;
@@ -789,27 +817,27 @@ alter table public.proveedor_calificaciones disable trigger proveedor_calificaci
 -- Un texto obligatorio que queda vacío al limpiarse (solo tenía invisibles) toma un
 -- reemplazo («Sin nombre», «Sin descripción», «(sin texto)»); uno opcional, null.
 update public.obras
-   set nombre = coalesce(nullif(btrim(public.limpiar_texto(nombre)), ''), 'Sin nombre')
- where not public.texto_limpio(nombre);
-update public.obras set cliente = nullif(btrim(public.limpiar_texto(cliente)), '')
- where not public.texto_limpio(cliente);
-update public.obras set direccion = nullif(btrim(public.limpiar_texto(direccion)), '')
- where not public.texto_limpio(direccion);
-update public.obras set responsable = nullif(btrim(public.limpiar_texto(responsable)), '')
- where not public.texto_limpio(responsable);
-update public.bitacora set autor = nullif(public.limpiar_texto(autor), '')
- where not public.texto_limpio(autor);
+   set nombre = coalesce(nullif(btrim(public.limpiar_linea(nombre)), ''), 'Sin nombre')
+ where not public.linea_limpia(nombre);
+update public.obras set cliente = nullif(btrim(public.limpiar_linea(cliente)), '')
+ where not public.linea_limpia(cliente);
+update public.obras set direccion = nullif(btrim(public.limpiar_linea(direccion)), '')
+ where not public.linea_limpia(direccion);
+update public.obras set responsable = nullif(btrim(public.limpiar_linea(responsable)), '')
+ where not public.linea_limpia(responsable);
+update public.bitacora set autor = nullif(public.limpiar_linea(autor), '')
+ where not public.linea_limpia(autor);
 update public.bitacora
    set nota = coalesce(nullif(btrim(public.limpiar_texto(nota)), ''), '(sin texto)')
  where not public.texto_limpio(nota);
 update public.presupuesto_items
-   set descripcion = nullif(btrim(public.limpiar_texto(descripcion)), '')
- where not public.texto_limpio(descripcion);
+   set descripcion = nullif(btrim(public.limpiar_linea(descripcion)), '')
+ where not public.linea_limpia(descripcion);
 update public.gastos
-   set descripcion = coalesce(nullif(btrim(public.limpiar_texto(descripcion)), ''), 'Sin descripción')
- where not public.texto_limpio(descripcion);
-update public.gastos set proveedor = nullif(btrim(public.limpiar_texto(proveedor)), '')
- where not public.texto_limpio(proveedor);
+   set descripcion = coalesce(nullif(btrim(public.limpiar_linea(descripcion)), ''), 'Sin descripción')
+ where not public.linea_limpia(descripcion);
+update public.gastos set proveedor = nullif(btrim(public.limpiar_linea(proveedor)), '')
+ where not public.linea_limpia(proveedor);
 -- Rubros y proveedores tienen nombre único (rubro_clave) y un largo mínimo. Fila
 -- por fila, cada nombre sucio toma su versión limpia; si queda vacío o corto pasa a
 -- «Sin nombre», y si coincide con otro (por ejemplo «Acme» y «Acme» con un
@@ -826,10 +854,10 @@ declare
 begin
     for t in select * from (values ('rubros', 60), ('proveedores', 120)) as x(tabla, largo) loop
         for fila in execute format(
-            'select id, nombre from public.%I where not public.texto_limpio(nombre) order by id',
+            'select id, nombre from public.%I where not public.linea_limpia(nombre) order by id',
             t.tabla)
         loop
-            base := btrim(public.limpiar_texto(fila.nombre));
+            base := btrim(public.limpiar_linea(fila.nombre));
             if char_length(base) < 2 then
                 base := 'Sin nombre';
             end if;
@@ -850,12 +878,12 @@ begin
     end loop;
 end
 $$;
-update public.proveedores set contacto = nullif(btrim(public.limpiar_texto(contacto)), '')
- where not public.texto_limpio(contacto);
-update public.proveedores set zona = nullif(btrim(public.limpiar_texto(zona)), '')
- where not public.texto_limpio(zona);
-update public.proveedores set web = nullif(btrim(public.limpiar_texto(web)), '')
- where not public.texto_limpio(web);
+update public.proveedores set contacto = nullif(btrim(public.limpiar_linea(contacto)), '')
+ where not public.linea_limpia(contacto);
+update public.proveedores set zona = nullif(btrim(public.limpiar_linea(zona)), '')
+ where not public.linea_limpia(zona);
+update public.proveedores set web = nullif(btrim(public.limpiar_linea(web)), '')
+ where not public.linea_limpia(web);
 update public.proveedores set notas = nullif(btrim(public.limpiar_texto(notas)), '')
  where not public.texto_limpio(notas);
 update public.proveedor_calificaciones
@@ -895,23 +923,23 @@ create trigger bitacora_firmada
 -- Y de acá en más la base no acepta texto sucio, aunque se saltee la app.
 alter table public.obras drop constraint if exists obras_textos_limpios;
 alter table public.obras add constraint obras_textos_limpios check (
-    public.texto_limpio(nombre) and public.texto_limpio(cliente)
-    and public.texto_limpio(direccion) and public.texto_limpio(responsable));
+    public.linea_limpia(nombre) and public.linea_limpia(cliente)
+    and public.linea_limpia(direccion) and public.linea_limpia(responsable));
 alter table public.bitacora drop constraint if exists bitacora_texto_limpio;
 alter table public.bitacora add constraint bitacora_texto_limpio
-    check (public.texto_limpio(nota) and public.texto_limpio(autor));
+    check (public.texto_limpio(nota) and public.linea_limpia(autor));
 alter table public.presupuesto_items drop constraint if exists presupuesto_texto_limpio;
 alter table public.presupuesto_items add constraint presupuesto_texto_limpio
-    check (public.texto_limpio(descripcion));
+    check (public.linea_limpia(descripcion));
 alter table public.gastos drop constraint if exists gastos_textos_limpios;
 alter table public.gastos add constraint gastos_textos_limpios
-    check (public.texto_limpio(descripcion) and public.texto_limpio(proveedor));
+    check (public.linea_limpia(descripcion) and public.linea_limpia(proveedor));
 alter table public.rubros drop constraint if exists rubros_texto_limpio;
-alter table public.rubros add constraint rubros_texto_limpio check (public.texto_limpio(nombre));
+alter table public.rubros add constraint rubros_texto_limpio check (public.linea_limpia(nombre));
 alter table public.proveedores drop constraint if exists proveedores_textos_limpios;
 alter table public.proveedores add constraint proveedores_textos_limpios check (
-    public.texto_limpio(nombre) and public.texto_limpio(contacto)
-    and public.texto_limpio(zona) and public.texto_limpio(notas) and public.texto_limpio(web));
+    public.linea_limpia(nombre) and public.linea_limpia(contacto)
+    and public.linea_limpia(zona) and public.texto_limpio(notas) and public.linea_limpia(web));
 alter table public.proveedor_calificaciones drop constraint if exists calificaciones_texto_limpio;
 alter table public.proveedor_calificaciones add constraint calificaciones_texto_limpio
     check (public.texto_limpio(comentario));
