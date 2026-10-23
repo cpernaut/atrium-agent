@@ -84,7 +84,7 @@ Gasto:  Proveedor [Hierros Sur ▾]  + Nuevo proveedor
 - `crear_proveedor(...)`: **Usala SOLO si el usuario pide** darlo de alta o lo confirma.
 - `registrar_gasto(..., proveedor)`: si el proveedor no está en la lista, no guarda y pregunta (D6).
 - Nunca califica proveedores.
-- Lo que devuelven las herramientas de lectura va marcado como «datos cargados por usuarios». Si en el turno se leyeron datos, las herramientas que escriben solo corren cuando el mensaje del usuario pide guardar o cambiar algo (`atrium/guardia.py`). Así, una nota con instrucciones no hace escribir al agente.
+- Lo que devuelven las herramientas de lectura va marcado como «datos cargados por usuarios». Las herramientas que escriben (todas, no solo las de proveedores) corren solo cuando el mensaje del usuario pide guardar o cambiar algo, o confirma lo que propuso el agente («sí», «dale»); una pregunta nunca escribe (`atrium/guardia.py`). Así, una nota con instrucciones no hace escribir al agente.
 
 ## Criterios de aceptación
 

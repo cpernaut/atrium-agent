@@ -35,6 +35,7 @@ resultado esperado verificable.
 | AGENTE-1 | Agente | Abrir el agente, preguntar, cerrar y volver a abrir | Panel con la obra sobre la que trabaja y ayuda para empezar; la conversación se conserva |
 | AGENTE-2 | Agente | Pedirle que cambie el avance | La pantalla de atrás (encabezado y Detalle) se recarga con el dato nuevo |
 | AGENTE-2b | Agente | Cambiar el avance por chat y después guardar el estado en Detalle | El formulario muestra el avance nuevo y no lo pisa |
+| AGENTE-3 | Agente | «¿Cómo viene el avance?» y el modelo intenta actualizar la obra y anotar | No guarda nada: solo escribe si el mensaje del usuario lo pide (#51) |
 | E2E-18 | Historial | Sesión con la carga del historial interrumpida | La app no se rompe: vuelve a cargarlo |
 
 ## E2E simulado — UX-03 Menú y obra activa (`tests/e2e/test_navegacion_flows.py`, #49)

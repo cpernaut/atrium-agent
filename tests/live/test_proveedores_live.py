@@ -6,6 +6,8 @@ trigger that keeps eliminated proveedores out of new gastos. IDs match
 docs/casos-e2e.md.
 """
 
+import uuid
+
 import pytest
 from postgrest.exceptions import APIError
 
@@ -18,7 +20,8 @@ pytestmark = pytest.mark.live
 @pytest.fixture
 def proveedor_de_a(users, run_id):
     return proveedores.create_proveedor(
-        users.a.client, {"nombre": f"{PREFIX} Hierros {run_id}", "telefono": "221 555 1234"}
+        users.a.client,
+        {"nombre": f"{PREFIX} Hierros {run_id}-{uuid.uuid4().hex[:6]}", "telefono": "221 555 1234"},
     )
 
 

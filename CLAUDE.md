@@ -59,8 +59,9 @@ supabase_schema.sql  todo el esquema, idempotente
   a `acciones` y su docstring dice «Usala SOLO si el usuario pide…».
 - Datos cargados por usuarios que vuelven al modelo (notas, comentarios,
   nombres): las herramientas de lectura los envuelven con `turno.datos(...)` y
-  las de escritura empiezan con `turno.bloqueo(...)` (`atrium/guardia.py`), así
-  una instrucción escondida en los datos no hace escribir al agente.
+  las de escritura empiezan con `turno.bloqueo(...)` (`atrium/guardia.py`): solo
+  escriben si el mensaje del usuario lo pide, así una pregunta o una instrucción
+  escondida en los datos nunca hacen escribir al agente.
 - Las pantallas reciben el `supabase` de la sesión (cliente con el login del
   usuario): así aplica RLS. **No** usar la clave service_role en la app.
 

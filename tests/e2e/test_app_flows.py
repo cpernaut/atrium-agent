@@ -457,10 +457,30 @@ def test_agente_2b_el_formulario_no_pisa_lo_que_cargo_el_agente(e2e):
     )
     at = e2e.elegir_obra(e2e.login(), 1)
     assert at.slider(key="det_avance_1").value == 30
-    at = e2e.abrir_agente(at).chat_input(key="agente_input").set_value("Avance 70").run()
+    at = e2e.abrir_agente(at).chat_input(key="agente_input").set_value("Pasá el avance a 70").run()
 
     assert at.slider(key="det_avance_1").value == 70  # el formulario muestra el dato nuevo
     at.selectbox(key="det_estado_1").set_value("Pausada")
     at = click(at, "Guardar cambios")
     obra = obras.get_obra(e2e.db, 1)
     assert (obra["estado"], obra["avance"]) == ("Pausada", 70)
+
+
+def test_agente_3_una_pregunta_no_escribe(e2e):
+    """AGENTE-3 (#51): si el usuario solo pregunta («¿cómo viene el avance?»), el agente
+    no cambia nada aunque el modelo intente actualizar la obra o anotar algo."""
+
+    _seed(e2e.db)
+    e2e.script(
+        tool_call("actualizar_obra", {"avance": 99}, "c1"),
+        tool_call("agregar_nota_bitacora", {"nota": "x"}, "c2"),
+        AIMessage(content="Viene al 30%."),
+    )
+    at = e2e.abrir_agente(e2e.elegir_obra(e2e.login(), 1))
+    at = at.chat_input(key="agente_input").set_value("¿Cómo viene el avance?").run()
+
+    assert not at.exception
+    resultados = [m.content for m in e2e.llm.seen[-1] if m.type == "tool"]
+    assert all(r.startswith("No ") for r in resultados)
+    assert obras.get_obra(e2e.db, 1)["avance"] == 30
+    assert obras.list_bitacora(e2e.db, 1) == []

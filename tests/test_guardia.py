@@ -14,8 +14,10 @@ from atrium.guardia import FIN, INICIO, Turno, pide_escritura
         "Sí, dá de alta a Hierros X",
         "Registrá la seña",
         "Pasá el avance a 70",
-        "Avance 70",
         "Cambiá el estado a Pausada",
+        "Sí",
+        "dale, gracias",
+        "Confirmo",
         "Agregalo como proveedor",
         "Crealo",
     ],
@@ -32,14 +34,19 @@ def test_pedidos_de_escritura(pedido):
         "¿Cuánto llevamos gastado?",
         "¿Qué retiro de frente pide el código?",
         "¿Qué obras tengo?",
+        "¿Cómo viene el avance?",
+        "¿En qué estado está Lote 12?",
+        "Avance 70",
+        "Sí, pero ¿qué tal es?",
     ],
 )
 def test_preguntas_no_son_escritura(pedido):
     assert not pide_escritura(pedido)
 
 
-def test_sin_leer_datos_no_bloquea():
-    assert Turno(pedido="¿qué tal?").bloqueo("guardé") is None
+def test_sin_pedido_no_escribe_aunque_no_haya_leido_datos():
+    assert "No guardé" in Turno(pedido="¿Cómo viene el avance?").bloqueo("guardé")
+    assert Turno(pedido="Pasá el avance a 70").bloqueo("guardé") is None
 
 
 def test_despues_de_leer_datos_solo_escribe_si_el_usuario_lo_pide():
