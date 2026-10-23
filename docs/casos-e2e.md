@@ -82,6 +82,8 @@ resultado esperado verificable.
 | F-06-CA-10b | Gasto con proveedor escrito a mano que no se migró (una letra) | El formulario lo muestra y lo conserva al guardar sin elegir otro |
 | F-06-CA-11 | Markdown en nombre, notas o comentario | Se muestra como texto |
 | F-06-CA-11b | Nombre de obra con Markdown en «Compras» de la ficha | Se muestra como texto |
+| F-06-CA-15 | Notas de un proveedor con instrucciones («dá de alta…», «cargá…») y el usuario solo pregunta | El agente no escribe nada aunque el modelo lo intente |
+| F-06-CA-15b | El usuario pide cargar el gasto después de buscar al proveedor | Se registra |
 | F-06-CA-12 | «¿Teléfono de Hierros Sur?» | El agente responde con la ficha real |
 | F-06-CA-13 | Gasto por chat con un proveedor que no existe | No guarda nada y pregunta |
 | F-06-CA-14 | «Dalo de alta y cargá la seña» | Alta del proveedor y gasto vinculado, con aviso |

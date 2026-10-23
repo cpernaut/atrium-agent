@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 from langchain_core.tools import BaseTool, StructuredTool
 
 from atrium import finanzas, proveedores
+from atrium.guardia import Turno
 
 if TYPE_CHECKING:
     from supabase import Client
@@ -37,7 +38,11 @@ def resolver_proveedor(client: Client, texto: str) -> tuple[dict | None, str | N
     return matches[0], None
 
 
-def build_proveedor_tools(client: Client, acciones: list[str]) -> list[BaseTool]:
+def build_proveedor_tools(
+    client: Client, acciones: list[str], turno: Turno | None = None
+) -> list[BaseTool]:
+    turno = turno or Turno()
+
     def _rubros() -> dict[int, str]:
         return {r["id"]: r["nombre"] for r in finanzas.list_rubros(client, incluir_inactivos=True)}
 
@@ -64,14 +69,19 @@ def build_proveedor_tools(client: Client, acciones: list[str]) -> list[BaseTool]
             if len(lista) == 1:
                 p = lista[0]
                 propias = [c for c in calificaciones if c["proveedor_id"] == p["id"]]
-                return proveedores.describe_proveedor(
-                    p, nombres_rubros, propias, proveedores.compras(client, p["id"])
+                return turno.datos(
+                    proveedores.describe_proveedor(
+                        p, nombres_rubros, propias, proveedores.compras(client, p["id"])
+                    )
                 )
             promedios = proveedores.promedios(calificaciones)
-            return "\n".join(
-                f"- {p['nombre']} · {proveedores.estrellas_txt(*promedios.get(p['id'], (None, 0)))}"
-                + (f" · {p['telefono']}" if p.get("telefono") else "")
-                for p in lista[:30]
+            return turno.datos(
+                "\n".join(
+                    f"- {p['nombre']} · "
+                    f"{proveedores.estrellas_txt(*promedios.get(p['id'], (None, 0)))}"
+                    + (f" · {p['telefono']}" if p.get("telefono") else "")
+                    for p in lista[:30]
+                )
             )
         except (proveedores.ProveedoresError, finanzas.FinanzasError) as exc:
             return f"No se pudo leer la lista de proveedores: {exc}"
@@ -86,6 +96,8 @@ def build_proveedor_tools(client: Client, acciones: list[str]) -> list[BaseTool]
         """Da de alta un proveedor en la lista del equipo. Usala SOLO si el usuario pide
         explícitamente dar de alta (agregar, crear) un proveedor, o confirma que querés
         darlo de alta después de que no lo encontraste. Nunca lo crees por tu cuenta."""
+        if bloqueo := turno.bloqueo("di de alta el proveedor"):
+            return bloqueo
         try:
             datos = {"nombre": nombre, "telefono": telefono, "email": email, "contacto": contacto}
             if rubro and rubro.strip():

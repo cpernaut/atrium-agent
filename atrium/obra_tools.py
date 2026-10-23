@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING
 from langchain_core.tools import BaseTool, StructuredTool
 
 from atrium import finanzas, obras, proveedores
+from atrium.guardia import Turno
 from atrium.proveedor_tools import build_proveedor_tools, resolver_proveedor
 
 if TYPE_CHECKING:
@@ -26,8 +27,15 @@ def build_obra_tools(
     autor: str | None,
     obra_activa: Callable[[], int | None],
     acciones: list[str],
+    pedido: str = "",
 ) -> list[BaseTool]:
-    """Tools bound to one user. ``obra_activa`` returns the obra picked in the UI."""
+    """Tools bound to one user and one turn.
+
+    ``obra_activa`` returns the obra picked in the UI; ``pedido`` is the user's
+    message of this turn (see ``atrium.guardia``: stored data can't trigger writes).
+    """
+
+    turno = Turno(pedido=pedido)
 
     def _resolver(obra: str | None) -> tuple[obras.Obra | None, str | None]:
         """(obra, None) on a unique match, else (None, message for the model)."""
@@ -52,7 +60,7 @@ def build_obra_tools(
         """Lista las obras del tracker. `estado` filtra opcionalmente: Planificación,
         En curso, Pausada, Terminada o Cancelada."""
         try:
-            return obras.describe_obras(obras.list_obras(client, estado or None))
+            return turno.datos(obras.describe_obras(obras.list_obras(client, estado or None)))
         except obras.ObrasError as exc:
             return f"Error al leer las obras: {exc}"
 
@@ -71,11 +79,13 @@ def build_obra_tools(
             texto += "\nÚltimas notas de bitácora:\n" + "\n".join(
                 f"- {n['fecha']} ({n.get('autor') or 's/autor'}): {n['nota']}" for n in notas
             )
-        return texto
+        return turno.datos(texto)
 
     def agregar_nota_bitacora(nota: str, obra: str | None = None, fecha: str | None = None) -> str:
         """Agrega una nota a la bitácora de una obra. Usala SOLO si el usuario pide
         explícitamente anotar o registrar algo. `fecha` en formato AAAA-MM-DD (vacío = hoy)."""
+        if bloqueo := turno.bloqueo("guardé la nota"):
+            return bloqueo
         try:
             encontrada, problema = _resolver(obra)
             if problema:
@@ -93,6 +103,8 @@ def build_obra_tools(
     ) -> str:
         """Actualiza el avance (0-100) y/o el estado de una obra. Usala SOLO si el
         usuario pide explícitamente cambiar esos datos."""
+        if bloqueo := turno.bloqueo("actualicé la obra"):
+            return bloqueo
         cambios: dict = {}
         if avance is not None:
             cambios["avance"] = avance
@@ -156,6 +168,8 @@ def build_obra_tools(
         `proveedor` (opcional) tiene que estar en la lista de proveedores del equipo.
         Si hay varios ítems o proveedores posibles, o ninguno, no guarda nada y hay que
         preguntar."""
+        if bloqueo := turno.bloqueo("registré el gasto"):
+            return bloqueo
         try:
             encontrada, problema = _resolver(obra)
             if problema:
@@ -204,7 +218,7 @@ def build_obra_tools(
             res = finanzas.resumen(client, encontrada["id"], moneda)
         except (obras.ObrasError, finanzas.FinanzasError) as exc:
             return f"No se pudo calcular el resumen: {exc}"
-        return finanzas.describe_resumen(res, encontrada["nombre"])
+        return turno.datos(finanzas.describe_resumen(res, encontrada["nombre"]))
 
     return [
         StructuredTool.from_function(fn)
@@ -216,4 +230,4 @@ def build_obra_tools(
             registrar_gasto,
             resumen_plata,
         )
-    ] + build_proveedor_tools(client, acciones)
+    ] + build_proveedor_tools(client, acciones, turno)
