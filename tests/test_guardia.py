@@ -10,13 +10,9 @@ from atrium.guardia import FIN, GASTO, INICIO, NOTA, OBRA, PROVEEDOR, Turno, pid
     [
         "Cargá 350 mil de hierro",
         "Anotá que llegó el hierro",
-        "dalo de alta",
-        "Sí, dá de alta a Hierros X",
         "Registrá la seña",
         "Pasá el avance a 70",
         "Cambiá el estado a Pausada",
-        "Agregalo como proveedor",
-        "Crealo",
         "¿Podés cargar 1000 de hierro?",
         "¿Me anotás que llegó el hierro?",
         "Quiero que cargues la seña",
@@ -121,7 +117,7 @@ def test_cada_pedido_autoriza_solo_su_accion():
         ("Anotá que llegó el hierro", NOTA),
         ("Pasá el avance a 70", OBRA),
         ("Poné la obra en pausa", OBRA),
-        ("Dalo de alta", PROVEEDOR),
+        ("Dalo de alta como proveedor", PROVEEDOR),
         ("Creá el proveedor Hierros X", PROVEEDOR),
     ],
 )
@@ -170,3 +166,16 @@ def test_agregar_otra_cosa_no_crea_proveedores(pedido):
 
 def test_no_agregues_el_proveedor():
     assert not pide_escritura("No agregues ese proveedor", accion=PROVEEDOR)
+
+
+@pytest.mark.parametrize(
+    "pedido", ["Creá una obra", "Crealo", "Dalo de alta", "Creá el rubro Piscina"]
+)
+def test_crear_sin_hablar_de_proveedores_no_crea_uno(pedido):
+    assert not pide_escritura(pedido, accion=PROVEEDOR)
+
+
+@pytest.mark.parametrize("pedido", ["Crealo", "Dalo de alta", "Sí, dalo de alta y cargá la seña"])
+def test_crear_proveedor_despues_de_la_propuesta(pedido):
+    propuesta = "No encontré a «Hierros X» en la lista. ¿Lo doy de alta?"
+    assert pide_escritura(pedido, propuesta, PROVEEDOR)

@@ -91,7 +91,7 @@ resultado esperado verificable.
 | F-06-CA-16b | «No cargues ese gasto» o un «sí» sin propuesta | No escribe aunque el modelo lo intente |
 | F-06-CA-12 | «¿Teléfono de Hierros Sur?» | El agente responde con la ficha real |
 | F-06-CA-13 | Gasto por chat con un proveedor que no existe | No guarda nada y pregunta |
-| F-06-CA-14 | «Dalo de alta y cargá la seña» | Alta del proveedor y gasto vinculado, con aviso |
+| F-06-CA-14 | «Dá de alta al proveedor y cargá la seña» | Alta del proveedor y gasto vinculado, con aviso |
 
 ## E2E simulado — F-03 Presupuesto y gastos (`tests/e2e/test_plata_flows.py` y `test_presupuesto_flows.py`)
 

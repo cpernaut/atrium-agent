@@ -379,7 +379,7 @@ def test_f06_ca_14_agente_da_de_alta_si_se_lo_piden(e2e):
         AIMessage(content="Listo: di de alta Hierros X y cargué la seña."),
     )
     at = e2e.abrir_agente(e2e.login())
-    at = at.chat_input[0].set_value("Sí, dalo de alta y cargá la seña").run()
+    at = at.chat_input[0].set_value("Sí, dá de alta al proveedor y cargá la seña").run()
 
     assert not at.exception
     assert "🏢 Proveedor agregado: «Hierros X»" in texts(at)

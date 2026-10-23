@@ -28,15 +28,14 @@ FIN = "[[FIN DE LOS DATOS]]"
 # authorizes only its own action: «cambiá el avance; no registres el gasto»
 # lets the agent update the obra, not register a gasto.
 GASTO, NOTA, OBRA, PROVEEDOR = "gasto", "nota", "obra", "proveedor"
-# «Agregá / sumá / registrá / cargá» create a proveedor only if the message says
-# «proveedor»: «agregá el gasto» must not let the agent create one.
-_PROVEEDOR_CON_NOMBRE = "proveedor_con_nombre"
+# Creating a proveedor needs context: the message says «proveedor», or the
+# agent's previous message proposed the alta («¿Lo doy de alta?» -> «dalo de
+# alta»). «Creá una obra» or «agregá el gasto» never let the agent create one.
 _VERBOS = {
     GASTO: ("carg", "registr", "agreg", "sum", "guard"),
     NOTA: ("anot", "registr", "agreg", "guard"),
     OBRA: ("actualiz", "cambi", "pas", "marc"),
-    PROVEEDOR: ("cre",),  # plus «dá de alta»: loading a gasto never creates one
-    _PROVEEDOR_CON_NOMBRE: ("agreg", "sum", "registr", "carg"),
+    PROVEEDOR: ("cre", "agreg", "sum", "registr", "carg"),  # plus «dá de alta»
 }
 _ENCLITICOS = r"(lo|la|los|las|le|les|me|nos)?"
 # Words that negate the verb right after them: «no cargues», «no lo anotes», «nunca».
@@ -94,12 +93,6 @@ def _verbo_afirmado(texto: str, accion: str) -> bool:
     el gasto?» asks about something done, it doesn't ask to do it.
     """
 
-    if (
-        accion == PROVEEDOR
-        and "proveedor" in texto
-        and _verbo_afirmado(texto, _PROVEEDOR_CON_NOMBRE)
-    ):
-        return True
     pedido, cortes, _ = _PATRONES[accion]
     patrones = (cortes,) if "?" in texto else (pedido, cortes)
     for patron in patrones:
@@ -128,7 +121,15 @@ def pide_escritura(pedido: str, propuesta: str = "", accion: str | None = None) 
     acciones = [accion] if accion else [GASTO, NOTA, OBRA, PROVEEDOR]
     if _CONFIRMA.match(texto):
         return any(propone_escritura(propuesta, a) for a in acciones)
-    return any(_verbo_afirmado(texto, a) for a in acciones)
+    return any(_verbo_afirmado(texto, a) for a in acciones if _con_contexto(texto, propuesta, a))
+
+
+def _con_contexto(texto: str, propuesta: str, accion: str) -> bool:
+    """Creating a proveedor needs the word «proveedor» or a pending proposal."""
+
+    if accion != PROVEEDOR:
+        return True
+    return "proveedor" in texto or propone_escritura(propuesta, PROVEEDOR)
 
 
 @dataclass
