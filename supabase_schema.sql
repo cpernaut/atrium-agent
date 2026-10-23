@@ -550,22 +550,36 @@ create table if not exists public.proveedor_calificaciones (
 create unique index if not exists proveedor_calificaciones_una_por_socio
     on public.proveedor_calificaciones (proveedor_id, creado_por);
 
-create or replace function public.calificacion_editada()
+-- El autor visible sale del login (el mail del JWT), nunca de lo que mande el
+-- cliente: nadie puede atribuirle una calificación a otra persona.
+create or replace function public.calificacion_firmada()
 returns trigger
 language plpgsql
 set search_path = ''
 as $$
+declare
+  mail text := nullif(current_setting('request.jwt.claims', true), '')::json ->> 'email';
 begin
-  new.editado_en := now();
+  if tg_op = 'UPDATE' then
+    new.editado_en := now();
+    new.autor := old.autor;
+  else
+    new.autor := null;
+  end if;
+  if mail is not null then
+    new.autor := mail;
+  end if;
   return new;
 end;
 $$;
-revoke execute on function public.calificacion_editada() from public, anon, authenticated;
+revoke execute on function public.calificacion_firmada() from public, anon, authenticated;
 
 drop trigger if exists proveedor_calificaciones_editada on public.proveedor_calificaciones;
-create trigger proveedor_calificaciones_editada
-    before update on public.proveedor_calificaciones
-    for each row execute function public.calificacion_editada();
+drop function if exists public.calificacion_editada();
+drop trigger if exists proveedor_calificaciones_firmada on public.proveedor_calificaciones;
+create trigger proveedor_calificaciones_firmada
+    before insert or update on public.proveedor_calificaciones
+    for each row execute function public.calificacion_firmada();
 
 alter table public.proveedor_calificaciones enable row level security;
 
@@ -602,7 +616,7 @@ create trigger proveedor_calificaciones_vigente
     for each row execute function public.calificacion_proveedor_vigente();
 
 revoke update on public.proveedor_calificaciones from authenticated, anon;
-grant update (estrellas, comentario, autor) on public.proveedor_calificaciones to authenticated;
+grant update (estrellas, comentario) on public.proveedor_calificaciones to authenticated;
 revoke insert on public.proveedor_calificaciones from anon;
 
 -- El proveedor de cada gasto sale de la lista. La columna de texto `proveedor`

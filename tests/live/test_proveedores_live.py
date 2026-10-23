@@ -36,7 +36,7 @@ def test_live_28_proveedores_solo_con_login(users, proveedor_de_a):
 
 def test_live_29_equipo_comparte_la_lista_y_cada_uno_su_calificacion(users, proveedor_de_a):
     """LIVE-29 (F-06 D2): B ve y edita el proveedor de A, no puede repetir su nombre ni
-    cambiar o firmar la calificación de A; cada uno tiene la suya."""
+    cambiar, firmar ni atribuirse a nombre de A una calificación; cada uno tiene la suya."""
 
     assert proveedores.get_proveedor(users.b.client, proveedor_de_a["id"])
     proveedores.update_proveedor(users.b.client, proveedor_de_a["id"], {"zona": "Quilmes"})
@@ -58,7 +58,17 @@ def test_live_29_equipo_comparte_la_lista_y_cada_uno_su_calificacion(users, prov
         users.b.client.table("proveedor_calificaciones").insert(
             {"proveedor_id": proveedor_de_a["id"], "estrellas": 1, "creado_por": users.a.id}
         ).execute()
-    proveedores.calificar(users.b.client, proveedor_de_a["id"], users.b.id, 3)
+    falsa = (
+        users.b.client.table("proveedor_calificaciones")
+        .insert({"proveedor_id": proveedor_de_a["id"], "estrellas": 3, "autor": users.a.email})
+        .execute()
+        .data[0]
+    )
+    assert falsa["autor"] == users.b.email  # la base firma con el login, no con lo enviado
+    with pytest.raises(APIError):
+        users.b.client.table("proveedor_calificaciones").update({"autor": users.a.email}).eq(
+            "id", falsa["id"]
+        ).execute()
     todas = proveedores.list_calificaciones(users.a.client, proveedor_de_a["id"])
     assert sorted(c["estrellas"] for c in todas) == [3, 5]
 

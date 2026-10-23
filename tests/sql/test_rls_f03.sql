@@ -6,7 +6,8 @@ create function pg_temp.como(rol text, uid text) returns void language plpgsql a
 begin
   perform set_config('request.jwt.claims',
     case when uid is null then '{"role":"anon"}'
-         else json_build_object('sub', uid, 'role', rol)::text end, false);
+         else json_build_object('sub', uid, 'role', rol,
+                                'email', right(uid, 1) || '@atrium.test')::text end, false);
   execute format('set role %I', rol);
 end $$;
 
@@ -273,8 +274,9 @@ select pg_temp.ok((select count(*) from public.proveedores where nombre = 'Hierr
                   'proveedores: nombre único y datos validados en la base; sin DELETE; autor fijo');
 
 -- Calificaciones: una por socio; cada uno escribe solo la suya.
-insert into public.proveedor_calificaciones (proveedor_id, estrellas, comentario)
-  select id, 4, 'Cumple' from public.proveedores where nombre = 'Hierros RLS';
+insert into public.proveedor_calificaciones (proveedor_id, estrellas, comentario, autor)
+  select id, 4, 'Cumple', 'b@atrium.test' from public.proveedores where nombre = 'Hierros RLS';
+select pg_temp.falla($$update public.proveedor_calificaciones set autor = 'b@atrium.test'$$, '42501');
 select pg_temp.falla($$insert into public.proveedor_calificaciones (proveedor_id, estrellas)
   select id, 5 from public.proveedores where nombre = 'Hierros RLS'$$, '23505');
 select pg_temp.falla($$insert into public.proveedor_calificaciones (proveedor_id, estrellas, creado_por)
@@ -283,8 +285,9 @@ select pg_temp.falla($$insert into public.proveedor_calificaciones (proveedor_id
 select pg_temp.falla($$update public.proveedor_calificaciones set estrellas = 6$$, '23514');
 select pg_temp.falla($$update public.proveedor_calificaciones set creado_por = null$$, '42501');
 update public.proveedor_calificaciones set estrellas = 5;
-select pg_temp.ok((select estrellas = 5 and editado_en is not null from public.proveedor_calificaciones),
-                  'calificaciones: 1 a 5, una por socio, nadie la firma por otro; queda la fecha de edición');
+select pg_temp.ok((select estrellas = 5 and editado_en is not null and autor = 'a@atrium.test'
+                     from public.proveedor_calificaciones),
+                  'calificaciones: 1 a 5, una por socio, firmadas con el mail del login (no el que se mande); queda la fecha de edición');
 
 -- El gasto elige un proveedor vigente; uno eliminado (archivado) no se elige,
 -- pero los gastos que ya lo tenían lo conservan y se siguen editando.

@@ -209,7 +209,8 @@ def _render_compras(supabase, pid: int) -> None:
     for obra in compras.obras:
         totales = " · ".join(finanzas.formato_monto(v, m) for m, v in sorted(obra.totales.items()))
         n = len(obra.gastos)
-        with st.expander(f"{obra.obra} · {n} gasto{'s' if n != 1 else ''} · {totales}"):
+        etiqueta = f"{obra.obra} · {n} gasto{'s' if n != 1 else ''} · {totales}"
+        with st.expander(texto_seguro(etiqueta)):
             for g in obra.gastos:
                 fecha = str(g.get("fecha") or "")[:10]
                 if len(fecha) == 10:

@@ -237,7 +237,7 @@ def test_f06_ca_7_compras_por_obra_y_moneda(e2e):
     at = _ficha(e2e, p["id"])
 
     assert "Total: ARS 1.000 · USD 100" in texts(at)
-    etiquetas = [e.label for e in at.expander]
+    etiquetas = [e.label.replace("\\", "") for e in at.expander]
     assert "Casa Lote 12 · 1 gasto · USD 100" in etiquetas
     assert "Palmeras 55 · 1 gasto · ARS 1.000" in etiquetas
     at = e2e.ir_a(at.button(key="prov_volver").click().run(), "proveedores")
@@ -403,3 +403,18 @@ def test_f06_ca_10b_proveedor_escrito_antes_se_conserva(e2e):
 
     guardado = finanzas.get_gasto(e2e.db, gasto["id"])
     assert (guardado["descripcion"], guardado["proveedor"]) == ("Seña final", "Y")
+
+
+def test_f06_ca_11b_nombre_de_obra_con_markdown_en_compras(e2e):
+    """F-06-CA-11b: el nombre de la obra en «Compras» de la ficha se muestra como texto,
+    aunque tenga Markdown (no carga imágenes ni links)."""
+
+    p = _proveedor(e2e, "Hierros Sur")
+    _, item = _obra_con_item(e2e, "![x](https://evil.test/a.png) Obra")
+    finanzas.add_gasto(
+        e2e.db, item["id"], monto=10, moneda="ARS", descripcion="x", proveedor_id=p["id"]
+    )
+    at = _ficha(e2e, p["id"])
+
+    etiquetas = [e.label for e in at.expander]
+    assert etiquetas and all("](https://evil.test" not in e or "\\]" in e for e in etiquetas)

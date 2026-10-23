@@ -57,7 +57,7 @@ Todas con RLS para `authenticated`, `creado_por` y permisos por columna.
 ## Reglas de negocio
 
 - R1. **Eliminar** pide confirmación y archiva: desaparece de la lista y de los gastos nuevos, pero sus gastos lo siguen mostrando («(eliminado)»). Se restaura desde «Mostrar eliminados».
-- R1b. **Calificaciones**: cada socio la suya (1 a 5 + comentario), editable; se muestra el promedio con el número y la cantidad. Nadie cambia la de otro (también en la base). Un eliminado no recibe calificaciones nuevas.
+- R1b. **Calificaciones**: cada socio la suya (1 a 5 + comentario), editable; se muestra el promedio con el número y la cantidad. Nadie cambia la de otro ni puede firmarla con otro nombre: la base pone como autor el mail del login. Un eliminado no recibe calificaciones nuevas.
 - R2. El gasto guarda `proveedor_id`; el proveedor es opcional. Ya no se escribe a mano (D3).
 - R3. Compras: por moneda, sin mezclar ARS y USD, solo gastos no anulados.
 - R4. Los botones de contacto se arman solo con datos validados: `tel:` y `https://wa.me/` con el número normalizado (+54; WhatsApp con 9), `mailto:` y `https://`. Todo el texto va escapado.

@@ -361,7 +361,7 @@ def calificar(
         .eq("creado_por", user_id)
         .limit(1)
     )
-    datos = {"estrellas": estrellas, "comentario": comentario, "autor": autor}
+    datos = {"estrellas": estrellas, "comentario": comentario}
     if mia:
         filas = _run(
             client.table("proveedor_calificaciones")
@@ -374,7 +374,8 @@ def calificar(
         return filas[0]
     if proveedor.get("archivado"):
         raise ProveedoresError("Este proveedor fue eliminado: restauralo para calificarlo.")
-    fila = {"proveedor_id": proveedor["id"], "creado_por": user_id, **datos}
+    # The database signs it with the login's email; ``autor`` only helps the fake.
+    fila = {"proveedor_id": proveedor["id"], "creado_por": user_id, "autor": autor, **datos}
     filas = _run(client.table("proveedor_calificaciones").insert(fila))
     return filas[0] if filas else fila
 
