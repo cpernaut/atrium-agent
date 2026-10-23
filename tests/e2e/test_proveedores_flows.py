@@ -473,3 +473,40 @@ def test_f06_ca_15b_si_el_usuario_lo_pide_si_escribe(e2e):
 
     assert not at.exception
     assert finanzas.list_gastos(e2e.db, 1)[0]["proveedor_id"] == p["id"]
+
+
+def test_f06_ca_16_confirmar_una_propuesta_del_agente(e2e):
+    """F-06-CA-16: si el agente pregunta «¿Lo doy de alta?» y el usuario responde «sí»,
+    da de alta el proveedor; un «sí» sin esa pregunta no escribe nada."""
+
+    e2e.script(
+        AIMessage(content="No encontré a «Hierros X» en la lista. ¿Lo doy de alta?"),
+        tool_call("crear_proveedor", {"nombre": "Hierros X"}, "c1"),
+        AIMessage(content="Listo, lo di de alta."),
+    )
+    at = e2e.abrir_agente(e2e.login())
+    at = at.chat_input[0].set_value("¿Tenemos a Hierros X?").run()
+    at = at.chat_input[0].set_value("Sí").run()
+
+    assert not at.exception
+    assert [p["nombre"] for p in proveedores.list_proveedores(e2e.db)] == ["Hierros X"]
+
+
+def test_f06_ca_16b_negar_no_escribe(e2e):
+    """F-06-CA-16b: «no cargues ese gasto» o un «sí» suelto no hacen escribir al
+    agente aunque el modelo lo intente."""
+
+    _, item = _obra_con_item(e2e)
+    gasto = {"monto": 1000, "descripcion": "Seña", "item": "hierro"}
+    e2e.script(
+        tool_call("registrar_gasto", gasto, "c1"),
+        AIMessage(content="Entendido."),
+        tool_call("registrar_gasto", gasto, "c2"),
+        AIMessage(content="Ok."),
+    )
+    at = e2e.abrir_agente(e2e.login())
+    at = at.chat_input[0].set_value("No cargues ese gasto todavía").run()
+    at = at.chat_input[0].set_value("Sí").run()
+
+    assert not at.exception
+    assert finanzas.list_gastos(e2e.db, 1) == []

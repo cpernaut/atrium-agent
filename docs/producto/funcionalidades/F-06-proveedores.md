@@ -84,7 +84,7 @@ Gasto:  Proveedor [Hierros Sur ▾]  + Nuevo proveedor
 - `crear_proveedor(...)`: **Usala SOLO si el usuario pide** darlo de alta o lo confirma.
 - `registrar_gasto(..., proveedor)`: si el proveedor no está en la lista, no guarda y pregunta (D6).
 - Nunca califica proveedores.
-- Lo que devuelven las herramientas de lectura va marcado como «datos cargados por usuarios». Las herramientas que escriben (todas, no solo las de proveedores) corren solo cuando el mensaje del usuario pide guardar o cambiar algo, o confirma lo que propuso el agente («sí», «dale»); una pregunta nunca escribe (`atrium/guardia.py`). Así, una nota con instrucciones no hace escribir al agente.
+- Lo que devuelven las herramientas de lectura va marcado como «datos cargados por usuarios». Las herramientas que escriben (todas, no solo las de proveedores) corren solo cuando el mensaje del usuario pide guardar o cambiar algo (sin negarlo: «no cargues» no cuenta), o responde «sí» a una propuesta de escritura del agente en su mensaje anterior («¿Lo doy de alta?»); una pregunta nunca escribe (`atrium/guardia.py`). Así, una nota con instrucciones no hace escribir al agente.
 
 ## Criterios de aceptación
 
@@ -103,6 +103,7 @@ Gasto:  Proveedor [Hierros Sur ▾]  + Nuevo proveedor
 - **F-06-CA-13**: el agente no guarda un gasto de un proveedor desconocido y pregunta.
 - **F-06-CA-14**: el agente da de alta un proveedor si se lo piden.
 - **F-06-CA-15**: instrucciones escondidas en las notas no hacen escribir al agente. **CA-15b:** si el usuario lo pide, sí.
+- **F-06-CA-16**: «sí» confirma una propuesta del agente. **CA-16b:** una negación o un «sí» suelto no escriben.
 - **LIVE-28/29/30**: sin login no se ve; cada socio su calificación; eliminado no se elige.
 
 ## Decisiones (Carolina, 23/10/2026)

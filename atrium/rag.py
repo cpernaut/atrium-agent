@@ -195,6 +195,7 @@ def build_graph(
                 lambda: state.get("obra_id"),
                 acciones,
                 pedido=state["mensajes"][-1],
+                propuesta=state["mensajes"][-2] if len(state["mensajes"]) > 1 else "",
             )
             prompt += _TOOLS_PROMPT
 

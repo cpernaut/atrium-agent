@@ -28,14 +28,16 @@ def build_obra_tools(
     obra_activa: Callable[[], int | None],
     acciones: list[str],
     pedido: str = "",
+    propuesta: str = "",
 ) -> list[BaseTool]:
     """Tools bound to one user and one turn.
 
     ``obra_activa`` returns the obra picked in the UI; ``pedido`` is the user's
-    message of this turn (see ``atrium.guardia``: stored data can't trigger writes).
+    message of this turn and ``propuesta`` the agent's previous one (see
+    ``atrium.guardia``: only the user can ask for, or confirm, a write).
     """
 
-    turno = Turno(pedido=pedido)
+    turno = Turno(pedido=pedido, propuesta=propuesta)
 
     def _resolver(obra: str | None) -> tuple[obras.Obra | None, str | None]:
         """(obra, None) on a unique match, else (None, message for the model)."""
