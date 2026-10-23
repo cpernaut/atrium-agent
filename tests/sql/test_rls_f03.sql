@@ -85,6 +85,10 @@ select pg_temp.ok(
   and not exists (select 1 from public.gastos where not public.texto_limpio(descripcion)),
   'texto limpio #53: los datos ya guardados se limpian solos (invisibles y marcadores)');
 select pg_temp.ok(
+  exists (select 1 from public.obras where nombre = 'Sin nombre' and cliente is null)
+  and exists (select 1 from public.gastos where descripcion = 'Sin descripción' and monto = 5),
+  'texto limpio #53: un texto que queda vacío al limpiarse toma un reemplazo (obligatorio) o queda vacío (opcional)');
+select pg_temp.ok(
   (select count(*) from public.proveedores where nombre in ('Pinturas Z')
       or nombre ~ '^Pinturas Z \([0-9]+\)$') = 2
   and (select count(distinct g.proveedor_id) from public.gastos g
@@ -243,6 +247,10 @@ select pg_temp.falla($$insert into public.bitacora (obra_id, nota)
 select pg_temp.falla($$update public.obras set cliente = E'Pérez\u202E' where nombre = 'Obra RLS'$$, '23514');
 select pg_temp.falla($$insert into public.rubros (nombre) values (E'Pileta\x07')$$, '23514');
 select pg_temp.falla($$insert into public.rubros (nombre) values (E'Pileta\u0085')$$, '23514');
+select pg_temp.falla($$insert into public.rubros (nombre) values (E'Pile\tta')$$, '23514');
+select pg_temp.falla($$insert into public.rubros (nombre) values (E'Pileta\u061C')$$, '23514');
+select pg_temp.falla($$insert into public.rubros (nombre) values (E'Pileta\u2028')$$, '23514');
+select pg_temp.falla($$insert into public.rubros (nombre) values (E'Pileta\U000E0041')$$, '23514');
 insert into public.bitacora (obra_id, nota)
   select id, E'Llegó el hierro: 12 m² y caño n.º 3 — «ñandú» 👍\nSegunda línea' from public.obras
    where nombre = 'Obra RLS';

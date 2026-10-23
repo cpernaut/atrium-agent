@@ -732,6 +732,10 @@ alter table public.gastos enable trigger gastos_editado;
 -- parecen órdenes para el agente (atrium/sanidad.py).
 -- --------------------------------------------------------------------------- --
 
+-- Igual que sanidad.limpiar(): tabulación -> espacio, CR -> salto de línea, y fuera
+-- los controles (C0 salvo el salto de línea, DEL, C1) y los caracteres de formato,
+-- uso privado y separadores de línea/párrafo (categorías Unicode Cf, Co, Zl, Zp;
+-- rangos generados con unicodedata de Python).
 create or replace function public.limpiar_texto(t text)
 returns text
 language sql
@@ -741,8 +745,8 @@ set search_path = ''
 as $$
     select replace(replace(
         pg_catalog.regexp_replace(
-            t,
-            '[\x01-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F\u00AD\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF]',
+            replace(replace(replace(t, E'\r\n', E'\n'), E'\r', E'\n'), E'\t', ' '),
+            '[\x01-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F\u00AD\u0600-\u0605\u061C\u06DD\u070F\u0890-\u0891\u08E2\u180E\u200B-\u200F\u2028-\u202E\u2060-\u2064\u2066-\u206F\uE000-\uF8FF\uFEFF\uFFF9-\uFFFB\U000110BD\U000110CD\U00013430-\U0001343F\U0001BCA0-\U0001BCA3\U0001D173-\U0001D17A\U000E0001\U000E0020-\U000E007F\U000F0000-\U000FFFFD\U00100000-\U0010FFFD]',
             '', 'g'),
         '[[', '[ ['), ']]', '] ]')
 $$;
@@ -765,18 +769,27 @@ grant execute on function public.texto_limpio(text) to authenticated, service_ro
 -- triggers que registran ediciones no corren mientras tanto.
 alter table public.gastos disable trigger gastos_editado;
 alter table public.proveedor_calificaciones disable trigger proveedor_calificaciones_firmada;
-update public.obras set nombre = public.limpiar_texto(nombre) where not public.texto_limpio(nombre);
-update public.obras set cliente = public.limpiar_texto(cliente) where not public.texto_limpio(cliente);
-update public.obras set direccion = public.limpiar_texto(direccion)
+-- Un texto obligatorio que queda vacío al limpiarse (solo tenía invisibles) toma un
+-- reemplazo («Sin nombre», «Sin descripción», «(sin texto)»); uno opcional, null.
+update public.obras
+   set nombre = coalesce(nullif(btrim(public.limpiar_texto(nombre)), ''), 'Sin nombre')
+ where not public.texto_limpio(nombre);
+update public.obras set cliente = nullif(btrim(public.limpiar_texto(cliente)), '')
+ where not public.texto_limpio(cliente);
+update public.obras set direccion = nullif(btrim(public.limpiar_texto(direccion)), '')
  where not public.texto_limpio(direccion);
-update public.obras set responsable = public.limpiar_texto(responsable)
+update public.obras set responsable = nullif(btrim(public.limpiar_texto(responsable)), '')
  where not public.texto_limpio(responsable);
-update public.bitacora set nota = public.limpiar_texto(nota) where not public.texto_limpio(nota);
-update public.presupuesto_items set descripcion = public.limpiar_texto(descripcion)
+update public.bitacora
+   set nota = coalesce(nullif(btrim(public.limpiar_texto(nota)), ''), '(sin texto)')
+ where not public.texto_limpio(nota);
+update public.presupuesto_items
+   set descripcion = nullif(btrim(public.limpiar_texto(descripcion)), '')
  where not public.texto_limpio(descripcion);
-update public.gastos set descripcion = public.limpiar_texto(descripcion)
+update public.gastos
+   set descripcion = coalesce(nullif(btrim(public.limpiar_texto(descripcion)), ''), 'Sin descripción')
  where not public.texto_limpio(descripcion);
-update public.gastos set proveedor = public.limpiar_texto(proveedor)
+update public.gastos set proveedor = nullif(btrim(public.limpiar_texto(proveedor)), '')
  where not public.texto_limpio(proveedor);
 -- Rubros y proveedores tienen nombre único (rubro_clave) y un largo mínimo. Fila
 -- por fila, cada nombre sucio toma su versión limpia; si queda vacío o corto pasa a
@@ -818,11 +831,14 @@ begin
     end loop;
 end
 $$;
-update public.proveedores set contacto = public.limpiar_texto(contacto)
+update public.proveedores set contacto = nullif(btrim(public.limpiar_texto(contacto)), '')
  where not public.texto_limpio(contacto);
-update public.proveedores set zona = public.limpiar_texto(zona) where not public.texto_limpio(zona);
-update public.proveedores set notas = public.limpiar_texto(notas) where not public.texto_limpio(notas);
-update public.proveedor_calificaciones set comentario = public.limpiar_texto(comentario)
+update public.proveedores set zona = nullif(btrim(public.limpiar_texto(zona)), '')
+ where not public.texto_limpio(zona);
+update public.proveedores set notas = nullif(btrim(public.limpiar_texto(notas)), '')
+ where not public.texto_limpio(notas);
+update public.proveedor_calificaciones
+   set comentario = nullif(btrim(public.limpiar_texto(comentario)), '')
  where not public.texto_limpio(comentario);
 alter table public.gastos enable trigger gastos_editado;
 alter table public.proveedor_calificaciones enable trigger proveedor_calificaciones_firmada;

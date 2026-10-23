@@ -23,3 +23,8 @@ select o.id, r.id, x.descripcion, 10, 'USD', x.anulado, x.proveedor
 -- #53: rubros que solo difieren por un invisible o un control C1.
 insert into public.rubros (nombre) values ('Acme'), (E'Acme\u200B'), (E'Ac\u0085me'),
     ('Acme (2)'), (E'\u200B\u200B\u200B'), (E'\u200B\u200C');
+-- #53: una obra cuyo nombre son solo invisibles, y un gasto igual.
+insert into public.obras (nombre, cliente) values (E'\u200B\u2060', E'\t\u061C');
+insert into public.gastos (obra_id, rubro_id, descripcion, monto, moneda)
+select o.id, r.id, E'\u200B', 5, 'USD' from public.obras o, public.rubros r
+ where o.nombre = 'Obra previa' and r.nombre = 'Pintura';
