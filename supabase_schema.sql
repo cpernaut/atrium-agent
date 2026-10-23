@@ -726,7 +726,8 @@ alter table public.gastos enable trigger gastos_editado;
 
 -- --------------------------------------------------------------------------- --
 -- #53 · Texto limpio: lo que se guarda no lleva caracteres de control ni
--- invisibles (ancho cero, cambio de dirección, BOM) ni los marcadores [[ ]] con
+-- invisibles (ancho cero, cambio de dirección, BOM), ni controles C0, DEL y C1
+-- (U+0080–U+009F) como atrium/sanidad.py, ni los marcadores [[ ]] con
 -- los que la app le entrega datos al agente. La app además rechaza textos que
 -- parecen órdenes para el agente (atrium/sanidad.py).
 -- --------------------------------------------------------------------------- --
@@ -741,7 +742,7 @@ as $$
     select replace(replace(
         pg_catalog.regexp_replace(
             t,
-            '[\x01-\x08\x0B\x0C\x0E-\x1F\x7F\u00AD\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF]',
+            '[\x01-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F\u00AD\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF]',
             '', 'g'),
         '[[', '[ ['), ']]', '] ]')
 $$;
@@ -777,8 +778,33 @@ update public.gastos set descripcion = public.limpiar_texto(descripcion)
  where not public.texto_limpio(descripcion);
 update public.gastos set proveedor = public.limpiar_texto(proveedor)
  where not public.texto_limpio(proveedor);
-update public.rubros set nombre = public.limpiar_texto(nombre) where not public.texto_limpio(nombre);
-update public.proveedores set nombre = public.limpiar_texto(nombre)
+-- Rubros y proveedores tienen nombre único (rubro_clave): si al limpiar un nombre
+-- queda igual a otro («Acme» y «Acme» con un invisible), no se fusionan ni se
+-- pierde nada: el primero toma el nombre limpio y los demás le suman su número
+-- («Acme (7)»), cada uno con sus gastos, ítems y calificaciones.
+update public.rubros r set nombre = public.limpiar_texto(r.nombre)
+ where not public.texto_limpio(r.nombre)
+   and not exists (select 1 from public.rubros o
+                    where o.id <> r.id and public.texto_limpio(o.nombre)
+                      and public.rubro_clave(o.nombre)
+                          = public.rubro_clave(public.limpiar_texto(r.nombre)))
+   and r.id = (select min(d.id) from public.rubros d
+                where not public.texto_limpio(d.nombre)
+                  and public.rubro_clave(public.limpiar_texto(d.nombre))
+                      = public.rubro_clave(public.limpiar_texto(r.nombre)));
+update public.rubros set nombre = left(public.limpiar_texto(nombre), 48) || ' (' || id || ')'
+ where not public.texto_limpio(nombre);
+update public.proveedores p set nombre = public.limpiar_texto(p.nombre)
+ where not public.texto_limpio(p.nombre)
+   and not exists (select 1 from public.proveedores o
+                    where o.id <> p.id and public.texto_limpio(o.nombre)
+                      and public.rubro_clave(o.nombre)
+                          = public.rubro_clave(public.limpiar_texto(p.nombre)))
+   and p.id = (select min(d.id) from public.proveedores d
+                where not public.texto_limpio(d.nombre)
+                  and public.rubro_clave(public.limpiar_texto(d.nombre))
+                      = public.rubro_clave(public.limpiar_texto(p.nombre)));
+update public.proveedores set nombre = left(public.limpiar_texto(nombre), 100) || ' (' || id || ')'
  where not public.texto_limpio(nombre);
 update public.proveedores set contacto = public.limpiar_texto(contacto)
  where not public.texto_limpio(contacto);

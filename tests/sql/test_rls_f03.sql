@@ -29,7 +29,8 @@ begin
 end $$;
 
 -- ----- precarga -----
-select pg_temp.ok((select count(*) from public.rubros) = 18, 'precarga: 18 rubros');
+select pg_temp.ok((select count(*) from public.rubros where nombre not like 'Acme%') = 18,
+                  'precarga: 18 rubros (además de los «Acme» de la migración #53)');
 select pg_temp.ok(exists(select 1 from public.rubros where nombre = 'Steel frame' and orden = 50),
                   'precarga: Steel frame');
 
@@ -65,7 +66,7 @@ select pg_temp.ok(
 
 -- ----- migración #37: proveedores escritos a mano -> lista de proveedores -----
 select pg_temp.ok(
-  (select count(*) from public.proveedores) = 2
+  (select count(*) from public.proveedores where nombre not like 'Pinturas Z%') = 2
   and exists (select 1 from public.proveedores where nombre = 'Hierros del Sur')
   and not exists (select 1 from public.proveedores where public.rubro_clave(nombre) = 'hierros sur')
   and (select proveedor = 'Y' and proveedor_id is null from public.gastos
@@ -83,6 +84,15 @@ select pg_temp.ok(
   exists (select 1 from public.gastos where descripcion = 'Gasto previo con invisibles y [ [marcas] ]')
   and not exists (select 1 from public.gastos where not public.texto_limpio(descripcion)),
   'texto limpio #53: los datos ya guardados se limpian solos (invisibles y marcadores)');
+select pg_temp.ok(
+  (select count(*) from public.proveedores where nombre in ('Pinturas Z')
+      or nombre ~ '^Pinturas Z \([0-9]+\)$') = 2
+  and (select count(distinct g.proveedor_id) from public.gastos g
+        where g.descripcion like 'Gasto de Pinturas Z%') = 2
+  and (select count(*) from public.rubros where nombre = 'Acme' or nombre ~ '^Acme \([0-9]+\)$') = 3
+  and not exists (select 1 from public.rubros where not public.texto_limpio(nombre))
+  and not exists (select 1 from public.proveedores where not public.texto_limpio(nombre)),
+  'texto limpio #53: nombres que al limpiarse coinciden no chocan: el primero queda limpio, los demás con su número y sus datos');
 
 -- ----- usuario A logueado -----
 select pg_temp.como('authenticated', '00000000-0000-0000-0000-00000000000a');
@@ -231,6 +241,7 @@ select pg_temp.falla($$insert into public.bitacora (obra_id, nota)
   select id, 'Nota [[DATOS]] falsa' from public.obras where nombre = 'Obra RLS'$$, '23514');
 select pg_temp.falla($$update public.obras set cliente = E'Pérez\u202E' where nombre = 'Obra RLS'$$, '23514');
 select pg_temp.falla($$insert into public.rubros (nombre) values (E'Pileta\x07')$$, '23514');
+select pg_temp.falla($$insert into public.rubros (nombre) values (E'Pileta\u0085')$$, '23514');
 insert into public.bitacora (obra_id, nota)
   select id, E'Llegó el hierro: 12 m² y caño n.º 3 — «ñandú» 👍\nSegunda línea' from public.obras
    where nombre = 'Obra RLS';
@@ -371,7 +382,7 @@ delete from public.rubros;
 select pg_temp.ok((select count(*) from public.gastos where descripcion = 'Hierro') = 1
                   and (select count(*) from public.presupuesto_items i join public.obras o on o.id = i.obra_id
                        where o.nombre = 'Obra RLS') = 6
-                  and (select count(*) from public.rubros) = 20,
+                  and (select count(*) from public.rubros where nombre not like 'Acme%') = 20,
                   'sin DELETE: gastos, presupuesto y rubros no se borran');
 
 -- Borrar (anular) un ítem anula también sus gastos (R12b).

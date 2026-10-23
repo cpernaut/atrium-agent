@@ -24,7 +24,7 @@ from typing import Any
 
 # Invisible or direction-changing characters (Unicode "format" category covers
 # most; listed ones are the usual suspects, kept explicit for readability).
-_INVISIBLES = re.compile("[​-‏‪-‮⁠-⁤⁦-⁩﻿­]")
+_INVISIBLES = re.compile("[\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff\u00ad]")
 
 # Full-width look-alikes («ｉｇｎｏｒá») -> plain ASCII. Not NFKC: it would also
 # turn «n.º» into «n.o» and «m²» into «m2».
@@ -107,9 +107,12 @@ def limpiar(valor: Any, multilinea: bool = False) -> str | None:
 def motivo_sospecha(texto: str | None) -> str | None:
     """Why ``texto`` looks like an instruction for the agent, or None if it doesn't."""
 
-    if not texto:
+    # Detect on the cleaned text: stored text (saved before #53 or bypassing the
+    # app) may still hide words behind invisible, control or full-width characters.
+    limpio = limpiar(texto, multilinea=True)
+    if not limpio:
         return None
-    normal = _sin_tildes(texto)
+    normal = _sin_tildes(limpio)
     for herramienta in HERRAMIENTAS:
         if herramienta in normal:
             return f"nombra una herramienta del agente ({herramienta})"
