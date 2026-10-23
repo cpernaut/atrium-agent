@@ -33,3 +33,7 @@ insert into public.gastos (obra_id, rubro_id, descripcion, monto, moneda)
 select o.id, r.id, U&'Gasto en \FF41\FF4E\FF43\FF48\FF4F completo', 7, 'USD'
   from public.obras o, public.rubros r
  where o.nombre = 'Obra previa' and r.nombre = 'Pintura';
+-- #53: espacios de más y autor con invisibles.
+insert into public.bitacora (obra_id, nota, autor)
+select id, E'  Llegó   el\u00A0hierro  \n\n\n\n segunda   línea ', E'caro\u200B@x.test'
+  from public.obras where nombre = 'Obra previa';

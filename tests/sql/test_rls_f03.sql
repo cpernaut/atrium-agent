@@ -89,6 +89,11 @@ select pg_temp.ok(
   and exists (select 1 from public.gastos where descripcion = 'Gasto en ancho completo'),
   'texto limpio #53: el ancho completo pasa a ASCII, también en los datos ya guardados');
 select pg_temp.ok(
+  exists (select 1 from public.bitacora
+           where nota = E'Llegó el hierro\n\nsegunda línea' and autor = 'caro@x.test')
+  and public.limpiar_texto('  a   b  ') = 'a b',
+  'texto limpio #53: espacios como la app (uno solo, sin bordes, a lo sumo una línea en blanco); el autor también se limpia');
+select pg_temp.ok(
   exists (select 1 from public.obras where nombre = 'Sin nombre' and cliente is null)
   and exists (select 1 from public.gastos where descripcion = 'Sin descripción' and monto = 5),
   'texto limpio #53: un texto que queda vacío al limpiarse toma un reemplazo (obligatorio) o queda vacío (opcional)');
@@ -252,6 +257,7 @@ select pg_temp.falla($$update public.obras set cliente = E'Pérez\u202E' where n
 select pg_temp.falla($$insert into public.rubros (nombre) values (E'Pileta\x07')$$, '23514');
 select pg_temp.falla($$insert into public.rubros (nombre) values (E'Pileta\u0085')$$, '23514');
 select pg_temp.falla($$insert into public.rubros (nombre) values (E'Pile\tta')$$, '23514');
+select pg_temp.falla($$insert into public.rubros (nombre) values ('Pileta  doble')$$, '23514');
 select pg_temp.falla($$insert into public.rubros (nombre) values (U&'\FF49\FF47\FF4E\FF4F\FF52a')$$, '23514');
 select pg_temp.falla($$insert into public.bitacora (obra_id, nota)
   select id, U&'Nota \FF3B\FF3BDATOS\FF3D\FF3D' from public.obras where nombre = 'Obra RLS'$$, '23514');
@@ -268,13 +274,15 @@ select pg_temp.ok((select count(*) = 1 from public.bitacora where nota like 'Lle
 
 -- Rubros: alta preparada, nombres únicos sin importar mayúsculas ni espacios.
 insert into public.rubros (nombre, orden) values ('Piscina', 500);
-select pg_temp.falla($$insert into public.rubros (nombre) values ('  piscina ')$$, '23505');
+select pg_temp.falla($$insert into public.rubros (nombre) values ('Píscina')$$, '23505');
+-- #53: con espacios de más ni siquiera es texto limpio.
+select pg_temp.falla($$insert into public.rubros (nombre) values ('  piscina ')$$, '23514');
 select pg_temp.falla($$insert into public.rubros (nombre) values ('ESTRUCTURA')$$, '23505');
 select pg_temp.falla($$insert into public.rubros (nombre) values ('x')$$, '23514');
 select pg_temp.falla($$insert into public.rubros (nombre) values ('Mamposteria')$$, '23505');
 select pg_temp.falla($$insert into public.rubros (nombre) values ('MAMPOSTERÍA')$$, '23505');
-select pg_temp.falla($$insert into public.rubros (nombre) values ('Steel   Frame')$$, '23505');
-select pg_temp.falla($$insert into public.rubros (nombre) values ('instalacion  ELECTRICA')$$, '23505');
+select pg_temp.falla($$insert into public.rubros (nombre) values ('STEEL frame')$$, '23505');
+select pg_temp.falla($$insert into public.rubros (nombre) values ('instalacion ELECTRICA')$$, '23505');
 update public.rubros set activo = false where nombre = 'Piscina';
 select pg_temp.ok(true, 'rubros: alta, duplicados (mayúsculas, tildes, espacios) rechazados, desactivar');
 
@@ -309,7 +317,8 @@ insert into public.proveedores (nombre, telefono, email, web, cuit, rubro_ids)
          array[(select id from public.rubros where nombre = 'Estructura')];
 select pg_temp.ok((select creado_por from public.proveedores where nombre = 'Hierros RLS')
                   = '00000000-0000-0000-0000-00000000000a', 'proveedor firmado por su autor');
-select pg_temp.falla($$insert into public.proveedores (nombre) values ('  HIERROS   rls ')$$, '23505');
+select pg_temp.falla($$insert into public.proveedores (nombre) values ('HIERROS rls')$$, '23505');
+select pg_temp.falla($$insert into public.proveedores (nombre) values ('  HIERROS   rls ')$$, '23514');
 select pg_temp.falla($$insert into public.proveedores (nombre) values ('x')$$, '23514');
 select pg_temp.falla($$insert into public.proveedores (nombre, email) values ('Mail malo', 'no-es-mail')$$, '23514');
 select pg_temp.falla($$insert into public.proveedores (nombre, email)
