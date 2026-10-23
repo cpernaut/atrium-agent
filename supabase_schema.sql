@@ -732,7 +732,8 @@ alter table public.gastos enable trigger gastos_editado;
 -- parecen órdenes para el agente (atrium/sanidad.py).
 -- --------------------------------------------------------------------------- --
 
--- Igual que sanidad.limpiar(): tabulación -> espacio, CR -> salto de línea, y fuera
+-- Igual que sanidad.limpiar(): tabulación -> espacio, CR -> salto de línea, ancho
+-- completo -> ASCII, y fuera
 -- los controles (C0 salvo el salto de línea, DEL, C1) y los caracteres de formato,
 -- uso privado y separadores de línea/párrafo (categorías Unicode Cf, Co, Zl, Zp;
 -- rangos generados con unicodedata de Python).
@@ -745,7 +746,11 @@ set search_path = ''
 as $$
     select replace(replace(
         pg_catalog.regexp_replace(
-            replace(replace(replace(t, E'\r\n', E'\n'), E'\r', E'\n'), E'\t', ' '),
+            pg_catalog.translate(
+                replace(replace(replace(t, E'\r\n', E'\n'), E'\r', E'\n'), E'\t', ' '),
+                -- Ancho completo («ｉｇｎｏｒá», «［［») -> ASCII, como sanidad.limpiar.
+                U&'\FF01\FF02\FF03\FF04\FF05\FF06\FF07\FF08\FF09\FF0A\FF0B\FF0C\FF0D\FF0E\FF0F\FF10\FF11\FF12\FF13\FF14\FF15\FF16\FF17\FF18\FF19\FF1A\FF1B\FF1C\FF1D\FF1E\FF1F\FF20\FF21\FF22\FF23\FF24\FF25\FF26\FF27\FF28\FF29\FF2A\FF2B\FF2C\FF2D\FF2E\FF2F\FF30\FF31\FF32\FF33\FF34\FF35\FF36\FF37\FF38\FF39\FF3A\FF3B\FF3C\FF3D\FF3E\FF3F\FF40\FF41\FF42\FF43\FF44\FF45\FF46\FF47\FF48\FF49\FF4A\FF4B\FF4C\FF4D\FF4E\FF4F\FF50\FF51\FF52\FF53\FF54\FF55\FF56\FF57\FF58\FF59\FF5A\FF5B\FF5C\FF5D\FF5E\3000',
+                U&'\0021\0022\0023\0024\0025\0026\0027\0028\0029\002A\002B\002C\002D\002E\002F\0030\0031\0032\0033\0034\0035\0036\0037\0038\0039\003A\003B\003C\003D\003E\003F\0040\0041\0042\0043\0044\0045\0046\0047\0048\0049\004A\004B\004C\004D\004E\004F\0050\0051\0052\0053\0054\0055\0056\0057\0058\0059\005A\005B\005C\005D\005E\005F\0060\0061\0062\0063\0064\0065\0066\0067\0068\0069\006A\006B\006C\006D\006E\006F\0070\0071\0072\0073\0074\0075\0076\0077\0078\0079\007A\007B\007C\007D\007E\0020'),
             '[\x01-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F\u00AD\u0600-\u0605\u061C\u06DD\u070F\u0890-\u0891\u08E2\u180E\u200B-\u200F\u2028-\u202E\u2060-\u2064\u2066-\u206F\uE000-\uF8FF\uFEFF\uFFF9-\uFFFB\U000110BD\U000110CD\U00013430-\U0001343F\U0001BCA0-\U0001BCA3\U0001D173-\U0001D17A\U000E0001\U000E0020-\U000E007F\U000F0000-\U000FFFFD\U00100000-\U0010FFFD]',
             '', 'g'),
         '[[', '[ ['), ']]', '] ]')

@@ -28,3 +28,8 @@ insert into public.obras (nombre, cliente) values (E'\u200B\u2060', E'\t\u061C')
 insert into public.gastos (obra_id, rubro_id, descripcion, monto, moneda)
 select o.id, r.id, E'\u200B', 5, 'USD' from public.obras o, public.rubros r
  where o.nombre = 'Obra previa' and r.nombre = 'Pintura';
+-- #53: texto guardado en ancho completo.
+insert into public.gastos (obra_id, rubro_id, descripcion, monto, moneda)
+select o.id, r.id, U&'Gasto en \FF41\FF4E\FF43\FF48\FF4F completo', 7, 'USD'
+  from public.obras o, public.rubros r
+ where o.nombre = 'Obra previa' and r.nombre = 'Pintura';

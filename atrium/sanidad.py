@@ -68,10 +68,16 @@ _SOSPECHAS: tuple[tuple[re.Pattern, str], ...] = (
         re.compile(r"\b(ahora sos|a partir de ahora sos|you are now|from now on you)\b"),
         "le dice al agente qué ser",
     ),
-    (re.compile(r"(?m)^\s*(system|assistant|developer)\s*:"), "imita un rol"),
+    (
+        re.compile(
+            # English role names only: «Sistema: losa radiante» is a normal note.
+            r"(?m)^\s*(system|assistant|developer|user|human|tool|function)\s*:"
+        ),
+        "imita un rol",
+    ),
     (re.compile(r"\[\[|\]\]"), "usa los marcadores internos [[ ]]"),
     (
-        re.compile(r"<\s*/?\s*(system|assistant|user|script|iframe|img|svg|object|embed)\b"),
+        re.compile(r"</?[a-z][a-z0-9:-]*(\s[^<>]*)?/?>|<\s*/?\s*(script|iframe|img|svg)\b"),
         "tiene etiquetas HTML o de rol",
     ),
     (re.compile(r"\b(javascript|vbscript|data)\s*:"), "tiene un enlace ejecutable"),

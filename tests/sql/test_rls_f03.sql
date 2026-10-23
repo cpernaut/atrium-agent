@@ -85,6 +85,10 @@ select pg_temp.ok(
   and not exists (select 1 from public.gastos where not public.texto_limpio(descripcion)),
   'texto limpio #53: los datos ya guardados se limpian solos (invisibles y marcadores)');
 select pg_temp.ok(
+  public.limpiar_texto(U&'\FF49\FF47\FF4E\FF4F\FF52\3000\FF3B\FF3Bx\FF3D\FF3D') = 'ignor [ [x] ]'
+  and exists (select 1 from public.gastos where descripcion = 'Gasto en ancho completo'),
+  'texto limpio #53: el ancho completo pasa a ASCII, también en los datos ya guardados');
+select pg_temp.ok(
   exists (select 1 from public.obras where nombre = 'Sin nombre' and cliente is null)
   and exists (select 1 from public.gastos where descripcion = 'Sin descripción' and monto = 5),
   'texto limpio #53: un texto que queda vacío al limpiarse toma un reemplazo (obligatorio) o queda vacío (opcional)');
@@ -248,6 +252,9 @@ select pg_temp.falla($$update public.obras set cliente = E'Pérez\u202E' where n
 select pg_temp.falla($$insert into public.rubros (nombre) values (E'Pileta\x07')$$, '23514');
 select pg_temp.falla($$insert into public.rubros (nombre) values (E'Pileta\u0085')$$, '23514');
 select pg_temp.falla($$insert into public.rubros (nombre) values (E'Pile\tta')$$, '23514');
+select pg_temp.falla($$insert into public.rubros (nombre) values (U&'\FF49\FF47\FF4E\FF4F\FF52a')$$, '23514');
+select pg_temp.falla($$insert into public.bitacora (obra_id, nota)
+  select id, U&'Nota \FF3B\FF3BDATOS\FF3D\FF3D' from public.obras where nombre = 'Obra RLS'$$, '23514');
 select pg_temp.falla($$insert into public.proveedores (nombre, web)
   values ('Web invisible', E'https://x.test/?q=java\u200Bscript:alert(1)')$$, '23514');
 select pg_temp.falla($$insert into public.rubros (nombre) values (E'Pileta\u061C')$$, '23514');
