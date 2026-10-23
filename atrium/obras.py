@@ -84,6 +84,43 @@ def obra_por_defecto(lista: list[Obra], ultima: int | None = None) -> int | None
     return ordenar_para_elegir(lista)[0]["id"]
 
 
+# --------------------------------------------------------------------------- #
+# Obra activa: remembered per user across sessions and devices (#49 D9)
+# --------------------------------------------------------------------------- #
+CLAVE_OBRA_ACTIVA = "obra_activa"  # key in the user's metadata (Supabase Auth)
+
+
+def obra_activa_guardada(user: Any) -> int | None:
+    """The obra this user worked on last, as saved in their metadata.
+
+    The metadata is editable by the user, so the value is treated as untrusted:
+    anything that is not a positive id is ignored (and ``obra_por_defecto``
+    only uses it if that obra exists).
+    """
+
+    metadata = getattr(user, "user_metadata", None) or {}
+    valor = metadata.get(CLAVE_OBRA_ACTIVA) if isinstance(metadata, dict) else None
+    if isinstance(valor, bool):
+        return None
+    try:
+        valor = int(valor)
+    except (TypeError, ValueError):
+        return None
+    return valor if valor > 0 else None
+
+
+def guardar_obra_activa(client: Client, user: Any, obra_id: int) -> None:
+    """Remember ``obra_id`` as this user's obra activa (their own metadata only)."""
+
+    try:
+        client.auth.update_user({"data": {CLAVE_OBRA_ACTIVA: int(obra_id)}})
+    except Exception as exc:  # noqa: BLE001 - wrap the provider error
+        raise ObrasError(f"No se pudo recordar la obra activa: {exc}") from exc
+    metadata = getattr(user, "user_metadata", None)
+    if isinstance(metadata, dict):
+        metadata[CLAVE_OBRA_ACTIVA] = int(obra_id)
+
+
 def get_obra(client: Client, obra_id: int) -> Obra | None:
     rows = _run(client.table("obras").select("*").eq("id", obra_id).limit(1))
     return rows[0] if rows else None
@@ -107,9 +144,34 @@ def create_obra(client: Client, datos: dict[str, Any]) -> Obra:
     return rows[0] if rows else datos
 
 
+# Columns the team can edit (#49 D4). The author and creation date never change;
+# supabase_schema.sql enforces the same list with column grants.
+CAMPOS_EDITABLES_OBRA = (
+    "nombre",
+    "cliente",
+    "direccion",
+    "municipio",
+    "tipo",
+    "estado",
+    "avance",
+    "responsable",
+    "fecha_inicio",
+    "fecha_fin_estimada",
+    "presupuesto",
+    "moneda",
+)
+
+
 def update_obra(client: Client, obra_id: int, cambios: dict[str, Any]) -> Obra:
     if not cambios:
         raise ObrasError("No hay cambios para guardar.")
+    otros = sorted(set(cambios) - set(CAMPOS_EDITABLES_OBRA))
+    if otros:
+        raise ObrasError(f"Esos datos de la obra no se pueden editar: {', '.join(otros)}.")
+    if "nombre" in cambios:
+        cambios["nombre"] = str(cambios["nombre"] or "").strip()
+        if not cambios["nombre"]:
+            raise ObrasError("La obra necesita un nombre.")
     _validate(cambios)
     rows = _run(client.table("obras").update(cambios).eq("id", obra_id))
     if not rows:
@@ -122,6 +184,13 @@ def _validate(datos: dict[str, Any]) -> None:
         raise ObrasError(f"Estado inválido: {datos['estado']}. Opciones: {', '.join(ESTADOS)}.")
     if "moneda" in datos and datos["moneda"] not in MONEDAS:
         raise ObrasError(f"Moneda inválida: {datos['moneda']}.")
+    if datos.get("presupuesto") is not None:
+        try:
+            presupuesto = float(datos["presupuesto"])
+        except (TypeError, ValueError) as exc:
+            raise ObrasError("El presupuesto tiene que ser un número.") from exc
+        if presupuesto < 0:
+            raise ObrasError("El presupuesto no puede ser negativo.")
     if "avance" in datos:
         try:
             avance = int(datos["avance"])

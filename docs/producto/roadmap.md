@@ -5,6 +5,7 @@
 | ✅ | [F-01 Consultas de normativa](funcionalidades/F-01-normativa.md) | Hecha | Base del agente |
 | ✅ | [F-02 Tracker de obras y bitácora](funcionalidades/F-02-tracker-obras.md) | Hecha | La obra es la unidad central |
 | ✅ | [F-03 Presupuesto y gastos](funcionalidades/F-03-presupuesto-gastos.md) | Hecha | Es lo que más impacta el negocio de flipping y crea la lista de **rubros** que usa F-04. Mejora #35: gastos dentro de cada ítem, «Imprevistos» y semáforo |
+| ✅ | [UX-03 Menú y obra activa](funcionalidades/UX-03-navegacion-obra-activa.md) | Hecha | #49: menú a la izquierda, obra activa siempre visible y recordada, Detalle editable, Rubros; «Plata» pasa a «Presupuesto» |
 | 2 | [F-04 Etapas y cronograma](funcionalidades/F-04-etapas-cronograma.md) | Borrador | Reusa los rubros; con presupuesto cargado, el avance de la obra puede ponderarse por costo |
 | 3 | [F-05 Fotos y documentos](funcionalidades/F-05-fotos-documentos.md) | Borrador | Agrega Storage; al llegar última puede vincular archivos a gastos y etapas desde el primer día |
 
@@ -13,11 +14,11 @@ cuando está en `Lista` (sus *Decisiones pendientes* resueltas).
 
 ## Ideas sin ficha (backlog)
 
-- **Pantalla de rubros** (mejora de F-03): agregar, ordenar y desactivar rubros.
-  Base y dominio ya preparados. Próxima iteración.
-
 - Normativa de **Quilmes** y otros municipios (mejora de F-01).
-- Editar datos de una obra, archivar obras y editar notas (mejoras de F-02).
+- Archivar obras y editar notas (mejoras de F-02, #26). Editar los datos de la
+  obra ya está, en su Detalle (UX-03).
+- **Lista de proveedores** compartida (#37): hoy la pantalla dice «Próximamente».
+- Renombrar rubros (la pantalla de UX-03 agrega, ordena y desactiva).
 - **Flujo de fondos** del flipping: ingresos, señas, aportes de socios y
   rentabilidad por obra. Decidido fuera de F-03 (D5); candidata a F-06.
 - Acceso de solo lectura para clientes o inversores (fuera de alcance en la

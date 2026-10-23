@@ -1,4 +1,4 @@
-"""Streamlit screen for F-03 · Presupuesto y gastos (tab «💰 Plata» in Obras).
+"""Streamlit screen for F-03 · Presupuesto y gastos (tab «Presupuesto» of the obra activa, #49).
 
 The budget is a list of items grouped by rubro; every gasto belongs to an item
 and is added, listed and cancelled inside it (#35).
@@ -74,7 +74,7 @@ def _rubro_nombre(rubros_por_id: dict, rubro_id) -> str:
 # Page
 # --------------------------------------------------------------------------- #
 def render_plata(supabase, obra_id: int | None) -> None:
-    """Budget of the obra chosen at the top of the page (one picker for the app, UX-02)."""
+    """Budget of the obra activa (one picker for the app, in the left menu: UX-02, #49)."""
 
     if obra_id is None:
         st.info("Cargá una obra primero.")
@@ -99,7 +99,7 @@ def render_plata(supabase, obra_id: int | None) -> None:
             items = finanzas.completar_cotizacion_imprevistos(supabase, items)
         gastos = finanzas.list_gastos(supabase, obra_id)
     except finanzas.FinanzasError as exc:
-        st.error(f"No se pudieron leer los datos de plata: {texto_seguro(exc)}")
+        st.error(f"No se pudieron leer el presupuesto y los gastos: {texto_seguro(exc)}")
         st.caption(_SCHEMA_HINT)
         return
 

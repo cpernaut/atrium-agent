@@ -15,7 +15,7 @@ from atrium import finanzas, obras
 from tests.e2e.conftest import abrir_presupuesto, click, tabla_items, tabla_rubros, texts
 from tests.fakes import tool_call
 
-PLATA = 3  # index of the «💰 Plata» tab inside 📋 Obras
+PRESUPUESTO = 2  # index of the «Presupuesto» tab in 🏗️ Obra activa (#49)
 
 
 def _obra(e2e, nombre="Casa Lote 12", **extra):
@@ -40,7 +40,7 @@ def _item(e2e, rubro, monto=0, moneda="ARS", descripcion=None, **extra):
 
 
 def _plata(e2e, obra_id=1):
-    """💰 Plata of the obra, with every rubro and ítem of the table expanded."""
+    """Presupuesto of the obra, with every rubro and ítem of the table expanded."""
 
     at = e2e.go_to_obras(e2e.login())
     return abrir_presupuesto(e2e.elegir_obra(at, obra_id), e2e.db)
@@ -53,7 +53,7 @@ def visible(at) -> str:
 
 
 def _metricas(at):
-    return {m.label: m.value for m in at.tabs[PLATA].metric}
+    return {m.label: m.value for m in at.tabs[PRESUPUESTO].metric}
 
 
 class _Tabla:
@@ -372,7 +372,7 @@ def test_f03_ca_26b_gastos_del_item_y_saldo(e2e):
         "22%",
     )
     assert "Saldo: ARS 7.000.000" in visible(at)
-    entrega = [m.value for m in at.tabs[PLATA].markdown if "Entrega 1" in m.value]
+    entrega = [m.value for m in at.tabs[PRESUPUESTO].markdown if "Entrega 1" in m.value]
     assert len(entrega) == 1  # aparece solo dentro de su ítem
 
 
@@ -429,7 +429,7 @@ def test_f03_ca_29_anular_gasto(e2e):
     assert not at.exception
     assert finanzas.list_gastos(e2e.db, 1)[0]["anulado"] is True  # sigue en la base
     assert _metricas(at)["Gastado"] == "ARS 0"
-    tachado = [m.value for m in at.tabs[PLATA].markdown if m.value.startswith("~~")]
+    tachado = [m.value for m in at.tabs[PRESUPUESTO].markdown if m.value.startswith("~~")]
     assert tachado and "Hierro" in tachado[0] and tachado[0].endswith("**Anulado**")
     assert f"gasto_anular_{gasto['id']}" not in [b.key for b in at.button]
 
@@ -495,7 +495,7 @@ def test_f03_ca_30b_obra_nueva_trae_imprevistos(e2e):
     """F-03-CA-30b / R12: al crear una obra con presupuesto USD 85.000 se agrega
     «Imprevistos» por USD 8.500 en el rubro Otros."""
 
-    at = e2e.go_to_obras(e2e.login())
+    at = e2e.ir_a(e2e.login(), "nueva-obra")
     at.text_input(key="nueva_nombre").input("Casa Lote 12")
     at.number_input(key="nueva_presupuesto").set_value(85000.0)
     at.selectbox(key="nueva_moneda").set_value("USD")
@@ -645,7 +645,7 @@ def test_f03_seg_1_texto_de_usuario_no_se_interpreta(e2e):
         e2e, 100, "ARS", "Otros", tipo_cambio=1200, descripcion="![x](https://evil.test/p.png)"
     )
     at = _plata(e2e)
-    crudos = "\n".join(m.value for m in at.tabs[PLATA].markdown)
+    crudos = "\n".join(m.value for m in at.tabs[PRESUPUESTO].markdown)
     at = at.button(key=f"gasto_anular_{gasto['id']}").click().run()
     crudos += "\n".join(m.value for m in at.markdown)
 
@@ -657,7 +657,9 @@ def test_f03_seg_2_item_con_markdown_en_el_formulario_de_gasto(e2e):
     _obra(e2e)
     item = _item(e2e, "Otros", 10, descripcion="[link](https://evil.test)")
     at = _abrir_gasto(_plata(e2e), item["id"])
-    crudos = [m.value for m in at.tabs[PLATA].markdown] + [e.label for e in at.tabs[PLATA].expander]
+    crudos = [m.value for m in at.tabs[PRESUPUESTO].markdown] + [
+        e.label for e in at.tabs[PRESUPUESTO].expander
+    ]
     assert all("](https://" not in c for c in crudos)
 
 
@@ -668,7 +670,7 @@ def test_f03_a11y_1_todos_los_campos_tienen_etiqueta(e2e):
     _obra(e2e)
     item = _item(e2e, "Otros", 100)
     at = _abrir_gasto(_plata(e2e), item["id"])
-    tab = at.tabs[PLATA]
+    tab = at.tabs[PRESUPUESTO]
     campos = [*tab.number_input, *tab.text_input, *tab.date_input, *tab.radio]
     propios = [c for c in campos if c.key and c.key.startswith("nuevo_gasto_")]
 
@@ -741,16 +743,20 @@ def test_f03_ca_27d_registrar_un_gasto_junto_a_editar_y_borrar(e2e):
     _obra(e2e)
     item = _item(e2e, "Pintura", 100, descripcion="Látex")
     at = _plata(e2e)
-    acciones = [b.key for b in at.tabs[PLATA].button if b.key and b.key.endswith(f"_{item['id']}")]
+    acciones = [
+        b.key for b in at.tabs[PRESUPUESTO].button if b.key and b.key.endswith(f"_{item['id']}")
+    ]
     assert acciones == [
         f"fila_item_{item['id']}",
         f"gasto_agregar_{item['id']}",
         f"item_editar_{item['id']}",
         f"item_borrar_{item['id']}",
     ]
-    assert "Registrar un gasto" not in [s.value for s in at.tabs[PLATA].subheader]
+    assert "Registrar un gasto" not in [s.value for s in at.tabs[PRESUPUESTO].subheader]
     assert not [
-        k for k in (w.key for w in at.tabs[PLATA].number_input) if k and k.startswith("gasto_")
+        k
+        for k in (w.key for w in at.tabs[PRESUPUESTO].number_input)
+        if k and k.startswith("gasto_")
     ]
 
     at = _abrir_gasto(at, item["id"])

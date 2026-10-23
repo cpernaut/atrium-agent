@@ -11,7 +11,7 @@ import pytest
 from atrium import finanzas, obras
 from tests.e2e.conftest import abrir_presupuesto, click, tabla_items, tabla_rubros, texts
 
-PLATA = 3  # «💰 Plata» tab inside 📋 Obras
+PRESUPUESTO = 2  # «Presupuesto» tab in 🏗️ Obra activa (#49)
 
 
 # --------------------------------------------------------------------------- #
@@ -33,14 +33,14 @@ def _item(e2e, rubro, monto, moneda="ARS", descripcion=None):
 
 
 def _plata(e2e):
-    """💰 Plata with every rubro and ítem of the table expanded."""
+    """Presupuesto with every rubro and ítem of the table expanded."""
 
     at = e2e.go_to_obras(e2e.login())
     return abrir_presupuesto(e2e.elegir_obra(at, 1), e2e.db)
 
 
 def _tab(at):
-    return at.tabs[PLATA]
+    return at.tabs[PRESUPUESTO]
 
 
 def _markdown(at) -> str:

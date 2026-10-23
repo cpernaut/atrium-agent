@@ -1,7 +1,7 @@
 """The agent as a floating chat, bottom right, over the Obras screen.
 
 Closed, it is a single «💬 Agente» button; open, a panel with the conversation
-and its input. It always works on the obra chosen at the top of the page (one
+and its input. It always works on the obra activa chosen in the left menu (one
 obra for the whole app, UX-02). History is kept in Supabase (best-effort).
 
 The panel is positioned with CSS on Streamlit's ``st-key-*`` classes: static

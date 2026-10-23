@@ -93,3 +93,93 @@ def test_obra_por_defecto_sin_en_curso_y_sin_obras():
 def test_ordenar_para_elegir_mantiene_la_recencia_por_estado():
     lista = [_o(5, "Terminada"), _o(4, "En curso"), _o(3, "Pausada"), _o(2, "En curso")]
     assert [o["id"] for o in obras.ordenar_para_elegir(lista)] == [4, 2, 3, 5]
+
+
+# --------------------------------------------------------------------------- #
+# #49 · Detalle editable y obra activa recordada
+# --------------------------------------------------------------------------- #
+def test_update_obra_todos_los_datos_del_alta(db):
+    cambios = {
+        "nombre": "  Casa Lote 12 bis ",
+        "cliente": "Pérez",
+        "direccion": "Calle 1",
+        "municipio": "Berazategui",
+        "tipo": "Reforma",
+        "estado": "En curso",
+        "avance": 20,
+        "responsable": "Caro",
+        "fecha_inicio": "2026-10-01",
+        "fecha_fin_estimada": "2027-03-01",
+        "presupuesto": 1000,
+        "moneda": "USD",
+    }
+    assert set(cambios) == set(obras.CAMPOS_EDITABLES_OBRA)
+    obra = obras.update_obra(db, 1, dict(cambios))
+    assert obra["nombre"] == "Casa Lote 12 bis"  # sin espacios de más
+    assert obra["municipio"] == "Berazategui" and obra["moneda"] == "USD"
+
+
+@pytest.mark.parametrize("campo", ["created_at", "creado_por", "id"])
+def test_update_obra_no_edita_autor_ni_fecha(db, campo):
+    with pytest.raises(obras.ObrasError, match="no se pueden editar"):
+        obras.update_obra(db, 1, {campo: "x"})
+
+
+@pytest.mark.parametrize("nombre", ["", "   ", None])
+def test_update_obra_nombre_obligatorio(db, nombre):
+    with pytest.raises(obras.ObrasError, match="necesita un nombre"):
+        obras.update_obra(db, 1, {"nombre": nombre})
+
+
+@pytest.mark.parametrize("presupuesto", [-1, "mucho"])
+def test_update_obra_presupuesto_invalido(db, presupuesto):
+    with pytest.raises(obras.ObrasError, match="presupuesto"):
+        obras.update_obra(db, 1, {"presupuesto": presupuesto})
+
+
+class _Auth:
+    def __init__(self, falla=False):
+        self.falla = falla
+        self.llamadas = []
+
+    def update_user(self, atributos):
+        if self.falla:
+            raise RuntimeError("network down")
+        self.llamadas.append(atributos)
+
+
+@pytest.mark.parametrize(
+    ("metadata", "esperado"),
+    [
+        ({"obra_activa": 7}, 7),
+        ({"obra_activa": "7"}, 7),
+        ({}, None),
+        (None, None),
+        ({"obra_activa": "abc"}, None),
+        ({"obra_activa": -3}, None),
+        ({"obra_activa": True}, None),
+        ("no es un dict", None),
+    ],
+)
+def test_obra_activa_guardada_es_dato_no_confiable(metadata, esperado):
+    from types import SimpleNamespace
+
+    assert obras.obra_activa_guardada(SimpleNamespace(user_metadata=metadata)) == esperado
+
+
+def test_guardar_obra_activa_en_los_metadatos_del_usuario(db):
+    from types import SimpleNamespace
+
+    db.auth = _Auth()
+    user = SimpleNamespace(user_metadata={})
+    obras.guardar_obra_activa(db, user, 2)
+    assert db.auth.llamadas == [{"data": {"obra_activa": 2}}]
+    assert obras.obra_activa_guardada(user) == 2
+
+
+def test_guardar_obra_activa_error_en_espanol(db):
+    from types import SimpleNamespace
+
+    db.auth = _Auth(falla=True)
+    with pytest.raises(obras.ObrasError, match="No se pudo recordar la obra activa"):
+        obras.guardar_obra_activa(db, SimpleNamespace(user_metadata={}), 2)

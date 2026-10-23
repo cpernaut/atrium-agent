@@ -213,6 +213,31 @@ select pg_temp.falla($$insert into public.rubros (nombre) values ('instalacion  
 update public.rubros set activo = false where nombre = 'Piscina';
 select pg_temp.ok(true, 'rubros: alta, duplicados (mayúsculas, tildes, espacios) rechazados, desactivar');
 
+-- #49 · Rubros: se ordenan y se reactivan; el nombre no se edita; «Otros» no se desactiva.
+update public.rubros set orden = 501, activo = true where nombre = 'Piscina';
+select pg_temp.falla($$update public.rubros set nombre = 'Pileta' where nombre = 'Piscina'$$, '42501');
+select pg_temp.falla($$update public.rubros set creado_por = null$$, '42501');
+select pg_temp.falla($$update public.rubros set activo = false where nombre = 'Otros'$$, '23514');
+select pg_temp.ok((select orden = 501 and activo from public.rubros where nombre = 'Piscina')
+                  and (select activo from public.rubros where nombre = 'Otros'),
+                  'rubros: orden y activo sí; nombre y autor no; «Otros» siempre activo');
+
+-- #49 · Detalle de la obra: se editan los datos del alta; autor, fecha e id no.
+update public.obras set nombre = 'Obra RLS editada', cliente = 'Pérez', direccion = 'Calle 1',
+  municipio = 'Quilmes', tipo = 'Reforma', estado = 'En curso', avance = 10, responsable = 'Caro',
+  fecha_inicio = current_date, fecha_fin_estimada = current_date + 30, presupuesto = 1000,
+  moneda = 'USD'
+  where nombre = 'Obra RLS';
+update public.obras set nombre = 'Obra RLS' where nombre = 'Obra RLS editada';
+select pg_temp.falla($$update public.obras set creado_por = null where nombre = 'Obra RLS'$$, '42501');
+select pg_temp.falla($$update public.obras set created_at = now() where nombre = 'Obra RLS'$$, '42501');
+select pg_temp.falla($$update public.obras set nombre = '   ' where nombre = 'Obra RLS'$$, '23514');
+select pg_temp.falla($$update public.obras set presupuesto = -1 where nombre = 'Obra RLS'$$, '23514');
+select pg_temp.ok((select municipio = 'Quilmes' and moneda = 'USD' and presupuesto = 1000
+                          and creado_por = '00000000-0000-0000-0000-00000000000a'
+                   from public.obras where nombre = 'Obra RLS'),
+                  'obras: todos los datos del alta se editan; autor y fecha de creación no; nombre no vacío');
+
 -- Editar ítems (F-03 R9): solo rubro, descripción, monto, moneda y cotización.
 -- Si cambia el rubro, los gastos del ítem lo siguen (CA-35).
 update public.presupuesto_items set monto = 1500, moneda = 'USD',
@@ -272,6 +297,8 @@ select pg_temp.falla($$insert into public.gastos (presupuesto_item_id, descripci
 select pg_temp.falla($$insert into public.presupuesto_items (obra_id, rubro_id, monto, moneda)
   values (1, 1, 10, 'ARS')$$, '42501');
 select pg_temp.falla($$update public.gastos set monto = 1$$, '42501');
+select pg_temp.falla($$update public.obras set nombre = 'x'$$, '42501');
+select pg_temp.falla($$update public.rubros set orden = 1$$, '42501');
 reset role;
 select pg_temp.ok((select monto from public.gastos where descripcion = 'Hierro') = 350000,
                   'anon: no puede crear ni editar');

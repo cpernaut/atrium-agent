@@ -21,11 +21,13 @@ from types import SimpleNamespace
 
 import pytest
 from streamlit.testing.v1 import AppTest
+from streamlit.util import calc_hash
 from supabase import AuthApiError
 
 import atrium.auth
 import atrium.rag
 import atrium.vectorstore
+import navegacion
 from atrium import cotizaciones, finanzas
 from tests.fake_supabase import FakeSupabase, seed_rubros
 from tests.fakes import RecordingStore, ToolCallingFake
@@ -35,15 +37,32 @@ EMAIL, PASSWORD = "caro@atrium.test", "secreto-123"
 
 
 class FakeAuth:
+    """Supabase Auth with fixed users; keeps each user's metadata between logins."""
+
     def __init__(self, users: dict[str, str]):
         self.users = users
         self.signed_out = 0
+        self.metadata: dict[str, dict] = {email: {} for email in users}
+        self.actual: str | None = None
+        self.updates: list[dict] = []
+        self.falla_update = False
 
     def sign_in_with_password(self, credentials):
         email, password = credentials["email"], credentials["password"]
         if self.users.get(email) != password:
             raise AuthApiError("Invalid login credentials", 400, "invalid_credentials")
-        return SimpleNamespace(user=SimpleNamespace(id=f"id-{email}", email=email))
+        self.actual = email
+        user = SimpleNamespace(
+            id=f"id-{email}", email=email, user_metadata=dict(self.metadata[email])
+        )
+        return SimpleNamespace(user=user)
+
+    def update_user(self, atributos):
+        if self.falla_update:
+            raise AuthApiError("network down", 500, "unexpected_failure")
+        self.updates.append(atributos)
+        self.metadata[self.actual].update(atributos.get("data", {}))
+        return SimpleNamespace(user=None)
 
     def sign_out(self):
         self.signed_out += 1
@@ -97,9 +116,12 @@ class Harness:
         return click(at, "Ingresar")
 
     def go_to_obras(self, at: AppTest) -> AppTest:
-        """The app opens on Obras (#33): there is no section to pick, only a reload."""
+        """🏗️ Obra activa: the screen the app opens on (#49)."""
 
-        return at.run()
+        return ir_a(at, "obra")
+
+    def ir_a(self, at: AppTest, url: str) -> AppTest:
+        return ir_a(at, url)
 
     def abrir_agente(self, at: AppTest) -> AppTest:
         """Open the floating agent (bottom right) if it is closed."""
@@ -109,9 +131,49 @@ class Harness:
         return at
 
     def elegir_obra(self, at: AppTest, obra_id: int) -> AppTest:
-        """The single obra picker at the top of the page (UX-02)."""
+        """The obra activa picker in the left menu (UX-02, #49)."""
 
         return at.selectbox(key="obra_elegida").set_value(obra_id).run()
+
+
+def ir_a(at: AppTest, url: str) -> AppTest:
+    """Open a screen of the left menu (#49) by its url_path, as a click on it would.
+
+    AppTest has no menu to click, so this selects the page the way Streamlit
+    identifies it: by the hash of its url_path.
+    """
+
+    at._page_hash = calc_hash(url)
+    return at.run()
+
+
+def _run_siguiendo_la_pagina(run_original):
+    """AppTest.run that stays on the screen the app switched to.
+
+    In the browser ``st.switch_page`` changes the URL, so the next rerun is on
+    the new screen; AppTest would go back to the previous one. After each run
+    this points AppTest at the screen the app reports as current.
+    """
+
+    def run(self, *args, **kwargs):
+        resultado = run_original(self, *args, **kwargs)
+        try:
+            actual = self.session_state[navegacion.ACTUAL]
+        except KeyError:
+            actual = None
+        if actual:
+            self._page_hash = calc_hash(actual)
+        return resultado
+
+    return run
+
+
+def pagina_actual(at: AppTest) -> str:
+    """Header of the screen on display (or the first tab, on 🏗️ Obra activa)."""
+
+    if at.header:
+        return at.header[0].value
+    return at.tabs[0].label if at.tabs else ""
 
 
 def click(at: AppTest, label: str) -> AppTest:
@@ -144,6 +206,7 @@ def e2e(monkeypatch):
     monkeypatch.setattr(atrium.rag, "get_vector_store", lambda: harness.store)
     monkeypatch.setattr(atrium.vectorstore, "collection_size", lambda: 42)
     monkeypatch.setattr(cotizaciones, "_fetch_json", harness.fetch_mep)
+    monkeypatch.setattr(AppTest, "_run", _run_siguiendo_la_pagina(AppTest._run))
     cotizaciones.clear_cache()
     yield harness
     cotizaciones.clear_cache()

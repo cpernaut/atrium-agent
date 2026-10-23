@@ -35,7 +35,8 @@ Supabase. Desplegada en Streamlit Community Cloud desde `main`.
 
 ```
 app.py            orquestación y render; nada de lógica de negocio
-*_ui.py           pantallas de Streamlit (obras_ui.py, plata_ui.py), una por sección
+navegacion.py     menú de la izquierda (st.Page + page_link) e ir_a(); #49
+*_ui.py           pantallas de Streamlit (obras_ui.py, plata_ui.py, rubros_ui.py…)
 ui_utils.py       helpers de pantalla (texto_seguro)
 atrium/           dominio. NUNCA importa streamlit
   obras.py        acceso a datos de un área: funciones que reciben el `client`

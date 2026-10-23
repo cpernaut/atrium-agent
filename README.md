@@ -8,15 +8,19 @@ Streamlit, login, historial y obras en Supabase.
 
 ## Qué hace
 
-- **📋 Obras** — la pantalla de inicio. Arriba se elige **una obra**, que es la
-  de todas las pestañas (listado, bitácora y plata) y la del agente.
+- **Menú a la izquierda** — arriba, la **obra activa** (la de todas las
+  pantallas y la del agente; se recuerda entre sesiones). Debajo, las pantallas:
+  🏗️ Obra activa, 📋 Obras, ➕ Nueva obra, 🏷️ Rubros y 🏢 Proveedores.
+- **🏗️ Obra activa** — la pantalla de inicio, con la obra siempre visible arriba
+  y tres pestañas: **Detalle** (todos los datos, editables), **Bitácora** y
+  **Presupuesto**.
 - **💬 Agente** — botón abajo a la derecha que abre el chat. Responde normativa
   del código de edificación del municipio de la obra elegida y conoce sus datos.
 - **Chatear con las obras** — «¿qué obras tengo en curso?», «¿cómo viene Lote
   12?», «anotá que hoy se hormigonó la platea y poné el avance en 40%». El agente
   lee y escribe el tracker con herramientas; solo escribe si se lo pedís.
 - **Listado, alta y bitácora** — para todo el equipo con el mismo login.
-- **💰 Plata** — presupuesto por rubro y gastos en ARS o USD, con la cotización
+- **Presupuesto** — presupuesto por rubro y gastos en ARS o USD, con la cotización
   del dólar MEP de cada fecha, desvíos por rubro y carga por chat («cargá 350 mil
   pesos de hierro»).
 
@@ -32,8 +36,12 @@ código con Claude: [`CLAUDE.md`](CLAUDE.md).
 
 ```
 app.py                  Streamlit UI (solo orquestación y render)
-obras_ui.py             pantalla de Obras y selector único de obra
-plata_ui.py             pestaña 💰 Plata (presupuesto y gastos)
+navegacion.py           menú de la izquierda: pantallas y cómo ir de una a otra
+obras_ui.py             obra activa (selector y encabezado), Detalle, Bitácora,
+                        listado de Obras y Nueva obra
+plata_ui.py             pestaña Presupuesto (presupuesto y gastos)
+rubros_ui.py            pantalla de Rubros (agregar, ordenar, desactivar)
+proveedores_ui.py       pantalla de Proveedores (próximamente, #37)
 agente_ui.py            agente flotante (abajo a la derecha) e historial
 .streamlit/config.toml  tema visual (claro, color primario con buen contraste)
 ingest.py               CLI: python ingest.py

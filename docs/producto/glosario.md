@@ -16,7 +16,9 @@ Convención: el código (funciones, módulos, docstrings) está en inglés, pero
 | **Estado de obra** | Planificación · En curso · Pausada · Terminada · Cancelada | `obras.estado` · `ESTADOS` |
 | **Avance** | Porcentaje físico de la obra, de 0 a 100. | `obras.avance` |
 | **Bitácora** | Registro cronológico de lo que pasa en la obra. Cada entrada es una **nota**. | tabla `bitacora` |
-| **Obra elegida** | La obra que se elige arriba de la pantalla: la usan todas las pestañas y el agente. Por defecto, la última usada o la En curso más nueva. | `obra_elegida` (sesión) · `obras.obra_por_defecto` · `obra_id` (estado del grafo) |
+| **Obra activa** | La obra que se elige en el menú de la izquierda y se ve siempre arriba: la usan todas las pantallas y el agente. Se recuerda por usuario entre sesiones y dispositivos; si no hay, la En curso más nueva. Antes «obra elegida». | `obra_elegida` (selector) · `obra_activa` (metadatos del usuario) · `obras.obra_por_defecto` · `obra_id` (estado del grafo) |
+| **Menú** | La barra de la izquierda: obra activa, pantallas (Obra activa, Obras, Nueva obra, Rubros, Proveedores) y cuenta. | `navegacion.py` · `MENU` |
+| **Detalle (de la obra)** | Pestaña con todos los datos de la obra activa, editables. El autor y la fecha de creación no cambian. | `obras.CAMPOS_EDITABLES_OBRA` |
 | **Normativa** | Códigos de edificación municipales cargados en `docs/` e indexados. | Chroma, colección `obra` |
 | **Agente** | El asistente de chat. Responde normativa y lee o escribe obras con herramientas. | `atrium/rag.py` · `atrium/obra_tools.py` |
 | **Equipo** | Los usuarios con login. Todos ven y editan todas las obras. | rol `authenticated` en RLS |
@@ -26,7 +28,7 @@ Convención: el código (funciones, módulos, docstrings) está en inglés, pero
 | Término | Significado | En el código |
 |---|---|---|
 | **Rubro** | Categoría de trabajo o costo: Fundaciones, Estructura, Steel frame… Lista compartida, precargada y ampliable; se desactiva en vez de borrarse. Se comparte entre presupuesto y etapas. | tabla `rubros` · `RUBROS_INICIALES` |
-| **Presupuesto** | Lo que se prevé gastar en una obra, desglosado en **ítems** por rubro, cada uno con su moneda. | tabla `presupuesto_items` |
+| **Presupuesto** | Lo que se prevé gastar en una obra, desglosado en **ítems** por rubro, cada uno con su moneda. También es el nombre de la pestaña con presupuesto y gastos (antes «💰 Plata», #49). | tabla `presupuesto_items` · `plata_ui.py` |
 | **Ítem (del presupuesto)** | Una línea del presupuesto: rubro, descripción, monto (puede ser 0) y moneda. Los gastos se cargan dentro de su ítem. | `presupuesto_items` · `FilaItem` |
 | **Gasto** | Un pago real de un **ítem** del presupuesto: fecha, descripción, monto, moneda y proveedor opcional. El rubro y la obra son los del ítem. | tabla `gastos` · `presupuesto_item_id` |
 | **Imprevistos** | El ítem por defecto de cada obra (rubro Otros, 10 % del presupuesto de la obra) para los gastos que no tienen otro ítem. | `es_imprevistos` · `crear_imprevistos` |

@@ -1,5 +1,8 @@
 """Streamlit UI for Atrium: the obras tracker with the agent as a floating chat.
 
+Left menu (#49): the obra activa picker and the screens (Obra activa, Obras,
+Nueva obra, Rubros, Proveedores). The obra activa is always shown on top.
+
 Run with ``streamlit run app.py``. All domain logic lives in the ``atrium``
 package; this module (and the ``*_ui.py`` screens) is only wiring and rendering.
 
@@ -30,12 +33,15 @@ from pathlib import Path  # noqa: E402
 from langgraph.checkpoint.memory import MemorySaver  # noqa: E402
 from supabase import AuthApiError  # noqa: E402
 
+import navegacion  # noqa: E402
+import obras_ui  # noqa: E402
 from agente_ui import load_history, render_agente  # noqa: E402
 from atrium import auth, observability  # noqa: E402
 from atrium.config import ConfigError, settings  # noqa: E402
 from atrium.rag import build_graph  # noqa: E402
 from atrium.vectorstore import collection_size  # noqa: E402
-from obras_ui import render_obras_page  # noqa: E402
+from proveedores_ui import render_proveedores_page  # noqa: E402
+from rubros_ui import render_rubros_page  # noqa: E402
 
 observability.refresh_env_cache()
 
@@ -48,11 +54,12 @@ NOMBRE_APP = "Atrium Studio"
 ETIQUETA_BETA = "Versión beta"
 
 # Wide: the budget table (#45) needs the room; on phones it scrolls sideways.
+# The menu starts open on computers and closed on phones (#49 D2: "auto").
 st.set_page_config(
     page_title=f"{NOMBRE_APP} · Beta",
     page_icon=FAVICON,
     layout="wide",
-    initial_sidebar_state="collapsed",
+    initial_sidebar_state="auto",
 )
 # Arriba a la izquierda va solo el isotipo: el texto del logo no se lee a ese tamaño.
 st.logo(ISOTIPO_CHICO, size="large", icon_image=ISOTIPO_CHICO)
@@ -62,6 +69,10 @@ def titulo() -> None:
     """App name with a visible beta label (text, not only color)."""
 
     st.title(NOMBRE_APP)
+    beta()
+
+
+def beta() -> None:
     st.badge(
         ETIQUETA_BETA,
         icon=":material/science:",
@@ -131,11 +142,12 @@ def require_login(supabase):
 # --------------------------------------------------------------------------- #
 # Sidebar
 # --------------------------------------------------------------------------- #
-def render_sidebar(supabase, user) -> None:
-    """Account and diagnostics. Navigation lives on the page (no sections to pick)."""
+def render_cuenta(supabase, user) -> None:
+    """Bottom of the left menu: who is logged in, sign out and diagnostics."""
 
     with st.sidebar:
-        st.write(f"👤 {user.email}")
+        st.divider()
+        st.caption(f"👤 {user.email}")
         if st.button("Cerrar sesión"):
             auth.sign_out(supabase)
             st.session_state.clear()
@@ -195,9 +207,30 @@ if "history" not in st.session_state:
 if "thread_id" not in st.session_state:
     st.session_state.thread_id = str(uuid.uuid4())
 
-render_sidebar(supabase, user)
+# #49 · Left menu, top to bottom: the obra activa picker, the screens, the account.
+lista = obras_ui.load_obras(supabase)
+with st.sidebar:
+    beta()
+    obra_id = obras_ui.select_obra(supabase, user, lista or [])
+obra = next((o for o in lista or [] if o["id"] == obra_id), None)
+sin_obras = lista == []
 
-# #33: after login the app opens on Obras; the agent floats bottom right.
-titulo()
-obra = render_obras_page(supabase, user)
+pagina = navegacion.construir(
+    {
+        navegacion.OBRA: lambda: obras_ui.render_obra_page(supabase, user, obra, sin_obras),
+        navegacion.OBRAS: lambda: obras_ui.render_lista_page(lista, obra),
+        navegacion.NUEVA: lambda: obras_ui.render_nueva_page(supabase, sin_obras),
+        navegacion.RUBROS: lambda: render_rubros_page(supabase),
+        navegacion.PROVEEDORES: render_proveedores_page,
+    },
+    por_defecto=navegacion.OBRA,
+)
+with st.sidebar:
+    navegacion.render_menu()
+render_cuenta(supabase, user)
+
+# The obra activa is always visible on top; the agent floats bottom right.
+obras_ui.render_encabezado(obra)
+obras_ui.mostrar_avisos()
+pagina.run()
 render_agente(supabase, user, obra)
