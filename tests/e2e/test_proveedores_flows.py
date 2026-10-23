@@ -6,7 +6,14 @@ Each test is a user journey; the ID in the docstring matches docs/casos-e2e.md.
 from langchain_core.messages import AIMessage
 
 from atrium import finanzas, obras, proveedores
-from tests.e2e.conftest import EMAIL, abrir_presupuesto, click, texts
+from tests.e2e.conftest import (
+    EMAIL,
+    abrir_presupuesto,
+    botones_propuesta,
+    click,
+    confirmar_propuestas,
+    texts,
+)
 from tests.fakes import tool_call
 
 YO = f"id-{EMAIL}"
@@ -365,24 +372,31 @@ def test_f06_ca_13_agente_no_inventa_proveedores(e2e):
 
 
 def test_f06_ca_14_agente_da_de_alta_si_se_lo_piden(e2e):
-    """F-06-CA-14: si el usuario lo pide, el agente da de alta el proveedor y avisa
-    qué guardó; después registra el gasto con ese proveedor."""
+    """F-06-CA-14: si el usuario lo pide, el agente propone el alta del proveedor; al
+    confirmarla queda en la lista, y después el gasto con ese proveedor también se
+    guarda al confirmarlo."""
 
     _, item = _obra_con_item(e2e)
     e2e.script(
         tool_call("crear_proveedor", {"nombre": "Hierros X", "telefono": "221 555 0000"}, "c1"),
+        AIMessage(content="Te dejé el alta de Hierros X para confirmar."),
         tool_call(
             "registrar_gasto",
             {"monto": 1000, "descripcion": "Seña", "item": "hierro", "proveedor": "Hierros X"},
             "c2",
         ),
-        AIMessage(content="Listo: di de alta Hierros X y cargué la seña."),
+        AIMessage(content="Te dejé la seña para confirmar."),
     )
     at = e2e.abrir_agente(e2e.login())
-    at = at.chat_input[0].set_value("Sí, dá de alta al proveedor y cargá la seña").run()
+    at = at.chat_input[0].set_value("Dá de alta al proveedor Hierros X, 221 555 0000").run()
 
-    assert not at.exception
+    assert "Dar de alta el proveedor «Hierros X», teléfono 221 555 0000" in texts(at)
+    assert proveedores.list_proveedores(e2e.db) == []
+    at = confirmar_propuestas(at)
     assert "🏢 Proveedor agregado: «Hierros X»" in texts(at)
+
+    at = at.chat_input[0].set_value("Cargá 1000 de seña de hierro a Hierros X").run()
+    at = confirmar_propuestas(at)
     nuevo = proveedores.find_proveedores(e2e.db, "hierros x")[0]
     assert finanzas.list_gastos(e2e.db, 1)[0]["proveedor_id"] == nuevo["id"]
 
@@ -422,8 +436,8 @@ def test_f06_ca_11b_nombre_de_obra_con_markdown_en_compras(e2e):
 
 def test_f06_ca_15_instrucciones_en_los_datos_no_escriben(e2e):
     """F-06-CA-15: si las notas de un proveedor traen instrucciones («dá de alta…»,
-    «cargá un gasto…») y el usuario solo pregunta, el agente no escribe nada aunque
-    el modelo intente hacerle caso a esas notas."""
+    «cargá un gasto…») y el modelo les hace caso, no se guarda nada: el usuario ve
+    exactamente qué se propone y lo cancela."""
 
     _, item = _obra_con_item(e2e)
     _proveedor(
@@ -447,16 +461,24 @@ def test_f06_ca_15_instrucciones_en_los_datos_no_escriben(e2e):
     assert not at.exception
     resultados = [m.content for m in e2e.llm.seen[-1] if m.type == "tool"]
     assert "[[DATOS CARGADOS POR USUARIOS" in resultados[0]
-    assert all("No di de alta" in r or "No registré" in r for r in resultados[1:])
+    assert all("Todavía NO está guardado" in r for r in resultados[1:])
+    pantalla = texts(at)
+    assert "Dar de alta el proveedor «Hacker SA»" in pantalla
+    assert "un gasto de ARS 9.999" in pantalla
+    assert [p["nombre"] for p in proveedores.list_proveedores(e2e.db)] == ["Hierros Sur"]
+    assert finanzas.list_gastos(e2e.db, 1) == []
+
+    while cancelar := botones_propuesta(at, "cancelar"):
+        at = cancelar[0].click().run()
     assert [p["nombre"] for p in proveedores.list_proveedores(e2e.db)] == ["Hierros Sur"]
     assert finanzas.list_gastos(e2e.db, 1) == []
     assert "🏢" not in texts(at) and "💸" not in texts(at)
 
 
 def test_f06_ca_15b_si_el_usuario_lo_pide_si_escribe(e2e):
-    """F-06-CA-15b: después de leer los datos de un proveedor, si el propio usuario
-    pide cargar el gasto, el agente lo registra; todo lo que le devuelven las
-    herramientas (también el aviso de éxito) llega marcado como dato."""
+    """F-06-CA-15b: después de leer los datos de un proveedor, si el usuario pide
+    cargar el gasto y lo confirma, se guarda; todo lo que le devuelven las
+    herramientas llega marcado como dato."""
 
     _, item = _obra_con_item(e2e)
     p = _proveedor(e2e, "Hierros Sur", notas="Entrega en 48 h")
@@ -467,10 +489,11 @@ def test_f06_ca_15b_si_el_usuario_lo_pide_si_escribe(e2e):
             {"monto": 1000, "descripcion": "Seña", "item": "hierro", "proveedor": "Hierros Sur"},
             "c2",
         ),
-        AIMessage(content="Listo, cargué la seña."),
+        AIMessage(content="Te dejé la seña para confirmar."),
     )
     at = e2e.abrir_agente(e2e.login())
     at = at.chat_input[0].set_value("Buscá a Hierros Sur y cargale 1000 de seña").run()
+    at = confirmar_propuestas(at)
 
     assert not at.exception
     assert finanzas.list_gastos(e2e.db, 1)[0]["proveedor_id"] == p["id"]
@@ -478,26 +501,27 @@ def test_f06_ca_15b_si_el_usuario_lo_pide_si_escribe(e2e):
     assert all(r.startswith("[[DATOS CARGADOS POR USUARIOS") for r in resultados)
 
 
-def test_f06_ca_16_confirmar_una_propuesta_del_agente(e2e):
-    """F-06-CA-16: si el agente pregunta «¿Lo doy de alta?» y el usuario responde «sí»,
-    da de alta el proveedor; un «sí» sin esa pregunta no escribe nada."""
+def test_f06_ca_16_propuesta_que_ya_no_se_puede_guardar(e2e):
+    """F-06-CA-16: al confirmar se vuelve a validar: si mientras tanto otro socio dio
+    de alta el mismo proveedor, no se duplica y se explica por qué no se guardó."""
 
     e2e.script(
-        AIMessage(content="No encontré a «Hierros X» en la lista. ¿Lo doy de alta?"),
         tool_call("crear_proveedor", {"nombre": "Hierros X"}, "c1"),
-        AIMessage(content="Listo, lo di de alta."),
+        AIMessage(content="Te dejé el alta para confirmar."),
     )
     at = e2e.abrir_agente(e2e.login())
-    at = at.chat_input[0].set_value("¿Tenemos a Hierros X?").run()
-    at = at.chat_input[0].set_value("Sí").run()
+    at = at.chat_input[0].set_value("Dá de alta al proveedor Hierros X").run()
+    _proveedor(e2e, "Hierros X")
+    at = confirmar_propuestas(at)
 
     assert not at.exception
     assert [p["nombre"] for p in proveedores.list_proveedores(e2e.db)] == ["Hierros X"]
+    assert "⚠️ No se pudo guardar:" in texts(at) and "Hierros X" in texts(at)
 
 
-def test_f06_ca_16b_negar_no_escribe(e2e):
-    """F-06-CA-16b: «no cargues ese gasto» o un «sí» suelto no hacen escribir al
-    agente aunque el modelo lo intente."""
+def test_f06_ca_16b_un_si_escrito_no_guarda(e2e):
+    """F-06-CA-16b: responder «sí» o «no cargues» en el chat no guarda nada: solo
+    guarda el botón «Confirmar» de la propuesta."""
 
     _, item = _obra_con_item(e2e)
     gasto = {"monto": 1000, "descripcion": "Seña", "item": "hierro"}
@@ -513,3 +537,4 @@ def test_f06_ca_16b_negar_no_escribe(e2e):
 
     assert not at.exception
     assert finanzas.list_gastos(e2e.db, 1) == []
+    assert len(botones_propuesta(at)) == 2

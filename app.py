@@ -108,7 +108,7 @@ def get_supabase():
 
 def get_graph(supabase, user):
     if "graph" not in st.session_state:
-        graph = build_graph(obras_client=supabase, autor=user.email)
+        graph = build_graph(obras_client=supabase)
         st.session_state.graph = graph.compile(checkpointer=MemorySaver())
     return st.session_state.graph
 

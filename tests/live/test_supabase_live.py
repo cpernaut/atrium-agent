@@ -11,7 +11,7 @@ import pytest
 from postgrest.exceptions import APIError
 from supabase import AuthApiError
 
-from atrium import obras, persistence
+from atrium import obras, persistence, propuestas
 from atrium.obra_tools import build_obra_tools
 from tests.live.conftest import PREFIX, anon_client
 
@@ -144,12 +144,12 @@ def test_live_11_no_se_puede_escribir_historial_ajeno(users):
 # Herramientas del agente contra la base real
 # --------------------------------------------------------------------------- #
 def test_live_12_herramientas_del_agente(users, obra_de_a):
-    """LIVE-12: las herramientas del agente leen y escriben en la base real con RLS."""
+    """LIVE-12: las herramientas del agente leen y proponen; al confirmar se guarda con RLS."""
 
-    acciones: list[str] = []
+    pendientes: list[dict] = []
+    notas_antes = len(obras.list_bitacora(users.a.client, obra_de_a["id"]))
     tools = {
-        t.name: t
-        for t in build_obra_tools(users.a.client, users.a.email, lambda: obra_de_a["id"], acciones)
+        t.name: t for t in build_obra_tools(users.a.client, lambda: obra_de_a["id"], pendientes)
     }
 
     assert obra_de_a["nombre"] in tools["ver_obra"].invoke({})
@@ -158,6 +158,9 @@ def test_live_12_herramientas_del_agente(users, obra_de_a):
     rechazo = tools["actualizar_obra"].invoke({"avance": 150})
 
     assert "entre 0 y 100" in rechazo
+    assert len(pendientes) == 2
+    assert len(obras.list_bitacora(users.a.client, obra_de_a["id"])) == notas_antes  # sin confirmar
+    for p in pendientes:
+        propuestas.ejecutar(users.a.client, users.a.email, p)
     assert obras.get_obra(users.a.client, obra_de_a["id"])["avance"] == 60
     assert obras.list_bitacora(users.a.client, obra_de_a["id"])[0]["nota"] == "Nota desde el agente"
-    assert len(acciones) == 2

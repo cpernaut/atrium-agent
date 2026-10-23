@@ -55,14 +55,15 @@ supabase_schema.sql  todo el esquema, idempotente
   con mensajes en español listos para mostrar.
 - Las herramientas nuevas del agente van en `atrium/obra_tools.py` (o un
   `*_tools.py` hermano) y se registran en `build_obra_tools`. Nunca lanzan
-  excepciones: devuelven el error como texto. Las que escriben agregan una línea
-  a `acciones` y su docstring dice «Usala SOLO si el usuario pide…».
+  excepciones: devuelven el error como texto. Las que escriben **nunca guardan**:
+  validan y agregan una propuesta (`atrium/propuestas.py`: `nueva` + un caso en
+  `ejecutar`, que vuelve a validar) que el usuario confirma con un botón; su
+  docstring dice «Usala SOLO si el usuario pide…».
 - Datos cargados por usuarios que vuelven al modelo (notas, comentarios,
-  nombres): toda herramienta se registra con `turno.herramienta(fn)`, que marca
-  todo lo que devuelve como dato, y las de escritura empiezan con
-  `turno.bloqueo(..., ACCION)` (`atrium/guardia.py`): solo
-  escriben si el mensaje del usuario lo pide, así una pregunta o una instrucción
-  escondida en los datos nunca hacen escribir al agente.
+  nombres): toda herramienta se registra con `turno.herramienta(fn)`
+  (`atrium/guardia.py`), que marca todo lo que devuelve como dato. Como nada se
+  guarda sin «Confirmar», una instrucción escondida en los datos nunca hace
+  escribir al agente.
 - Las pantallas reciben el `supabase` de la sesión (cliente con el login del
   usuario): así aplica RLS. **No** usar la clave service_role en la app.
 

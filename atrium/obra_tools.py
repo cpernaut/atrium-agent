@@ -1,8 +1,9 @@
-"""LangChain tools that let the agent read and update the obras tracker.
+"""LangChain tools that let the agent read the obras tracker and propose writes.
 
 ``build_obra_tools`` closes over the signed-in user's Supabase client, so every
-call goes through row-level security. Write tools record what they did in the
-returned ``acciones`` list, which the UI shows under the answer.
+call goes through row-level security. Write tools don't save: they check the
+request and add a propuesta to ``propuestas``; the screen shows it and the user
+saves it with «Confirmar» (``atrium.propuestas``).
 
 Tools never raise: errors come back as text so the model can explain them.
 """
@@ -14,9 +15,9 @@ from typing import TYPE_CHECKING
 
 from langchain_core.tools import BaseTool, StructuredTool
 
-from atrium import finanzas, obras, proveedores
-from atrium.guardia import GASTO, NOTA, OBRA, Turno
-from atrium.proveedor_tools import build_proveedor_tools, resolver_proveedor
+from atrium import finanzas, obras, propuestas, proveedores
+from atrium.guardia import Turno
+from atrium.proveedor_tools import PENDIENTE_TXT, build_proveedor_tools, resolver_proveedor
 
 if TYPE_CHECKING:
     from supabase import Client
@@ -24,20 +25,16 @@ if TYPE_CHECKING:
 
 def build_obra_tools(
     client: Client,
-    autor: str | None,
     obra_activa: Callable[[], int | None],
-    acciones: list[str],
-    pedido: str = "",
-    propuesta: str = "",
+    pendientes: list[propuestas.Propuesta],
 ) -> list[BaseTool]:
     """Tools bound to one user and one turn.
 
-    ``obra_activa`` returns the obra picked in the UI; ``pedido`` is the user's
-    message of this turn and ``propuesta`` the agent's previous one (see
-    ``atrium.guardia``: only the user can ask for, or confirm, a write).
+    ``obra_activa`` returns the obra picked in the UI; write tools append to
+    ``pendientes`` what the user has to confirm.
     """
 
-    turno = Turno(pedido=pedido, propuesta=propuesta)
+    turno = Turno()
 
     def _resolver(obra: str | None) -> tuple[obras.Obra | None, str | None]:
         """(obra, None) on a unique match, else (None, message for the model)."""
@@ -84,29 +81,41 @@ def build_obra_tools(
         return texto
 
     def agregar_nota_bitacora(nota: str, obra: str | None = None, fecha: str | None = None) -> str:
-        """Agrega una nota a la bitácora de una obra. Usala SOLO si el usuario pide
-        explícitamente anotar o registrar algo. `fecha` en formato AAAA-MM-DD (vacío = hoy)."""
-        if bloqueo := turno.bloqueo("guardé la nota", NOTA):
-            return bloqueo
+        """Propone agregar una nota a la bitácora de una obra (el usuario la confirma con
+        un botón). Usala SOLO si el usuario pide explícitamente anotar o registrar algo.
+        `fecha` en formato AAAA-MM-DD (vacío = hoy)."""
         try:
             encontrada, problema = _resolver(obra)
             if problema:
                 return problema
-            obras.add_nota(client, encontrada["id"], nota, autor=autor, fecha=fecha or None)
+            limpia = obras.validar_nota(nota)
         except obras.ObrasError as exc:
-            return f"No se pudo guardar la nota: {exc}"
-        acciones.append(f"📝 Nota agregada a la bitácora de «{encontrada['nombre']}»")
-        return f"Nota guardada en la bitácora de {encontrada['nombre']} (#{encontrada['id']})."
+            return f"No se puede proponer la nota: {exc}"
+        resumen = f"Anotar en la bitácora de «{encontrada['nombre']}»: «{limpia}»"
+        if fecha:
+            resumen += f" (fecha {fecha})"
+        pendientes.append(
+            propuestas.nueva(
+                propuestas.NOTA,
+                resumen,
+                {
+                    "obra_id": encontrada["id"],
+                    "obra": encontrada["nombre"],
+                    "nota": limpia,
+                    "fecha": fecha or None,
+                },
+            )
+        )
+        return f"{resumen}. {PENDIENTE_TXT}"
 
     def actualizar_obra(
         obra: str | None = None,
         avance: int | None = None,
         estado: str | None = None,
     ) -> str:
-        """Actualiza el avance (0-100) y/o el estado de una obra. Usala SOLO si el
-        usuario pide explícitamente cambiar esos datos."""
-        if bloqueo := turno.bloqueo("actualicé la obra", OBRA):
-            return bloqueo
+        """Propone cambiar el avance (0-100) y/o el estado de una obra (el usuario lo
+        confirma con un botón). Usala SOLO si el usuario pide explícitamente cambiar esos
+        datos."""
         cambios: dict = {}
         if avance is not None:
             cambios["avance"] = avance
@@ -116,12 +125,19 @@ def build_obra_tools(
             encontrada, problema = _resolver(obra)
             if problema:
                 return problema
-            obras.update_obra(client, encontrada["id"], cambios)
+            obras.validar_cambios(cambios)
         except obras.ObrasError as exc:
-            return f"No se pudo actualizar la obra: {exc}"
+            return f"No se puede proponer el cambio: {exc}"
         detalle = ", ".join(f"{k} → {v}{'%' if k == 'avance' else ''}" for k, v in cambios.items())
-        acciones.append(f"✏️ «{encontrada['nombre']}» actualizada: {detalle}")
-        return f"Obra {encontrada['nombre']} actualizada: {detalle}."
+        resumen = f"Actualizar «{encontrada['nombre']}»: {detalle}"
+        pendientes.append(
+            propuestas.nueva(
+                propuestas.OBRA,
+                resumen,
+                {"obra_id": encontrada["id"], "obra": encontrada["nombre"], "cambios": cambios},
+            )
+        )
+        return f"{resumen}. {PENDIENTE_TXT}"
 
     def _item(obra: obras.Obra, texto: str, rubro: str | None) -> tuple[dict | None, str | None]:
         """(item, None) on a unique match, else (None, message asking the user)."""
@@ -137,13 +153,13 @@ def build_obra_tools(
             imprevistos = finanzas.imprevistos_vigente(vigentes)
             sugerencia = " o si va a «Imprevistos»" if imprevistos else ""
             return None, (
-                f"No registré el gasto: no hay ningún ítem del presupuesto que coincida con "
+                f"No propuse el gasto: no hay ningún ítem del presupuesto que coincida con "
                 f"«{texto}». Ítems de la obra: {disponibles}. Preguntale al usuario a qué ítem "
                 f"va{sugerencia}. Nunca crees ítems por tu cuenta."
             )
         # #35: with several possible items the agent must ask, never pick one itself.
         return None, (
-            "No registré el gasto: hay varios ítems que coinciden ("
+            "No propuse el gasto: hay varios ítems que coinciden ("
             + ", ".join(_nombre_item(i) for i in matches)
             + "). Preguntale al usuario cuál corresponde antes de volver a intentarlo."
         )
@@ -161,17 +177,16 @@ def build_obra_tools(
         fecha: str | None = None,
         proveedor: str | None = None,
     ) -> str:
-        """Registra un gasto en un ítem del presupuesto de una obra. Usala SOLO si el
-        usuario pide explícitamente cargar o registrar un gasto. Todo gasto va a un
+        """Propone registrar un gasto en un ítem del presupuesto de una obra (el usuario
+        lo confirma con un botón). Usala SOLO si el usuario pide explícitamente cargar o
+        registrar un gasto. Todo gasto va a un
         ítem: `item` es la descripción (o parte) del ítem, por ejemplo «hierro» o
         «imprevistos»; `rubro` opcional ayuda a desambiguar. `monto` es un número
         (350 mil = 350000). `moneda` es ARS o USD (vacío = la del ítem). `fecha` en
         formato AAAA-MM-DD (vacío = hoy). La cotización del dólar MEP se completa sola.
         `proveedor` (opcional) tiene que estar en la lista de proveedores del equipo.
-        Si hay varios ítems o proveedores posibles, o ninguno, no guarda nada y hay que
-        preguntar."""
-        if bloqueo := turno.bloqueo("registré el gasto", GASTO):
-            return bloqueo
+        Si hay varios ítems o proveedores posibles, o ninguno, no propone nada y hay
+        que preguntar."""
         try:
             encontrada, problema = _resolver(obra)
             if problema:
@@ -179,35 +194,38 @@ def build_obra_tools(
             elegido, problema = _item(encontrada, item, rubro)
             if problema:
                 return problema
-            proveedor_id = None
+            del_proveedor = None
             if proveedor and proveedor.strip():
                 del_proveedor, problema = resolver_proveedor(client, proveedor)
                 if problema:
                     return problema
-                proveedor_id = del_proveedor["id"]
-            gasto, aviso = finanzas.add_gasto(
-                client,
-                elegido["id"],
-                monto=monto,
-                moneda=moneda or elegido["moneda"],
-                descripcion=descripcion,
-                fecha=fecha or None,
-                proveedor_id=proveedor_id,
+            campos = finanzas.validar_gasto(
+                monto, moneda or elegido["moneda"], descripcion, fecha or None
             )
         except (obras.ObrasError, finanzas.FinanzasError, proveedores.ProveedoresError) as exc:
-            return f"No se pudo registrar el gasto: {exc}"
-        monto_txt = finanzas.formato_monto(gasto["monto"], gasto["moneda"])
+            return f"No se puede proponer el gasto: {exc}"
+        monto_txt = finanzas.formato_monto(campos["monto"], campos["moneda"])
         nombre = elegido.get("descripcion") or "Sin descripción"
-        acciones.append(f"💸 Gasto registrado en «{encontrada['nombre']}»: {monto_txt} · {nombre}")
-        texto = (
-            f"Gasto registrado en {encontrada['nombre']}: {monto_txt}, ítem {nombre}, "
-            f"fecha {gasto['fecha']}"
+        resumen = (
+            f"Registrar en «{encontrada['nombre']}» un gasto de {monto_txt} en el ítem "
+            f"«{nombre}»: «{campos['descripcion']}», fecha {campos['fecha']}"
         )
-        if gasto.get("tipo_cambio"):
-            texto += f", cotización MEP {finanzas.formato_numero(gasto['tipo_cambio'], 2)}."
-        else:
-            texto += f". {aviso}"
-        return texto
+        if del_proveedor:
+            resumen += f", proveedor «{del_proveedor['nombre']}»"
+        pendientes.append(
+            propuestas.nueva(
+                propuestas.GASTO,
+                resumen,
+                {
+                    **campos,
+                    "obra": encontrada["nombre"],
+                    "item_id": elegido["id"],
+                    "item": nombre,
+                    "proveedor_id": del_proveedor["id"] if del_proveedor else None,
+                },
+            )
+        )
+        return f"{resumen}. {PENDIENTE_TXT}"
 
     def resumen_plata(obra: str | None = None, moneda: str = "ARS") -> str:
         """Muestra presupuestado, gastado y desvío por rubro y por ítem del presupuesto de
@@ -232,4 +250,4 @@ def build_obra_tools(
             registrar_gasto,
             resumen_plata,
         )
-    ] + build_proveedor_tools(client, acciones, turno)
+    ] + build_proveedor_tools(client, pendientes, turno)

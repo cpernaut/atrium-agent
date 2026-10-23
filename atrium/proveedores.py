@@ -252,11 +252,18 @@ def _duplicado(client: Client, nombre: str, excepto: int | None = None) -> None:
             raise ProveedoresError(f"Ya existe el proveedor «{p['nombre']}».")
 
 
-def create_proveedor(client: Client, datos: dict[str, Any]) -> Fila:
+def validar_alta(client: Client, datos: dict[str, Any]) -> Fila:
+    """The new proveedor as it would be saved, or ProveedoresError (nothing saved)."""
+
     if "nombre" not in datos:
         raise ProveedoresError("El proveedor necesita un nombre (al menos 2 letras).")
     fila = _datos(datos)
     _duplicado(client, fila["nombre"])
+    return fila
+
+
+def create_proveedor(client: Client, datos: dict[str, Any]) -> Fila:
+    fila = validar_alta(client, datos)
     filas = _run(client.table("proveedores").insert(fila))
     return filas[0] if filas else fila
 

@@ -81,10 +81,11 @@ Gasto:  Proveedor [Hierros Sur ▾]  + Nuevo proveedor
 ## Agente
 
 - `buscar_proveedor(texto, rubro)`: contacto, calificación y compras.
-- `crear_proveedor(...)`: **Usala SOLO si el usuario pide** darlo de alta o lo confirma.
-- `registrar_gasto(..., proveedor)`: si el proveedor no está en la lista, no guarda y pregunta (D6).
+- `crear_proveedor(...)`: **Usala SOLO si el usuario pide** darlo de alta. Propone el alta; se guarda con «Confirmar».
+- `registrar_gasto(..., proveedor)`: si el proveedor no está en la lista, no propone nada y pregunta (D6).
 - Nunca califica proveedores.
-- Todo lo que devuelven las herramientas del agente (lecturas, avisos de éxito y errores, que pueden traer nombres o notas) va marcado como «datos cargados por usuarios»; solo los rechazos del guardia van sin marcar. Las herramientas que escriben (todas, no solo las de proveedores) corren solo cuando el mensaje del usuario pide *esa* acción (cargá → gasto, anotá → nota, pasá/cambiá → obra, creá/dá de alta/agregá → proveedor, solo si el mensaje dice «proveedor» o el agente acaba de proponer el alta), sin negarlo («no cargues» no cuenta), o responde «sí» a una propuesta de escritura del agente en su mensaje anterior («¿Lo doy de alta?»); una pregunta nunca escribe (`atrium/guardia.py`). Así, una nota con instrucciones no hace escribir al agente.
+- Todo lo que devuelven las herramientas del agente (lecturas, propuestas y errores, que pueden traer nombres o notas) va marcado como «datos cargados por usuarios» (`atrium/guardia.py`).
+- **El agente nunca guarda directo** (decisión D12): las herramientas que escriben (todas: notas, avance/estado, gastos, proveedores) validan y dejan una **propuesta** debajo de la respuesta, con lo que se guardaría en palabras y los botones «✅ Confirmar» y «✖️ Cancelar». Solo el botón guarda; un «sí» escrito en el chat no. Al confirmar se vuelve a validar (si mientras tanto otro socio dio de alta el mismo proveedor, avisa «⚠️ No se pudo guardar» y por qué). Cada propuesta se guarda una sola vez y muestra su estado en palabras: Confirmado, Cancelado o No se pudo guardar (`atrium/propuestas.py`). Así, ni un mensaje ambiguo ni una nota con instrucciones hacen escribir al agente.
 
 ## Criterios de aceptación
 
@@ -101,9 +102,9 @@ Gasto:  Proveedor [Hierros Sur ▾]  + Nuevo proveedor
 - **F-06-CA-11**: Markdown en nombre, notas o comentario se muestra como texto.
 - **F-06-CA-12**: el agente busca un proveedor con datos reales.
 - **F-06-CA-13**: el agente no guarda un gasto de un proveedor desconocido y pregunta.
-- **F-06-CA-14**: el agente da de alta un proveedor si se lo piden.
-- **F-06-CA-15**: instrucciones escondidas en las notas no hacen escribir al agente. **CA-15b:** si el usuario lo pide, sí.
-- **F-06-CA-16**: «sí» confirma una propuesta del agente. **CA-16b:** una negación o un «sí» suelto no escriben.
+- **F-06-CA-14**: si se lo piden, el agente propone el alta del proveedor; al confirmarla queda en la lista y el gasto siguiente lo usa.
+- **F-06-CA-15**: instrucciones escondidas en las notas no guardan nada: el usuario ve la propuesta y la cancela. **CA-15b:** si el usuario lo pide y confirma, se guarda.
+- **F-06-CA-16**: al confirmar se vuelve a validar y, si ya no se puede guardar, se explica por qué. **CA-16b:** un «sí» o «no cargues» escritos no guardan; solo el botón.
 - **LIVE-28/29/30**: sin login no se ve; cada socio su calificación; eliminado no se elige.
 
 ## Decisiones (Carolina, 23/10/2026)
@@ -121,3 +122,4 @@ Gasto:  Proveedor [Hierros Sur ▾]  + Nuevo proveedor
 | D9 | Ofertas (#36) | Usarán esta lista |
 | D10 | Eliminar | Botón «Eliminar» que archiva, con confirmación; se restaura |
 | D11 | Rubros del proveedor | Los de 🏷️ Rubros, la misma lista del presupuesto |
+| D12 | ¿Cuándo escribe el agente? | Nunca directo: propone y el usuario toca «Confirmar» o «Cancelar» (todas las escrituras del agente) |

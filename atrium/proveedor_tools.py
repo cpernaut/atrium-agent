@@ -2,7 +2,7 @@
 
 Registered by ``obra_tools.build_obra_tools``. Same rules as the obra tools:
 they close over the signed-in user's client (RLS applies), never raise (errors
-come back as text) and the one that writes records what it did in ``acciones``.
+come back as text) and the one that writes only leaves a propuesta to confirm.
 The agent never rates a proveedor and never creates one unless asked (#37 D6).
 """
 
@@ -12,8 +12,15 @@ from typing import TYPE_CHECKING
 
 from langchain_core.tools import BaseTool, StructuredTool
 
-from atrium import finanzas, proveedores
-from atrium.guardia import PROVEEDOR, Turno
+from atrium import finanzas, propuestas, proveedores
+from atrium.guardia import Turno
+
+# What every write tool tells the model after proposing.
+PENDIENTE_TXT = (
+    "Todavía NO está guardado: el usuario lo confirma o lo cancela con los botones que "
+    "aparecen debajo de tu respuesta. Decile que lo revise y lo confirme; no digas que "
+    "ya se guardó."
+)
 
 if TYPE_CHECKING:
     from supabase import Client
@@ -25,21 +32,21 @@ def resolver_proveedor(client: Client, texto: str) -> tuple[dict | None, str | N
     matches = proveedores.find_proveedores(client, texto)
     if not matches:
         return None, (
-            f"No encontré el proveedor «{texto}» en la lista de proveedores. No guardé nada: "
+            f"No encontré el proveedor «{texto}» en la lista de proveedores. No propuse nada: "
             "preguntale al usuario si es otro proveedor o si lo querés dar de alta "
-            "(con crear_proveedor, solo si te lo confirma)."
+            "(con crear_proveedor, solo si te lo pide)."
         )
     if len(matches) > 1:
         return None, (
             "Hay varios proveedores que coinciden ("
             + ", ".join(f"«{p['nombre']}»" for p in matches)
-            + "). No guardé nada: preguntale al usuario cuál es."
+            + "). No propuse nada: preguntale al usuario cuál es."
         )
     return matches[0], None
 
 
 def build_proveedor_tools(
-    client: Client, acciones: list[str], turno: Turno | None = None
+    client: Client, pendientes: list[propuestas.Propuesta], turno: Turno | None = None
 ) -> list[BaseTool]:
     turno = turno or Turno()
 
@@ -89,23 +96,27 @@ def build_proveedor_tools(
         contacto: str | None = None,
         rubro: str | None = None,
     ) -> str:
-        """Da de alta un proveedor en la lista del equipo. Usala SOLO si el usuario pide
-        explícitamente dar de alta, crear o agregar un proveedor («dalo de alta»,
-        «creá el proveedor X», «agregalo como proveedor»), o confirma que querés darlo
-        de alta después de que no lo encontraste. Nunca lo crees por tu cuenta."""
-        if bloqueo := turno.bloqueo("di de alta el proveedor", PROVEEDOR):
-            return bloqueo
+        """Propone dar de alta un proveedor en la lista del equipo (el usuario lo
+        confirma con un botón). Usala SOLO si el usuario pide explícitamente dar de
+        alta, crear o agregar un proveedor, o acepta que lo des de alta después de que
+        no lo encontraste. Nunca lo propongas por tu cuenta."""
         try:
             datos = {"nombre": nombre, "telefono": telefono, "email": email, "contacto": contacto}
             if rubro and rubro.strip():
                 encontrados = finanzas.find_rubros(client, rubro)
                 if encontrados:
                     datos["rubro_ids"] = [encontrados[0]["id"]]
-            nuevo = proveedores.create_proveedor(client, datos)
+            limpio = proveedores.validar_alta(client, datos)
         except (proveedores.ProveedoresError, finanzas.FinanzasError) as exc:
-            return f"No se pudo dar de alta el proveedor: {exc}"
-        acciones.append(f"🏢 Proveedor agregado: «{nuevo['nombre']}»")
-        return f"Proveedor «{nuevo['nombre']}» agregado a la lista (#{nuevo['id']})."
+            return f"No se puede proponer el proveedor: {exc}"
+        detalle = [f"«{limpio['nombre']}»"]
+        if limpio.get("telefono"):
+            detalle.append(f"teléfono {limpio['telefono']}")
+        if limpio.get("email"):
+            detalle.append(f"mail {limpio['email']}")
+        resumen = "Dar de alta el proveedor " + ", ".join(detalle)
+        pendientes.append(propuestas.nueva(propuestas.PROVEEDOR, resumen, {"datos": limpio}))
+        return f"{resumen}. {PENDIENTE_TXT}"
 
     return [
         StructuredTool.from_function(turno.herramienta(fn))

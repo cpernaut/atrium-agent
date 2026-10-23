@@ -12,7 +12,14 @@ import pytest
 from langchain_core.messages import AIMessage
 
 from atrium import finanzas, obras, proveedores
-from tests.e2e.conftest import abrir_presupuesto, click, tabla_items, tabla_rubros, texts
+from tests.e2e.conftest import (
+    abrir_presupuesto,
+    click,
+    confirmar_propuestas,
+    tabla_items,
+    tabla_rubros,
+    texts,
+)
 from tests.fakes import tool_call
 
 PRESUPUESTO = 2  # index of the «Presupuesto» tab in 🏗️ Obra activa (#49)
@@ -557,7 +564,8 @@ def _chat(e2e, pedido, *respuestas):
 
 def test_f03_ca_33_cargar_gasto_por_chat(e2e):
     """F-03-CA-33 (antes CA-11): «cargá 350 mil de hierro» con un solo ítem que
-    coincide -> gasto en ese ítem, con la cotización del día; aviso visible."""
+    coincide -> propone el gasto en ese ítem; al confirmarlo se guarda con la cotización
+    del día y se avisa."""
 
     _obra(e2e)
     item = _item(e2e, "Estructura", 1_000_000, descripcion="Hierro del 8")
@@ -566,10 +574,15 @@ def test_f03_ca_33_cargar_gasto_por_chat(e2e):
         e2e,
         "Cargá 350 mil pesos de hierro",
         tool_call("registrar_gasto", {"monto": 350000, "descripcion": "Hierro", "item": "hierro"}),
-        AIMessage(content="Listo, cargué ARS 350.000 en Hierro del 8."),
+        AIMessage(content="Te dejé ARS 350.000 en Hierro del 8 para confirmar."),
     )
 
     assert not at.exception
+    assert "Registrar en «Casa Lote 12» un gasto de ARS 350.000 en el ítem «Hierro del 8»" in texts(
+        at
+    )
+    assert finanzas.list_gastos(e2e.db, 1) == []
+    at = confirmar_propuestas(at)
     assert "💸 Gasto registrado en «Casa Lote 12»: ARS 350.000 · Hierro del 8" in texts(at)
     gasto = finanzas.list_gastos(e2e.db, 1)[0]
     assert gasto["presupuesto_item_id"] == item["id"] and gasto["moneda"] == "ARS"
@@ -592,7 +605,7 @@ def test_f03_ca_33b_ningun_item_coincide_ofrece_imprevistos(e2e):
     )
 
     resultado = e2e.llm.seen[1][-1].content
-    assert "No registré el gasto" in resultado and "«Imprevistos»" in resultado
+    assert "No propuse el gasto" in resultado and "«Imprevistos»" in resultado
     assert "Preguntale al usuario" in resultado
     assert finanzas.list_gastos(e2e.db, 1) == []
 
@@ -704,8 +717,8 @@ def test_f03_a11y_2_estado_en_palabras(e2e):
 
 
 def test_f03_seg_3_avisos_del_chat_escapan_nombres(e2e):
-    """F-03-SEG-3: los avisos de lo que guardó el agente no interpretan Markdown de
-    nombres de obra o ítem, ni en la respuesta ni en el historial."""
+    """F-03-SEG-3: las propuestas del agente y los avisos de lo que guardó no
+    interpretan Markdown de nombres de obra o ítem, tampoco en el historial."""
 
     _obra(e2e, nombre="![o](https://evil.test/o.png)")
     _item(e2e, "Otros", 100, descripcion="![r](https://evil.test/r.png)")
@@ -719,6 +732,9 @@ def test_f03_seg_3_avisos_del_chat_escapan_nombres(e2e):
         AIMessage(content="Listo."),
     )
 
+    tarjetas = [m.value for m in at.markdown if "Propuesta, sin guardar" in m.value]
+    assert tarjetas and all("](https://" not in t for t in tarjetas)
+    at = confirmar_propuestas(at)
     avisos = [c.value for c in at.caption if "Gasto registrado" in c.value]
     assert avisos and all("](https://" not in a for a in avisos)
     assert len(finanzas.list_gastos(e2e.db, 1)) == 1

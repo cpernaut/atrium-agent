@@ -471,6 +471,24 @@ def _proveedor_vigente(client: Client, proveedor_id: Any) -> Fila:
     return filas[0]
 
 
+def validar_gasto(monto: Any, moneda: str, descripcion: str, fecha: Any = None) -> Fila:
+    """A gasto's own fields as they would be saved, or FinanzasError (nothing saved).
+
+    The agent uses it to check a gasto before proposing it; ``add_gasto`` checks
+    everything again (item, rubro, proveedor) when it is confirmed.
+    """
+
+    fecha_gasto = _fecha(fecha)
+    if fecha_gasto > hoy():
+        raise FinanzasError("La fecha del gasto no puede ser futura.")
+    return {
+        "monto": str(parse_monto(monto)),
+        "moneda": _moneda(moneda),
+        "descripcion": _texto(descripcion, "la descripción", _DESCRIPCION_MAX, True),
+        "fecha": fecha_gasto.isoformat(),
+    }
+
+
 def list_gastos(client: Client, obra_id: int, limit: int | None = None) -> list[Fila]:
     """All gastos of the obra, newest first (``limit`` only for short listings)."""
 

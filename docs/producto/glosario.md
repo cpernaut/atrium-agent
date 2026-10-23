@@ -21,6 +21,7 @@ Convención: el código (funciones, módulos, docstrings) está en inglés, pero
 | **Detalle (de la obra)** | Pestaña con todos los datos de la obra activa, editables. El autor y la fecha de creación no cambian. | `obras.CAMPOS_EDITABLES_OBRA` |
 | **Normativa** | Códigos de edificación municipales cargados en `docs/` e indexados. | Chroma, colección `obra` |
 | **Agente** | El asistente de chat. Responde normativa y lee o escribe obras con herramientas. | `atrium/rag.py` · `atrium/obra_tools.py` |
+| **Propuesta (del agente)** | Lo que el agente quiere guardar (nota, avance/estado, gasto, proveedor), mostrado en palabras bajo su respuesta con «Confirmar» y «Cancelar». El agente nunca guarda sin ese clic. Estados: pendiente, confirmada, cancelada, fallida. | `atrium/propuestas.py` · `propuesta_confirmar_*` |
 | **Equipo** | Los usuarios con login. Todos ven y editan todas las obras. | rol `authenticated` en RLS |
 
 ## Presupuesto y gastos (F-03)

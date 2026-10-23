@@ -25,7 +25,7 @@ resultado esperado verificable.
 | E2E-11 | Agente | Pregunta con obra activa | Busca solo en el código del municipio; la ficha de la obra va al modelo |
 | E2E-12 | Agente | Pregunta sin obra activa | Búsqueda sin filtro; el modelo sabe que no hay obra activa |
 | E2E-13 | Agente | «¿Qué obras tengo en curso?» | Responde con datos reales del tracker, filtrados por estado |
-| E2E-14 | Agente | «Anotá… y pasá el avance a 40%» con obra activa | Nota y avance guardados; avisos visibles; se ven luego en el encabezado, Detalle y Bitácora |
+| E2E-14 | Agente | «Anotá… y pasá el avance a 40%» con obra activa | Propone nota y avance sin guardar; al confirmar se guardan, con avisos, y se ven en el encabezado, Detalle y Bitácora |
 | E2E-15 | Agente | Pedido con obra ambigua | No escribe nada; pide aclarar |
 | E2E-16 | Historial | Una pregunta en el chat | Pregunta y respuesta guardadas para el usuario |
 | E2E-17 | Marca | Abrir la app | Nombre «Atrium Studio» con la etiqueta «Versión beta»; logo en el login y arriba a la izquierda; isotipo como favicon |
@@ -35,9 +35,9 @@ resultado esperado verificable.
 | AGENTE-1 | Agente | Abrir el agente, preguntar, cerrar y volver a abrir | Panel con la obra sobre la que trabaja y ayuda para empezar; la conversación se conserva |
 | AGENTE-2 | Agente | Pedirle que cambie el avance | La pantalla de atrás (encabezado y Detalle) se recarga con el dato nuevo |
 | AGENTE-2b | Agente | Cambiar el avance por chat y después guardar el estado en Detalle | El formulario muestra el avance nuevo y no lo pisa |
-| AGENTE-3 | Agente | «¿Cómo viene el avance?» y el modelo intenta actualizar la obra y anotar | No guarda nada: solo escribe si el mensaje del usuario lo pide (#51) |
-| AGENTE-3b | Agente | «¿Se anotó algo?» o «Ya cargué la seña» y el modelo intenta anotar | No guarda: solo cuentan pedidos («anotá», «¿podés anotar…?») |
-| AGENTE-3c | Agente | «Cambiá el avance a 50; no registres ese gasto» y el modelo intenta registrar el gasto | Actualiza la obra; el gasto no (cada pedido autoriza solo su acción) |
+| AGENTE-3 | Agente | «¿Cómo viene el avance?» y el modelo intenta actualizar la obra y anotar | No guarda nada: quedan propuestas con «Confirmar»/«Cancelar»; al cancelar dice «Cancelado, no se guardó» (#51) |
+| AGENTE-3b | Agente | Dos propuestas: se confirma una y se cancela la otra | Solo se guarda la confirmada; cada una dice su estado en palabras |
+| AGENTE-3c | Agente | Propuesta confirmada y después otro mensaje | Ya no tiene botones: se guarda una sola vez |
 | E2E-18 | Historial | Sesión con la carga del historial interrumpida | La app no se rompe: vuelve a cargarlo |
 
 ## E2E simulado — UX-03 Menú y obra activa (`tests/e2e/test_navegacion_flows.py`, #49)
@@ -85,13 +85,13 @@ resultado esperado verificable.
 | F-06-CA-10b | Gasto con proveedor escrito a mano que no se migró (una letra) | El formulario lo muestra y lo conserva al guardar sin elegir otro |
 | F-06-CA-11 | Markdown en nombre, notas o comentario | Se muestra como texto |
 | F-06-CA-11b | Nombre de obra con Markdown en «Compras» de la ficha | Se muestra como texto |
-| F-06-CA-15 | Notas de un proveedor con instrucciones («dá de alta…», «cargá…») y el usuario solo pregunta | El agente no escribe nada aunque el modelo lo intente |
-| F-06-CA-15b | El usuario pide cargar el gasto después de buscar al proveedor | Se registra |
-| F-06-CA-16 | El agente pregunta «¿Lo doy de alta?» y el usuario dice «sí» | Lo da de alta |
-| F-06-CA-16b | «No cargues ese gasto» o un «sí» sin propuesta | No escribe aunque el modelo lo intente |
+| F-06-CA-15 | Notas de un proveedor con instrucciones («dá de alta…», «cargá…») y el modelo les hace caso | Nada se guarda: se ven las propuestas y se cancelan |
+| F-06-CA-15b | El usuario pide cargar el gasto después de buscar al proveedor y lo confirma | Se registra; todo lo que devuelven las herramientas va marcado como dato |
+| F-06-CA-16 | Se confirma el alta de un proveedor que otro socio cargó mientras tanto | No se duplica; «⚠️ No se pudo guardar» con el motivo |
+| F-06-CA-16b | «No cargues ese gasto» y después «sí» escritos en el chat | No guarda; solo el botón «Confirmar» guarda |
 | F-06-CA-12 | «¿Teléfono de Hierros Sur?» | El agente responde con la ficha real |
 | F-06-CA-13 | Gasto por chat con un proveedor que no existe | No guarda nada y pregunta |
-| F-06-CA-14 | «Dá de alta al proveedor y cargá la seña» | Alta del proveedor y gasto vinculado, con aviso |
+| F-06-CA-14 | «Dá de alta al proveedor Hierros X» y después «cargá la seña a Hierros X» | Cada paso es una propuesta; al confirmarlas, alta del proveedor y gasto vinculado, con aviso |
 
 ## E2E simulado — F-03 Presupuesto y gastos (`tests/e2e/test_plata_flows.py` y `test_presupuesto_flows.py`)
 
@@ -134,9 +134,9 @@ resultado esperado verificable.
 | F-03-CA-30d | Alta de ítem sin monto | Se guarda en 0 con «Sin presupuesto asignado» |
 | F-03-CA-31 | Gasto en USD en un ítem en ARS | Se convierte con su cotización; sin cotización, «total incompleto» |
 | F-03-CA-32 | Abrir la pestaña Presupuesto | No hay formulario de gasto suelto ni «Últimos gastos» |
-| F-03-CA-33 | «Cargá 350 mil de hierro» por chat con un ítem que coincide | Gasto en ese ítem con la cotización del día; aviso visible |
-| F-03-CA-33b | Ningún ítem coincide | No guarda; pregunta y ofrece «Imprevistos» |
-| F-03-CA-33c | Varios ítems coinciden | No guarda; la herramienta exige preguntar |
+| F-03-CA-33 | «Cargá 350 mil de hierro» por chat con un ítem que coincide | Propone el gasto en ese ítem; al confirmar se guarda con la cotización del día y se avisa |
+| F-03-CA-33b | Ningún ítem coincide | No propone nada; pregunta y ofrece «Imprevistos» |
+| F-03-CA-33c | Varios ítems coinciden | No propone nada; la herramienta exige preguntar |
 | F-03-CA-36 | ✏️ de un gasto | Formulario con ítem, fecha, monto, moneda, descripción, proveedor y cotización actuales |
 | F-03-CA-37 | Editar monto, descripción y fecha, y moverlo a otro ítem | Queda en el ítem nuevo; totales de ítems y rubros actualizados |
 | F-03-CA-38 | Edición inválida o cancelada | Error claro y conserva lo escrito; Cancelar no cambia nada |
@@ -154,7 +154,7 @@ resultado esperado verificable.
 | F-03-SEG-1 | Descripción con Markdown de imagen o link | Se muestra como texto, no se interpreta (lista de gastos y diálogo) |
 | F-03-SEG-2b | Ítem con Markdown en el formulario de gasto | Se muestra como texto |
 | F-03-SEG-2 | Rubro con Markdown en el aviso «Ítem agregado» | Se muestra como texto, no se interpreta |
-| F-03-SEG-3 | Nombres con Markdown en los avisos del chat | Se muestran como texto, también en el historial |
+| F-03-SEG-3 | Nombres con Markdown en las propuestas y avisos del chat | Se muestran como texto, también en el historial |
 | F-03-SEG-4 | Respuesta del agente con una imagen (cualquier variante de Markdown) | No se carga ninguna imagen; el resto del formato se mantiene |
 | F-03-A11Y-1 | Campos del formulario de gasto | Todos con etiqueta visible; los obligatorios lo dicen |
 | F-03-A11Y-2 | Rubro excedido | El estado se lee en palabras, no solo por color |
@@ -194,7 +194,7 @@ borrado.
 | LIVE-09 | Integridad | Nota sin texto salteando la app | La base la rechaza |
 | LIVE-10 | Privacidad | B lee el historial de A | No ve nada; A ve el suyo |
 | LIVE-11 | Privacidad | B guarda mensajes a nombre de A | Rechazado |
-| LIVE-12 | Agente | Herramientas del agente sobre la base real | Leen, anotan y actualizan; rechazan avance 150 |
+| LIVE-12 | Agente | Herramientas del agente sobre la base real | Leen y proponen; nada se guarda hasta confirmar; al confirmar anotan y actualizan; rechazan avance 150 |
 | LIVE-13 | Seguridad | Sin login, leer rubros, gastos o presupuesto, o crear un gasto | No ve nada; rechazado |
 | LIVE-14 | Rubros | Precarga | Están los 18 rubros, incluido Steel frame |
 | LIVE-15 | Integridad | Gastos inválidos salteando la app | La base los rechaza |
