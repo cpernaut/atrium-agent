@@ -70,8 +70,9 @@ _SOSPECHAS: tuple[tuple[re.Pattern, str], ...] = (
     ),
     (
         re.compile(
-            # English role names only: «Sistema: losa radiante» is a normal note.
-            r"(?m)^\s*(system|assistant|developer|user|human|tool|function)\s*:"
+            # English role names only: «Sistema: losa radiante» is a normal note. At
+            # line start, or after a prefix a tool adds («- 2026-10-01 (autor): system:»).
+            r"(?m)(^|[:)\]>\-–•|]\s)\s*(system|assistant|developer|user|human|tool|function)\s*:"
         ),
         "imita un rol",
     ),

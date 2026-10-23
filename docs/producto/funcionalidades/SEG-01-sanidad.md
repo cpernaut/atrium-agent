@@ -18,7 +18,7 @@ cada texto se **revisa antes de guardarse**.
   - Colapsa los espacios repetidos. Conserva los saltos de línea en notas y comentarios.
 - R2. **Rechazo** (D1). No se guarda un texto que parece una orden para el agente:
   - «ignorá / olvidá las instrucciones», «ignore previous instructions», «system prompt», «nuevas instrucciones», «ahora sos…», «you are now»;
-  - roles al principio de una línea («system:», «user:», «assistant:», «tool:»…; en inglés, porque «Sistema: losa radiante» es una nota normal);
+  - roles al principio de una línea o detrás de un prefijo («system:», «user:», «assistant:», «tool:»…; en inglés, porque «Sistema: losa radiante» es una nota normal);
   - nombres de herramientas del agente;
   - los marcadores `[[ ]]`;
   - cualquier etiqueta HTML («<b>», «<script>»…; una comparación como «a < b» no cuenta), enlaces `javascript:` o `data:`, imágenes Markdown.
@@ -34,6 +34,7 @@ cada texto se **revisa antes de guardarse**.
 - **SAN-CA-2**: los invisibles se limpian solos al guardar.
 - **SAN-CA-3**: el agente no puede guardar un texto sospechoso.
 - **SAN-CA-4**: una nota sospechosa ya guardada llega al agente marcada y señalada.
+- **SAN-CA-4b**: un rol («system:») en una nota vieja se señala aunque la herramienta le anteponga fecha y autor.
 - **SAN-CA-5 / LIVE-31**: la base rechaza invisibles y marcadores aunque se saltee la app.
 - **SAN-CA-6**: el texto normal (tildes, ñ, n.º, m², emojis, saltos de línea) queda igual.
 
