@@ -480,8 +480,7 @@ create table if not exists public.proveedores (
     nombre     text not null check (char_length(btrim(nombre)) between 2 and 120),
     contacto   text check (contacto is null or char_length(contacto) <= 120),
     telefono   text check (telefono is null or telefono ~ '^[0-9+() -]{6,30}$'),
-    email      text check (email is null or (char_length(email) <= 120
-                                             and email ~ '^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$')),
+    email      text,
     web        text check (web is null or (char_length(web) <= 300 and web ~ '^https://[^[:space:]]+$')),
     cuit       text check (cuit is null or cuit ~ '^[0-9]{2}-[0-9]{8}-[0-9]$'),
     zona       text check (zona is null or char_length(zona) <= 120),
@@ -491,6 +490,14 @@ create table if not exists public.proveedores (
     creado_por uuid references auth.users (id) default auth.uid(),
     created_at timestamptz not null default now()
 );
+
+-- Mail estricto (como atrium/proveedores.py): sin «?», «&», «#» ni «%», que en el
+-- botón Mail (mailto:) podrían sumar destinatarios ocultos.
+alter table public.proveedores drop constraint if exists proveedores_email_check;
+alter table public.proveedores drop constraint if exists proveedores_email_valido;
+alter table public.proveedores add constraint proveedores_email_valido check (
+    email is null or (char_length(email) <= 120
+                      and email ~ '^[A-Za-z0-9._+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$'));
 
 -- Un proveedor por nombre, sin importar mayúsculas, tildes ni espacios (misma
 -- normalización que los rubros).

@@ -60,6 +60,9 @@ def test_duplicado_de_un_eliminado_avisa_que_se_restaura(db):
     [
         ("nombre", "x", "al menos 2 letras"),
         ("email", "no-es-mail", "mail no es válido"),
+        ("email", "x@example.com?bcc=atacante%40evil.test", "mail no es válido"),
+        ("email", "x@example.com#frag", "mail no es válido"),
+        ("email", "x&y@example.com", "mail no es válido"),
         ("web", "javascript:alert(1)", "https://"),
         ("web", "http://x.test", "https://"),
         ("cuit", "123", "11 números"),
@@ -363,3 +366,8 @@ def test_gasto_conserva_el_proveedor_escrito_antes(db):
         proveedor_id=p["id"],
     )
     assert (elegido["proveedor"], elegido["proveedor_id"]) == ("Yesería", p["id"])
+
+
+def test_mail_con_destinatarios_ocultos_no_arma_boton():
+    enlaces = dict(proveedores.enlaces_contacto({"email": "x@example.com?bcc=a%40evil.test"}))
+    assert "✉️ Mail" not in enlaces

@@ -263,6 +263,8 @@ select pg_temp.ok((select creado_por from public.proveedores where nombre = 'Hie
 select pg_temp.falla($$insert into public.proveedores (nombre) values ('  HIERROS   rls ')$$, '23505');
 select pg_temp.falla($$insert into public.proveedores (nombre) values ('x')$$, '23514');
 select pg_temp.falla($$insert into public.proveedores (nombre, email) values ('Mail malo', 'no-es-mail')$$, '23514');
+select pg_temp.falla($$insert into public.proveedores (nombre, email)
+  values ('Mail con bcc', 'x@example.com?bcc=atacante%40evil.test')$$, '23514');
 select pg_temp.falla($$insert into public.proveedores (nombre, web) values ('Web mala', 'http://x.test')$$, '23514');
 select pg_temp.falla($$insert into public.proveedores (nombre, web) values ('Web js', 'javascript:alert(1)')$$, '23514');
 select pg_temp.falla($$insert into public.proveedores (nombre, cuit) values ('Cuit malo', '123')$$, '23514');

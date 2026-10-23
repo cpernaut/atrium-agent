@@ -77,7 +77,10 @@ def _run_all(build) -> list[Fila]:
 # --------------------------------------------------------------------------- #
 # Validation
 # --------------------------------------------------------------------------- #
-_EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+# Strict: letters, digits and . _ + - only. No «?», «&», «#» or «%»: the Mail
+# button builds a mailto: link, and those would let a stored address add hidden
+# recipients («x@y.com?bcc=…»).
+_EMAIL = re.compile(r"^[A-Za-z0-9._+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$")
 _TELEFONO = re.compile(r"^[0-9+() -]{6,30}$")
 _WEB = re.compile(r"^https://\S+$")
 
