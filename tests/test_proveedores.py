@@ -63,7 +63,8 @@ def test_duplicado_de_un_eliminado_avisa_que_se_restaura(db):
         ("email", "x@example.com?bcc=atacante%40evil.test", "mail no es válido"),
         ("email", "x@example.com#frag", "mail no es válido"),
         ("email", "x&y@example.com", "mail no es válido"),
-        ("web", "javascript:alert(1)", "https://"),
+        ("web", "javascript:alert(1)", "enlace ejecutable"),
+        ("web", "ftp://x.test", "https://"),
         ("web", "http://x.test", "https://"),
         ("cuit", "123", "11 números"),
         ("cuit", "30-71234567-2", "no es válido"),
@@ -381,3 +382,18 @@ def test_comentario_de_calificacion_conserva_los_saltos_de_linea(db):
         db, p["id"], "id-a", 4, "Buen precio.\n\nEntrega  lenta​.", autor="a@x"
     )
     assert guardada["comentario"] == "Buen precio.\n\nEntrega lenta."
+
+
+def test_web_con_invisibles_u_ordenes_no_se_guarda(db):
+    """#53: la web pasa por la misma revisión que el resto de los textos."""
+
+    with pytest.raises(proveedores.ProveedoresError, match="enlace ejecutable"):
+        proveedores.create_proveedor(
+            db, {"nombre": "Web mala", "web": "https://x.test/?q=java\u200bscript:alert(1)"}
+        )
+    p = proveedores.create_proveedor(db, {"nombre": "Web ok", "web": "https://x.test/\u200b"})
+    assert p["web"] == "https://x.test/"
+
+
+def test_web_guardada_con_invisibles_no_arma_boton():
+    assert proveedores.enlaces_contacto({"web": "https://x.test/\u200bq"}) == []

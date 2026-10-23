@@ -139,7 +139,7 @@ def _email(valor: Any) -> str | None:
 
 
 def _web(valor: Any) -> str | None:
-    texto = str(valor or "").strip()
+    texto = sanidad.revisar(valor, "la web", ProveedoresError) or ""  # #53
     if not texto:
         return None
     tiene_esquema = re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*:", texto)
@@ -324,7 +324,7 @@ def enlaces_contacto(proveedor: Fila) -> list[tuple[str, str]]:
     if email and _EMAIL.fullmatch(email):
         enlaces.append(("✉️ Mail", f"mailto:{email}"))
     web = proveedor.get("web")
-    if web and _WEB.fullmatch(web):
+    if web and _WEB.fullmatch(web) and sanidad.limpiar(web) == web:  # #53: no invisibles
         enlaces.append(("🌐 Web", web))
     return enlaces
 

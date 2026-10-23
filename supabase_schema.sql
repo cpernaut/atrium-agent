@@ -835,6 +835,8 @@ update public.proveedores set contacto = nullif(btrim(public.limpiar_texto(conta
  where not public.texto_limpio(contacto);
 update public.proveedores set zona = nullif(btrim(public.limpiar_texto(zona)), '')
  where not public.texto_limpio(zona);
+update public.proveedores set web = nullif(btrim(public.limpiar_texto(web)), '')
+ where not public.texto_limpio(web);
 update public.proveedores set notas = nullif(btrim(public.limpiar_texto(notas)), '')
  where not public.texto_limpio(notas);
 update public.proveedor_calificaciones
@@ -862,7 +864,7 @@ alter table public.rubros add constraint rubros_texto_limpio check (public.texto
 alter table public.proveedores drop constraint if exists proveedores_textos_limpios;
 alter table public.proveedores add constraint proveedores_textos_limpios check (
     public.texto_limpio(nombre) and public.texto_limpio(contacto)
-    and public.texto_limpio(zona) and public.texto_limpio(notas));
+    and public.texto_limpio(zona) and public.texto_limpio(notas) and public.texto_limpio(web));
 alter table public.proveedor_calificaciones drop constraint if exists calificaciones_texto_limpio;
 alter table public.proveedor_calificaciones add constraint calificaciones_texto_limpio
     check (public.texto_limpio(comentario));

@@ -12,7 +12,7 @@ cada texto se **revisa antes de guardarse**.
 
 ## Reglas
 
-- R1. **Limpieza al guardar** (`atrium/sanidad.py`, en el dominio). Se aplica a todo texto libre, lo cargue la pantalla o el agente: obras (nombre, cliente, dirección, responsable), notas de bitácora, descripciones de ítems y gastos, rubros, proveedores (nombre, contacto, zona, notas) y comentarios de calificaciones.
+- R1. **Limpieza al guardar** (`atrium/sanidad.py`, en el dominio). Se aplica a todo texto libre, lo cargue la pantalla o el agente: obras (nombre, cliente, dirección, responsable), notas de bitácora, descripciones de ítems y gastos, rubros, proveedores (nombre, contacto, zona, notas, web) y comentarios de calificaciones.
   - Saca caracteres de control e invisibles: ancho cero, cambio de dirección, BOM, guion suave.
   - Pasa a texto común las letras de ancho completo. No usa NFKC, para que «n.º» y «m²» no cambien.
   - Colapsa los espacios repetidos. Conserva los saltos de línea en notas y comentarios.

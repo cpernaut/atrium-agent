@@ -248,6 +248,8 @@ select pg_temp.falla($$update public.obras set cliente = E'Pérez\u202E' where n
 select pg_temp.falla($$insert into public.rubros (nombre) values (E'Pileta\x07')$$, '23514');
 select pg_temp.falla($$insert into public.rubros (nombre) values (E'Pileta\u0085')$$, '23514');
 select pg_temp.falla($$insert into public.rubros (nombre) values (E'Pile\tta')$$, '23514');
+select pg_temp.falla($$insert into public.proveedores (nombre, web)
+  values ('Web invisible', E'https://x.test/?q=java\u200Bscript:alert(1)')$$, '23514');
 select pg_temp.falla($$insert into public.rubros (nombre) values (E'Pileta\u061C')$$, '23514');
 select pg_temp.falla($$insert into public.rubros (nombre) values (E'Pileta\u2028')$$, '23514');
 select pg_temp.falla($$insert into public.rubros (nombre) values (E'Pileta\U000E0041')$$, '23514');
