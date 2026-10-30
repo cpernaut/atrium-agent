@@ -965,7 +965,8 @@ alter table public.presupuesto_items add constraint presupuesto_items_unidad che
 alter table public.presupuesto_items drop constraint if exists presupuesto_items_por_unidad;
 alter table public.presupuesto_items add constraint presupuesto_items_por_unidad check (
     (unidad = 'global' and cantidad is null and precio_unitario is null)
-    or (unidad <> 'global' and cantidad >= 0 and precio_unitario >= 0
+    or (unidad <> 'global' and cantidad is not null and precio_unitario is not null
+        and cantidad >= 0 and precio_unitario >= 0
         and monto = round(cantidad * precio_unitario, 2)));
 -- «Imprevistos» es siempre global (D25).
 alter table public.presupuesto_items drop constraint if exists presupuesto_items_imprevistos_global;

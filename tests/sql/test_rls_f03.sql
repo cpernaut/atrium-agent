@@ -143,6 +143,8 @@ select pg_temp.falla($$insert into public.presupuesto_items (obra_id, rubro_id, 
   select o.id, r.id, 10, 'ARS', 1, 10 from public.obras o, public.rubros r
   where o.nombre = 'Obra RLS' and r.nombre = 'Pintura'$$, '23514');
 select pg_temp.falla($$update public.presupuesto_items set cantidad = 90 where descripcion = 'Porcelanato'$$, '23514');
+select pg_temp.falla($$update public.presupuesto_items set cantidad = null where descripcion = 'Porcelanato'$$, '23514');
+select pg_temp.falla($$update public.presupuesto_items set precio_unitario = null where descripcion = 'Porcelanato'$$, '23514');
 update public.presupuesto_items set cantidad = 90, monto = 2880000 where descripcion = 'Porcelanato';
 update public.presupuesto_items set unidad = 'global', cantidad = null, precio_unitario = null
  where descripcion = 'Porcelanato';
