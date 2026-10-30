@@ -306,3 +306,27 @@ def test_live_24_editar_gasto(users, obra_de_a, item, estructura):
     finanzas.anular_gasto(users.a.client, gasto["id"])
     with pytest.raises(APIError):  # salteando la app: la base no deja editar un anulado
         users.b.client.table("gastos").update({"descripcion": "x"}).eq("id", gasto["id"]).execute()
+
+
+def test_live_32_items_por_unidad_en_la_base(users, obra_de_a, estructura):
+    """LIVE-32 (F-03-CA-46): la base exige total = cantidad × precio y una unidad de
+    la lista, aunque se saltee la app."""
+
+    fila, _ = finanzas.add_presupuesto_item(
+        users.a.client,
+        obra_de_a["id"],
+        monto=None,
+        moneda="ARS",
+        rubro_id=estructura,
+        descripcion=f"{PREFIX} Porcelanato",
+        unidad="m2",
+        cantidad=10,
+        precio_unitario=100,
+    )
+    tabla = users.a.client.table("presupuesto_items")
+    with pytest.raises(APIError):
+        tabla.update({"monto": 999}).eq("id", fila["id"]).execute()
+    with pytest.raises(APIError):
+        tabla.update({"unidad": "litro"}).eq("id", fila["id"]).execute()
+    ok = tabla.update({"cantidad": 20, "monto": 2000}).eq("id", fila["id"]).execute()
+    assert Decimal(str(ok.data[0]["monto"])) == 2000

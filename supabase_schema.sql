@@ -943,3 +943,33 @@ alter table public.proveedores add constraint proveedores_textos_limpios check (
 alter table public.proveedor_calificaciones drop constraint if exists calificaciones_texto_limpio;
 alter table public.proveedor_calificaciones add constraint calificaciones_texto_limpio
     check (public.texto_limpio(comentario));
+
+-- --------------------------------------------------------------------------- --
+-- #55 · Ítems por unidad de medida. Un ítem es «Global» (un monto total, como
+-- siempre) o por unidad: cantidad × precio unitario = monto. Los ítems que ya
+-- existían quedan «Global» con su monto (D22). Todo lo que suma por monto
+-- (semáforo, desvíos, resumen) no cambia.
+-- --------------------------------------------------------------------------- --
+alter table public.presupuesto_items
+    add column if not exists unidad text not null default 'global';
+alter table public.presupuesto_items
+    add column if not exists cantidad numeric(12, 2);
+alter table public.presupuesto_items
+    add column if not exists precio_unitario numeric(14, 2);
+
+alter table public.presupuesto_items drop constraint if exists presupuesto_items_unidad;
+alter table public.presupuesto_items add constraint presupuesto_items_unidad check (
+    unidad in ('global', 'm2', 'm3', 'ml', 'kg', 'unidad', 'caja', 'jornal'));
+-- «Global»: sin cantidad ni precio. Por unidad: los dos (pueden valer 0, D23) y el
+-- monto es exactamente cantidad × precio, redondeado a centavos.
+alter table public.presupuesto_items drop constraint if exists presupuesto_items_por_unidad;
+alter table public.presupuesto_items add constraint presupuesto_items_por_unidad check (
+    (unidad = 'global' and cantidad is null and precio_unitario is null)
+    or (unidad <> 'global' and cantidad >= 0 and precio_unitario >= 0
+        and monto = round(cantidad * precio_unitario, 2)));
+-- «Imprevistos» es siempre global (D25).
+alter table public.presupuesto_items drop constraint if exists presupuesto_items_imprevistos_global;
+alter table public.presupuesto_items add constraint presupuesto_items_imprevistos_global
+    check (not es_imprevistos or unidad = 'global');
+
+grant update (unidad, cantidad, precio_unitario) on public.presupuesto_items to authenticated;

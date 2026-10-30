@@ -352,7 +352,7 @@ dentro de cada ítem (CA-27, CA-29, CA-28 y CA-33).
 
 ## Mejora: ítems por unidad de medida (#55)
 
-**Estado de la mejora:** Borrador — D20 a D22 decididas; falta el OK a D23 a D27.
+**Estado de la mejora:** Hecha (#55). Decisiones D20 a D27.
 
 Algunas cosas se presupuestan con un monto general (la instalación de gas) y
 otras por unidad (el porcelanato por m²). Cada ítem del presupuesto pasa a tener
@@ -421,6 +421,8 @@ Total: ARS 2.720.000  (85 m² × ARS 32.000)
   conserva el total y deja de mostrar cantidad y precio.
 - **F-03-CA-45** — *Dado* la unidad «caja» *cuando* guardo *entonces* se muestra
   «caja» (lista fija con «Caja», D20).
+- **F-03-CA-45b** — *Dado* «Imprevistos» *cuando* lo edito *entonces* no ofrece
+  unidad: es siempre «Global» (D25).
 - **F-03-CA-46** — *Dado* un usuario logueado *cuando* intenta, salteando la app,
   guardar un ítem por unidad con un total que no es cantidad × precio, o una
   unidad fuera de la lista *entonces* la base lo rechaza.
@@ -438,6 +440,7 @@ Total: ARS 2.720.000  (85 m² × ARS 32.000)
 | Reglas y cálculos | `atrium/finanzas.py` |
 | Pestaña Presupuesto (ex 💰 Plata) | `plata_ui.py` |
 | Herramientas del agente | `registrar_gasto`, `resumen_plata` en `atrium/obra_tools.py` |
+| Ítems por unidad (#55) | `finanzas.UNIDADES`, `calcular_por_unidad`, `detalle_unidad`; `plata_ui._selector_unidad` / `_importes`; restricciones `presupuesto_items_unidad`, `_por_unidad`, `_imprevistos_global` |
 | «Imprevistos» de una obra nueva | `obras_ui.py` → `finanzas.crear_imprevistos` |
 | Tests | `tests/test_finanzas.py`, `tests/test_cotizaciones.py`, `tests/e2e/test_plata_flows.py`, `tests/e2e/test_presupuesto_flows.py`, `tests/live/test_finanzas_live.py`, `tests/sql/test_rls_f03.sql` |
 
@@ -484,8 +487,8 @@ confirmación explícita.
 | D20 | ¿Qué unidades? | ✅ Lista fija: Global, m², m³, ml, kg, unidad, caja y jornal (#55, 30/10/2026) |
 | D21 | ¿Los gastos registran la cantidad comprada? | ✅ No, por ahora: los gastos siguen siendo un monto (#55) |
 | D22 | ¿Qué pasa con los ítems que ya existen? | ✅ Quedan «Global» con su monto (#55) |
-| D23 | ¿Cantidad y precio pueden valer 0? | ⏳ Recomendación: sí, como el monto (D9) |
-| D24 | ¿Se puede pasar un ítem de una forma a la otra? | ⏳ Recomendación: sí; a «Global» conserva el total (R-U4) |
-| D25 | ¿«Imprevistos» puede ser por unidad? | ⏳ Recomendación: no, siempre «Global» |
-| D26 | ¿Cantidad con decimales? | ⏳ Recomendación: sí, hasta 2 (85,50 m²) |
-| D27 | ¿El agente puede crear o editar ítems? | ⏳ Recomendación: no en esta mejora; solo los muestra con su detalle |
+| D23 | ¿Cantidad y precio pueden valer 0? | ✅ Sí, como el monto (D9) (#55, 30/10/2026) |
+| D24 | ¿Se puede pasar un ítem de una forma a la otra? | ✅ Sí; a «Global» conserva el total (R-U4) (#55, 30/10/2026) |
+| D25 | ¿«Imprevistos» puede ser por unidad? | ✅ No, siempre «Global» (#55, 30/10/2026) |
+| D26 | ¿Cantidad con decimales? | ✅ Sí, hasta 2 (85,50 m²) (#55, 30/10/2026) |
+| D27 | ¿El agente puede crear o editar ítems? | ✅ No en esta mejora; solo los muestra con su detalle (#55, 30/10/2026) |

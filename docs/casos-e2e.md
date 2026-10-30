@@ -152,6 +152,12 @@ resultado esperado verificable.
 | F-03-CA-38 | Edición inválida o cancelada | Error claro y conserva lo escrito; Cancelar no cambia nada |
 | F-03-CA-39 | Cambiar la fecha de un gasto con cotización automática | Toma el MEP de la nueva fecha; una corregida a mano se respeta |
 | F-03-CA-35 | Cambiar el rubro de un ítem con gastos | Los gastos pasan a ese rubro en el resumen |
+| F-03-CA-41 | Ítem nuevo en m²: 85 × ARS 32.000 | Total ARS 2.720.000; la tabla muestra «85 m² × ARS 32.000» (#55) |
+| F-03-CA-42 | Cambiar la cantidad de un ítem por unidad | Se recalculan total, saldo y semáforo |
+| F-03-CA-43 | Ítem nuevo con unidad «Global» | Solo pide el monto, como siempre |
+| F-03-CA-44 | Pasar un ítem por unidad a «Global» | Conserva el total; ya no muestra cantidad ni precio |
+| F-03-CA-45 | Lista de unidades; ítem en «caja» | Global, m², m³, ml, kg, unidad, caja, jornal; «12 caja × ARS 15.000» |
+| F-03-CA-45b | Editar «Imprevistos» | No ofrece unidad: siempre «Global» (D25) |
 | TABLA-1 | Presupuesto en una tabla (#45) | Abrir la pestaña Presupuesto | Una sola tabla con Ítems y % consumido; rubros cerrados; sin lista aparte |
 | TABLA-2 | Presupuesto en una tabla | Expandir rubro, ítem y volver a cerrar | Aparecen sus ítems y después sus gastos; al cerrar se ocultan |
 | TABLA-3 | Presupuesto en una tabla | Íconos por fila | Rubro: agregar ítem. Ítem: registrar gasto, editar, borrar. Gasto: cotización, anular. Todos con descripción |
@@ -224,6 +230,7 @@ borrado.
 | LIVE-29 | Proveedores | B edita el proveedor de A, repite su nombre, cambia o firma la calificación de A, o manda otro autor | Edita sí; lo demás rechazado; la base firma con el mail del login; cada uno la suya |
 | LIVE-30 | Proveedores | Gasto o calificación nueva para un proveedor eliminado, salteando la app | Rechazados; el gasto que ya lo tenía lo conserva |
 | LIVE-31 | Texto limpio | Nota con un carácter invisible o con [[ ]], salteando la app | Rechazada; un texto normal sí se guarda (#53) |
+| LIVE-32 | Ítems por unidad | Total que no es cantidad × precio, o unidad fuera de la lista, salteando la app | Rechazados; un cambio consistente sí se guarda (#55, F-03-CA-46) |
 
 ## Cómo ver los resultados
 
