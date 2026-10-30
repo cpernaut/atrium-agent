@@ -8,6 +8,7 @@
 | ✅ | [UX-03 Menú y obra activa](funcionalidades/UX-03-navegacion-obra-activa.md) | Hecha | #49: menú a la izquierda, obra activa siempre visible y recordada, Detalle editable, Rubros; «Plata» pasa a «Presupuesto» |
 | ✅ | [F-06 Proveedores](funcionalidades/F-06-proveedores.md) | Hecha | #37: lista compartida, ficha con compras y estrellas, proveedor elegido en cada gasto; base para las ofertas (#36) |
 | ✅ | [SEG-01 Revisión de lo que se guarda](funcionalidades/SEG-01-sanidad.md) | Hecha | #53: limpieza y rechazo de órdenes para el agente al guardar, restricciones en la base, datos marcados al agente |
+| 1 | [F-03 · Ítems por unidad de medida](funcionalidades/F-03-presupuesto-gastos.md#mejora-ítems-por-unidad-de-medida-55) | Borrador | #55: cada ítem global o por unidad (m², caja…); total = cantidad × precio |
 | 2 | [F-04 Etapas y cronograma](funcionalidades/F-04-etapas-cronograma.md) | Borrador | Reusa los rubros; con presupuesto cargado, el avance de la obra puede ponderarse por costo |
 | 3 | [F-05 Fotos y documentos](funcionalidades/F-05-fotos-documentos.md) | Borrador | Agrega Storage; al llegar última puede vincular archivos a gastos y etapas desde el primer día |
 

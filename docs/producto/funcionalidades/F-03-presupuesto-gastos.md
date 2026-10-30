@@ -350,6 +350,85 @@ dentro de cada ítem (CA-27, CA-29, CA-28 y CA-33).
   cambiar la obra, el autor o el registro de edición de un gasto, editar uno
   anulado o moverlo a un ítem de otra obra o borrado *entonces* la base lo rechaza.
 
+## Mejora: ítems por unidad de medida (#55)
+
+**Estado de la mejora:** Borrador — D20 a D22 decididas; falta el OK a D23 a D27.
+
+Algunas cosas se presupuestan con un monto general (la instalación de gas) y
+otras por unidad (el porcelanato por m²). Cada ítem del presupuesto pasa a tener
+una **unidad**:
+
+- **Global** (como hoy): se carga el monto total.
+- **Por unidad** (m², m³, ml, kg, unidad, caja, jornal): se cargan cantidad y
+  precio unitario; el total lo calcula la app (cantidad × precio unitario).
+
+**Historias**
+- Como **socia**, quiero presupuestar el porcelanato como 85 m² × ARS 32.000, para
+  que el total se recalcule solo si cambia la superficie o el precio del m².
+- Como **socia**, quiero seguir cargando montos globales (la instalación de gas)
+  sin pasos de más.
+
+**Datos** — `presupuesto_items`, columnas nuevas:
+
+| Campo | Tipo | Reglas |
+|---|---|---|
+| unidad | text | `global` (default) · `m2` · `m3` · `ml` · `kg` · `unidad` · `caja` · `jornal`; `check` en la base |
+| cantidad | numeric(12,2) | ≥ 0; obligatoria si la unidad no es `global`, vacía si es `global` |
+| precio_unitario | numeric(14,2) | ≥ 0; ídem; en la moneda del ítem |
+
+- `monto` sigue siendo el total del ítem: en los ítems por unidad lo calcula la
+  app y la base lo exige (`check (unidad = 'global' or monto = round(cantidad * precio_unitario, 2))`),
+  así todo lo que ya suma por `monto` (semáforo, desvíos, resumen, agente) no cambia.
+- `unidad`, `cantidad` y `precio_unitario` se suman a `CAMPOS_EDITABLES_ITEM` y a
+  los permisos por columna.
+- Migración: los ítems existentes quedan `global` (D22), sin tocar sus montos.
+
+**Reglas**
+- **R-U1.** En la pantalla las unidades se muestran como m², m³, ml, kg, unidad,
+  caja, jornal y «Global».
+- **R-U2.** El total se calcula con `Decimal` y se redondea a centavos.
+- **R-U3.** Cantidad y precio unitario pueden valer 0 (como el monto, D9): se
+  listan los ítems y los números se cargan después.
+- **R-U4.** Pasar un ítem de «por unidad» a «Global» conserva el total y borra
+  cantidad y precio; pasarlo de «Global» a una unidad pide cantidad y precio.
+- **R-U5.** «Imprevistos» es siempre «Global».
+- **R-U6.** Los gastos no cambian: se cargan como monto (D21).
+
+**Pantallas**
+
+```
+Nuevo ítem / Editar ítem
+Rubro [Pisos y revestimientos ▾]   Descripción [Porcelanato 60×60]
+Unidad [m² ▾]   Cantidad [85]   Precio unitario [32.000]   Moneda (•) ARS ( ) USD
+Total: ARS 2.720.000  (85 m² × ARS 32.000)
+```
+
+- Con unidad «Global» se ve solo «Monto», como hoy.
+- En la tabla del presupuesto, los ítems por unidad muestran debajo de la
+  descripción el detalle «85 m² × ARS 32.000».
+
+**Agente** — `resumen_plata` muestra el detalle por unidad de cada ítem
+(«Porcelanato: 85 m² × ARS 32.000 = ARS 2.720.000»). Sin herramientas nuevas.
+
+**Criterios de aceptación**
+- **F-03-CA-41** — *Dado* un ítem nuevo *cuando* elijo «m²», cargo 85 y ARS 32.000
+  *entonces* se guarda con total ARS 2.720.000 y la tabla muestra «85 m² × ARS 32.000».
+- **F-03-CA-42** — *Dado* un ítem por unidad *cuando* cambio la cantidad *entonces*
+  el total, el saldo y el semáforo se recalculan.
+- **F-03-CA-43** — *Dado* un ítem nuevo *cuando* dejo «Global» *entonces* se carga
+  solo el monto, como hoy.
+- **F-03-CA-44** — *Dado* un ítem por unidad *cuando* lo paso a «Global» *entonces*
+  conserva el total y deja de mostrar cantidad y precio.
+- **F-03-CA-45** — *Dado* la unidad «caja» *cuando* guardo *entonces* se muestra
+  «caja» (lista fija con «Caja», D20).
+- **F-03-CA-46** — *Dado* un usuario logueado *cuando* intenta, salteando la app,
+  guardar un ítem por unidad con un total que no es cantidad × precio, o una
+  unidad fuera de la lista *entonces* la base lo rechaza.
+- **F-03-CA-47** — *Dado* los ítems que ya existían *cuando* se aplica el esquema
+  *entonces* quedan «Global» con el mismo monto.
+- **F-03-CA-48** — *Dado* un ítem por unidad *cuando* pregunto por chat por el
+  presupuesto *entonces* el agente ve el detalle por unidad.
+
 ## Implementación
 
 | Pieza | Dónde |
@@ -402,3 +481,11 @@ confirmación explícita.
 | D17 | ¿Qué datos de un gasto se editan? | ✅ Todos, incluida la fecha del pago; no la obra ni el autor (#25) |
 | D18 | ¿Se puede mover un gasto a otro ítem? | ✅ Sí, en el mismo formulario de edición (#25; reemplaza D14) |
 | D19 | ¿Qué pasa con la cotización al editar? | ✅ Si es automática y cambia la fecha, se recalcula; la manual se respeta (#25) |
+| D20 | ¿Qué unidades? | ✅ Lista fija: Global, m², m³, ml, kg, unidad, caja y jornal (#55, 30/10/2026) |
+| D21 | ¿Los gastos registran la cantidad comprada? | ✅ No, por ahora: los gastos siguen siendo un monto (#55) |
+| D22 | ¿Qué pasa con los ítems que ya existen? | ✅ Quedan «Global» con su monto (#55) |
+| D23 | ¿Cantidad y precio pueden valer 0? | ⏳ Recomendación: sí, como el monto (D9) |
+| D24 | ¿Se puede pasar un ítem de una forma a la otra? | ⏳ Recomendación: sí; a «Global» conserva el total (R-U4) |
+| D25 | ¿«Imprevistos» puede ser por unidad? | ⏳ Recomendación: no, siempre «Global» |
+| D26 | ¿Cantidad con decimales? | ⏳ Recomendación: sí, hasta 2 (85,50 m²) |
+| D27 | ¿El agente puede crear o editar ítems? | ⏳ Recomendación: no en esta mejora; solo los muestra con su detalle |
