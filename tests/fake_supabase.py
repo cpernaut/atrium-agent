@@ -14,7 +14,7 @@ _DEFAULTS = {
     "obras": {"estado": "Planificación", "moneda": "ARS", "avance": 0},
     "bitacora": {"fecha": date.today().isoformat()},
     "rubros": {"orden": 1000, "activo": True},
-    "presupuesto_items": {"anulado": False, "es_imprevistos": False},
+    "presupuesto_items": {"anulado": False, "es_imprevistos": False, "unidad": "global"},
     "gastos": {"anulado": False},
     "proveedores": {"archivado": False, "rubro_ids": []},
 }

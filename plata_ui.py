@@ -465,6 +465,8 @@ def _fila_item(
         if item["moneda"] != moneda
         else ""
     )
+    if detalle := finanzas.detalle_unidad(item):  # #55: «85 m² × ARS 32.000»
+        original += f"  \n:gray[{texto_seguro(detalle)}]"
     estado = finanzas.estado_con_icono(fila.gastado, fila.presupuestado)
     if fila.sin_convertir:
         estado += " · total incompleto"
@@ -882,6 +884,86 @@ def _form_nuevo_gasto(supabase, item: dict) -> None:
     st.rerun()
 
 
+def _selector_unidad(clave: str, actual: str = finanzas.GLOBAL) -> str:
+    """Outside the form, so choosing a unit shows its fields right away (#55)."""
+
+    opciones = list(finanzas.UNIDADES)
+    return st.selectbox(
+        "Unidad (obligatoria)",
+        opciones,
+        index=opciones.index(actual if actual in opciones else finanzas.GLOBAL),
+        format_func=lambda u: finanzas.UNIDADES[u],
+        key=clave,
+        help="«Global»: un monto total. Por unidad (m², caja…): cantidad × precio unitario.",
+    )
+
+
+def _importes(prefijo: str, unidad: str, item: dict | None, ayuda_monto: str):
+    """The amount inputs and the currency: «Monto» for a «Global» item, cantidad and
+    precio unitario for a per-unit one (#55). Returns (monto, cantidad, precio, moneda)."""
+
+    monto = cantidad = precio = None
+    if unidad == finanzas.GLOBAL:
+        c1, c2 = st.columns([3, 2])
+        monto = c1.number_input(
+            "Monto",
+            min_value=0.0,
+            max_value=_MONTO_MAX,
+            value=float(item["monto"]) if item else None,
+            step=1000.0,
+            format="%.2f",
+            placeholder="0,00",
+            key=f"{prefijo}monto",
+            help=ayuda_monto,
+        )
+    else:
+        etiqueta = finanzas.UNIDADES[unidad]
+        u1, u2 = st.columns(2)
+        cantidad = u1.number_input(
+            f"Cantidad ({etiqueta})",
+            min_value=0.0,
+            max_value=9_999_999_999.0,
+            value=float(item["cantidad"]) if item and item.get("cantidad") is not None else None,
+            step=1.0,
+            format="%.2f",
+            placeholder="0,00",
+            key=f"{prefijo}cantidad",
+            help="Podés dejarla vacía (queda en 0) y cargarla después.",
+        )
+        precio = u2.number_input(
+            f"Precio unitario (por {etiqueta})",
+            min_value=0.0,
+            max_value=_MONTO_MAX,
+            value=(
+                float(item["precio_unitario"])
+                if item and item.get("precio_unitario") is not None
+                else None
+            ),
+            step=1000.0,
+            format="%.2f",
+            placeholder="0,00",
+            key=f"{prefijo}precio",
+            help="En la moneda del ítem. El total es cantidad × precio unitario.",
+        )
+        c2 = st.container()
+    moneda = c2.radio(
+        "Moneda (obligatoria)",
+        finanzas.MONEDAS,
+        index=list(finanzas.MONEDAS).index(item["moneda"]) if item else None,
+        horizontal=True,
+        key=f"{prefijo}moneda",
+    )
+    return monto, cantidad, precio, moneda
+
+
+def _total_txt(item: dict) -> str:
+    """«ARS 2.720.000 (85 m² × ARS 32.000)», or just the total for a «Global» item."""
+
+    total = finanzas.formato_monto(item["monto"], item["moneda"])
+    detalle = finanzas.detalle_unidad(item)
+    return f"{total} ({detalle})" if detalle else total
+
+
 def _faltantes(rubro_id, moneda) -> list[str]:
     faltan = []
     if rubro_id is None:
@@ -893,64 +975,54 @@ def _faltantes(rubro_id, moneda) -> list[str]:
 
 def _form_nuevo_item(supabase, obra_id: int, activos: list[dict], vigentes: list[dict]) -> None:
     sin_imprevistos = finanzas.imprevistos_vigente(vigentes) is None
-    with st.form("form_nuevo_item", border=True):
+    # The unit is chosen outside the form (#55), so both go in one bordered box.
+    with st.container(border=True, key="nuevo_item_caja"):
         st.markdown("**Nuevo ítem del presupuesto**")
-        rubro_id = st.selectbox(
-            "Rubro (obligatorio)",
-            [r["id"] for r in activos],
-            index=None,
-            placeholder="Elegí un rubro",
-            format_func=lambda i: next(r["nombre"] for r in activos if r["id"] == i),
-            key=f"{_NUEVO}rubro",
-        )
-        descripcion = st.text_input(
-            "Descripción",
-            max_chars=200,
-            placeholder="Ej.: platea de 80 m²",
-            key=f"{_NUEVO}descripcion",
-        )
-        c1, c2 = st.columns([3, 2])
-        monto = c1.number_input(
-            "Monto",
-            min_value=0.0,
-            max_value=_MONTO_MAX,
-            value=None,
-            step=1000.0,
-            format="%.2f",
-            placeholder="0,00",
-            key=f"{_NUEVO}monto",
-            help="Podés dejarlo vacío (queda en 0) y cargarlo después con «Editar ítem».",
-        )
-        moneda = c2.radio(
-            "Moneda (obligatoria)",
-            finanzas.MONEDAS,
-            index=None,
-            horizontal=True,
-            key=f"{_NUEVO}moneda",
-        )
-        tc = st.number_input(
-            "Cotización del dólar (opcional)",
-            min_value=0.0,
-            max_value=_TC_MAX,
-            value=None,
-            step=1.0,
-            format="%.2f",
-            placeholder="Automática: MEP de hoy",
-            key=f"{_NUEVO}tc",
-            help="Dejala vacía para usar el dólar MEP promedio de hoy.",
-        )
-        es_imprevistos = False
-        if sin_imprevistos:
-            es_imprevistos = st.checkbox(
-                "Es el ítem de imprevistos",
-                key=f"{_NUEVO}imprevistos",
-                help="Ahí van los gastos que no corresponden a otro ítem.",
+        unidad = _selector_unidad(f"{_NUEVO}unidad")
+        with st.form("form_nuevo_item", border=False):
+            rubro_id = st.selectbox(
+                "Rubro (obligatorio)",
+                [r["id"] for r in activos],
+                index=None,
+                placeholder="Elegí un rubro",
+                format_func=lambda i: next(r["nombre"] for r in activos if r["id"] == i),
+                key=f"{_NUEVO}rubro",
             )
-        b1, b2 = st.columns(2)
-        agregar = b1.form_submit_button(
-            "Agregar", type="primary", width="stretch", key="item_nuevo_agregar"
-        )
-        cancelar = b2.form_submit_button("Cancelar", width="stretch", key="item_nuevo_cancelar")
+            descripcion = st.text_input(
+                "Descripción",
+                max_chars=200,
+                placeholder="Ej.: platea de 80 m²",
+                key=f"{_NUEVO}descripcion",
+            )
+            monto, cantidad, precio, moneda = _importes(
+                _NUEVO,
+                unidad,
+                None,
+                "Podés dejarlo vacío (queda en 0) y cargarlo después con «Editar ítem».",
+            )
+            tc = st.number_input(
+                "Cotización del dólar (opcional)",
+                min_value=0.0,
+                max_value=_TC_MAX,
+                value=None,
+                step=1.0,
+                format="%.2f",
+                placeholder="Automática: MEP de hoy",
+                key=f"{_NUEVO}tc",
+                help="Dejala vacía para usar el dólar MEP promedio de hoy.",
+            )
+            es_imprevistos = False
+            if sin_imprevistos and unidad == finanzas.GLOBAL:  # «Imprevistos» es global (D25)
+                es_imprevistos = st.checkbox(
+                    "Es el ítem de imprevistos",
+                    key=f"{_NUEVO}imprevistos",
+                    help="Ahí van los gastos que no corresponden a otro ítem.",
+                )
+            b1, b2 = st.columns(2)
+            agregar = b1.form_submit_button(
+                "Agregar", type="primary", width="stretch", key="item_nuevo_agregar"
+            )
+            cancelar = b2.form_submit_button("Cancelar", width="stretch", key="item_nuevo_cancelar")
 
     if cancelar:
         st.session_state.pop(_NUEVO_ABIERTO, None)
@@ -972,6 +1044,9 @@ def _form_nuevo_item(supabase, obra_id: int, activos: list[dict], vigentes: list
             descripcion=descripcion or (finanzas.IMPREVISTOS if es_imprevistos else None),
             tipo_cambio=tc or None,
             es_imprevistos=es_imprevistos,
+            unidad=unidad,
+            cantidad=cantidad,
+            precio_unitario=precio,
         )
     except finanzas.FinanzasError as exc:
         st.error(f"No se agregó el ítem: {texto_seguro(exc)}")
@@ -979,8 +1054,7 @@ def _form_nuevo_item(supabase, obra_id: int, activos: list[dict], vigentes: list
     rubro = next((r["nombre"] for r in activos if r["id"] == item["rubro_id"]), "")
     _flash(
         "success",
-        "✅ Ítem agregado: "
-        + texto_seguro(f"{rubro} · {finanzas.formato_monto(item['monto'], item['moneda'])}."),
+        "✅ Ítem agregado: " + texto_seguro(f"{rubro} · {_total_txt(item)}."),
     )
     if aviso:
         _flash("warning", f"⚠️ {texto_seguro(aviso)}")
@@ -998,8 +1072,19 @@ def _form_editar_item(supabase, item: dict, activos: list[dict], rubros_por_id: 
         opciones.insert(0, item["rubro_id"])
     tc_actual = float(item["tipo_cambio"]) if item.get("tipo_cambio") else None
 
+    st.markdown("**Editar ítem**")
+    actual = item.get("unidad") or finanzas.GLOBAL
+    if item.get("es_imprevistos"):
+        unidad = finanzas.GLOBAL  # «Imprevistos» es siempre global (D25)
+    else:
+        unidad = _selector_unidad(f"{prefijo}unidad", actual)
+    # Same unit: current values. To «Global»: keeps the total (R-U4). To a unit:
+    # cantidad and precio start empty.
+    if unidad == actual or unidad == finanzas.GLOBAL:
+        base = item
+    else:
+        base = {"monto": item["monto"], "moneda": item["moneda"]}
     with st.form(f"form_editar_item_{item_id}", border=False):
-        st.markdown("**Editar ítem**")
         rubro_id = st.selectbox(
             "Rubro (obligatorio)",
             opciones,
@@ -1013,23 +1098,11 @@ def _form_editar_item(supabase, item: dict, activos: list[dict], rubros_por_id: 
             max_chars=200,
             key=f"{prefijo}descripcion",
         )
-        c1, c2 = st.columns([3, 2])
-        monto = c1.number_input(
-            "Monto",
-            min_value=0.0,
-            max_value=_MONTO_MAX,
-            value=float(item["monto"]),
-            step=1000.0,
-            format="%.2f",
-            key=f"{prefijo}monto",
-            help="Puede ser 0 si todavía no tiene precio.",
-        )
-        moneda = c2.radio(
-            "Moneda (obligatoria)",
-            finanzas.MONEDAS,
-            index=list(finanzas.MONEDAS).index(item["moneda"]),
-            horizontal=True,
-            key=f"{prefijo}moneda",
+        monto, cantidad, precio, moneda = _importes(
+            prefijo,
+            unidad,
+            base,
+            "Puede ser 0 si todavía no tiene precio.",
         )
         tc = st.number_input(
             "Cotización del dólar",
@@ -1069,6 +1142,9 @@ def _form_editar_item(supabase, item: dict, activos: list[dict], rubros_por_id: 
             rubro_id=rubro_id,
             descripcion=descripcion,
             tipo_cambio=tc or None,
+            unidad=unidad,
+            cantidad=cantidad,
+            precio_unitario=precio,
         )
     except finanzas.FinanzasError as exc:
         st.error(f"No se guardaron los cambios: {texto_seguro(exc)}")

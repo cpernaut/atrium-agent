@@ -35,6 +35,7 @@ Convención: el código (funciones, módulos, docstrings) está en inglés, pero
 | **Proveedor** | Empresa o persona a la que se le compra. Lista compartida por el equipo, con contacto, rubros y calificaciones. «Eliminar» lo archiva. | tabla `proveedores` · `gastos.proveedor_id` · `atrium/proveedores.py` |
 | **Calificación (de proveedor)** | Estrellas de 1 a 5 con comentario que pone cada socio a un proveedor; se muestra el promedio. | tabla `proveedor_calificaciones` |
 | **Compras (de un proveedor)** | Sus gastos no anulados en todas las obras, por obra y por moneda. | `proveedores.compras` |
+| **Unidad (de un ítem)** | Cómo se presupuesta un ítem: «Global» (un monto total) o por unidad de medida (m², m³, ml, kg, unidad, caja, jornal), con cantidad × precio unitario = total (#55). | `presupuesto_items.unidad` · `cantidad` · `precio_unitario` |
 | **Imprevistos** | El ítem por defecto de cada obra (rubro Otros, 10 % del presupuesto de la obra) para los gastos que no tienen otro ítem. | `es_imprevistos` · `crear_imprevistos` |
 | **Editar (gasto)** | Cambiar cualquier dato de un gasto, incluso pasarlo a otro ítem de la obra. Queda registro de quién y cuándo. Un anulado no se edita. | `update_gasto` · `editado_por` · `editado_en` |
 | **Saldo** | Total del ítem − gastado. | `FilaItem.saldo` |

@@ -85,6 +85,10 @@ select pg_temp.ok(
   and not exists (select 1 from public.gastos where not public.texto_limpio(descripcion)),
   'texto limpio #53: los datos ya guardados se limpian solos (invisibles y marcadores)');
 select pg_temp.ok(
+  not exists (select 1 from public.presupuesto_items where unidad <> 'global' or cantidad is not null)
+  and exists (select 1 from public.presupuesto_items where descripcion = 'Hierro previo' and monto = 100),
+  'ítems por unidad #55: los ítems que ya existían quedan «Global» con su monto');
+select pg_temp.ok(
   public.limpiar_texto(U&'\FF49\FF47\FF4E\FF4F\FF52\3000\FF3B\FF3Bx\FF3D\FF3D') = 'ignor [ [x] ]'
   and exists (select 1 from public.gastos where descripcion = 'Gasto en ancho completo'),
   'texto limpio #53: el ancho completo pasa a ASCII, también en los datos ya guardados');
@@ -124,6 +128,29 @@ insert into public.presupuesto_items (obra_id, rubro_id, descripcion, monto, mon
 create temp view item_hierro as
   select * from public.presupuesto_items where descripcion = 'Hierro';
 grant select on item_hierro to authenticated, anon;
+
+-- #55 · Ítems por unidad: total = cantidad × precio; unidades de una lista fija.
+insert into public.presupuesto_items (obra_id, rubro_id, descripcion, monto, moneda, unidad, cantidad, precio_unitario)
+  select o.id, r.id, 'Porcelanato', 2736000, 'ARS', 'm2', 85.50, 32000 from public.obras o, public.rubros r
+  where o.nombre = 'Obra RLS' and r.nombre = 'Pisos y revestimientos';
+select pg_temp.falla($$insert into public.presupuesto_items (obra_id, rubro_id, monto, moneda, unidad, cantidad, precio_unitario)
+  select o.id, r.id, 999, 'ARS', 'm2', 85, 32000 from public.obras o, public.rubros r
+  where o.nombre = 'Obra RLS' and r.nombre = 'Pintura'$$, '23514');
+select pg_temp.falla($$insert into public.presupuesto_items (obra_id, rubro_id, monto, moneda, unidad, cantidad, precio_unitario)
+  select o.id, r.id, 10, 'ARS', 'litro', 1, 10 from public.obras o, public.rubros r
+  where o.nombre = 'Obra RLS' and r.nombre = 'Pintura'$$, '23514');
+select pg_temp.falla($$insert into public.presupuesto_items (obra_id, rubro_id, monto, moneda, cantidad, precio_unitario)
+  select o.id, r.id, 10, 'ARS', 1, 10 from public.obras o, public.rubros r
+  where o.nombre = 'Obra RLS' and r.nombre = 'Pintura'$$, '23514');
+select pg_temp.falla($$update public.presupuesto_items set cantidad = 90 where descripcion = 'Porcelanato'$$, '23514');
+select pg_temp.falla($$update public.presupuesto_items set cantidad = null where descripcion = 'Porcelanato'$$, '23514');
+select pg_temp.falla($$update public.presupuesto_items set precio_unitario = null where descripcion = 'Porcelanato'$$, '23514');
+update public.presupuesto_items set cantidad = 90, monto = 2880000 where descripcion = 'Porcelanato';
+update public.presupuesto_items set unidad = 'global', cantidad = null, precio_unitario = null
+ where descripcion = 'Porcelanato';
+select pg_temp.ok((select unidad = 'global' and monto = 2880000 from public.presupuesto_items
+                    where descripcion = 'Porcelanato'),
+                  'ítems por unidad #55: total = cantidad × precio, unidad de la lista, se edita y pasa a global');
 -- Obra y rubro los pone la base desde el ítem (R11): aunque se manden otros.
 insert into public.gastos (presupuesto_item_id, rubro_id, descripcion, monto, moneda)
   select id, (select id from public.rubros where nombre = 'Pintura'), 'Hierro', 350000, 'ARS'
@@ -426,7 +453,7 @@ delete from public.presupuesto_items;
 delete from public.rubros;
 select pg_temp.ok((select count(*) from public.gastos where descripcion = 'Hierro') = 1
                   and (select count(*) from public.presupuesto_items i join public.obras o on o.id = i.obra_id
-                       where o.nombre = 'Obra RLS') = 6
+                       where o.nombre = 'Obra RLS') = 7
                   and (select count(*) from public.rubros where nombre not like 'Acme%' and nombre not like 'Sin nombre%') = 20,
                   'sin DELETE: gastos, presupuesto y rubros no se borran');
 

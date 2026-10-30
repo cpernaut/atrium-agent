@@ -899,3 +899,91 @@ def test_otros_no_se_desactiva(db):
     with pytest.raises(finanzas.FinanzasError, match="«Otros» no se puede desactivar"):
         finanzas.set_rubro_activo(db, otros["id"], False)
     assert finanzas.set_rubro_activo(db, otros["id"], True)["activo"]
+
+
+# --------------------------------------------------------------------------- #
+# #55 · Ítems por unidad de medida
+# --------------------------------------------------------------------------- #
+def test_calcular_por_unidad():
+    assert finanzas.calcular_por_unidad("m²", "85,5", "32000") == {
+        "unidad": "m2",
+        "cantidad": "85.50",
+        "precio_unitario": "32000.00",
+        "monto": "2736000.00",
+    }
+    # Vacíos = 0 (D23); «Global» no guarda cantidad ni precio.
+    assert finanzas.calcular_por_unidad("caja", None, None)["monto"] == "0.00"
+    assert finanzas.calcular_por_unidad("global", 5, 5, monto="10") == {
+        "unidad": "global",
+        "cantidad": None,
+        "precio_unitario": None,
+        "monto": "10.00",
+    }
+
+
+@pytest.mark.parametrize(
+    ("unidad", "cantidad", "precio", "mensaje"),
+    [
+        ("litro", 1, 1, "unidad de la lista"),
+        ("m2", -1, 1, "La cantidad"),
+        ("m2", 1, -1, "negativo"),
+        ("m2", "9999999999", "999999999", "demasiado grande"),
+    ],
+)
+def test_calcular_por_unidad_invalido(unidad, cantidad, precio, mensaje):
+    with pytest.raises(finanzas.FinanzasError, match=mensaje):
+        finanzas.calcular_por_unidad(unidad, cantidad, precio)
+
+
+def test_detalle_unidad():
+    item = {"unidad": "m2", "cantidad": "85.50", "precio_unitario": "32000", "moneda": "ARS"}
+    assert finanzas.detalle_unidad(item) == "85,50 m² × ARS 32.000"
+    assert finanzas.detalle_unidad({"unidad": "global", "monto": "1", "moneda": "ARS"}) is None
+
+
+def test_item_por_unidad_alta_edicion_y_resumen(db, mep):
+    item, _ = finanzas.add_presupuesto_item(
+        db,
+        1,
+        monto=None,
+        moneda="ARS",
+        rubro_id=_rubro(db, "Pintura"),
+        descripcion="Látex",
+        unidad="m2",
+        cantidad=100,
+        precio_unitario=1000,
+    )
+    assert item["monto"] == "100000.00"
+    # Sin unidad ni precio: conserva los suyos y recalcula con la cantidad nueva.
+    editado = finanzas.update_presupuesto_item(
+        db,
+        item["id"],
+        monto=None,
+        moneda="ARS",
+        rubro_id=_rubro(db, "Pintura"),
+        descripcion="Látex",
+        cantidad=150,
+    )
+    assert (editado["unidad"], editado["monto"]) == ("m2", "150000.00")
+    texto = finanzas.describe_resumen(finanzas.resumen(db, 1, "ARS"), "Casa Lote 12")
+    assert "- Látex (150 m² × ARS 1.000): total ARS 150.000" in texto  # F-03-CA-48
+
+
+def test_imprevistos_siempre_global(db, mep):
+    with pytest.raises(finanzas.FinanzasError, match="global"):
+        finanzas.add_presupuesto_item(
+            db,
+            1,
+            monto=None,
+            moneda="ARS",
+            rubro_id=_rubro(db, "Otros"),
+            es_imprevistos=True,
+            unidad="m2",
+            cantidad=1,
+            precio_unitario=1,
+        )
+    imp, _ = finanzas.crear_imprevistos(db, {"id": 1, "moneda": "ARS"})
+    with pytest.raises(finanzas.FinanzasError, match="global"):
+        finanzas.update_presupuesto_item(
+            db, imp["id"], monto=0, moneda="ARS", rubro_id=imp["rubro_id"], unidad="caja"
+        )

@@ -485,11 +485,12 @@ def test_f03_ca_23c_campos_con_etiqueta(e2e):
     campos = [*tab.number_input, *tab.text_input, *tab.selectbox, *tab.radio]
     propios = [c for c in campos if c.key and c.key.startswith(("nuevo_item_", "editar_item_"))]
 
-    assert len(propios) == 10
+    assert len(propios) == 12  # + «Unidad» en el alta y en la edición (#55)
     for c in propios:
         assert c.label and c.label.strip(), c.key
     obligatorios = {c.key.split("_item_")[-1] for c in propios if "obligatori" in c.label}
-    assert {k.split("_")[-1] for k in obligatorios} == {"rubro", "moneda"}  # monto: D9
+    # monto: D9; la unidad siempre tiene valor («Global» por defecto)
+    assert {k.split("_")[-1] for k in obligatorios} == {"rubro", "moneda", "unidad"}
     for b in tab.button:
         assert b.label.strip(), b.key
 
@@ -719,3 +720,135 @@ def test_tabla_9_ayudas_de_los_iconos_no_interpretan_markdown(e2e):
     assert len(propias) >= 4  # agregar ítem, registrar gasto, editar y borrar
     for ayuda in propias:
         assert "](https://" not in ayuda and "![" not in ayuda, ayuda
+
+
+# --------------------------------------------------------------------------- #
+# #55 · Ítems por unidad de medida
+# --------------------------------------------------------------------------- #
+def _alta_por_unidad(at, e2e, unidad, cantidad, precio, rubro="Pisos y revestimientos"):
+    if not any(w.key == "nuevo_item_unidad" for w in _tab(at).selectbox):
+        at = _abrir_nuevo(at)
+    at = at.selectbox(key="nuevo_item_unidad").set_value(unidad).run()
+    at.selectbox(key="nuevo_item_rubro").set_value(_rubro(e2e, rubro))
+    at.text_input(key="nuevo_item_descripcion").input("Porcelanato 60×60")
+    at.number_input(key="nuevo_item_cantidad").set_value(cantidad)
+    at.number_input(key="nuevo_item_precio").set_value(precio)
+    at.radio(key="nuevo_item_moneda").set_value("ARS")
+    return click(at, "Agregar")
+
+
+def test_f03_ca_41_alta_por_unidad_calcula_el_total(e2e):
+    """F-03-CA-41: un ítem nuevo en m² con 85 × ARS 32.000 se guarda con total
+    ARS 2.720.000 y la tabla muestra el detalle «85 m² × ARS 32.000»."""
+
+    _obra(e2e)
+    at = _alta_por_unidad(_plata(e2e), e2e, "m2", 85.0, 32_000.0)
+
+    assert not at.exception
+    item = _vigentes(e2e)[-1]
+    assert (item["unidad"], Decimal(item["monto"])) == ("m2", Decimal("2720000"))
+    assert "Ítem agregado: Pisos y revestimientos · ARS 2.720.000 (85 m² × ARS 32.000)" in texts(at)
+    fila = next(f for f in tabla_items(at) if f["nombre"] == "Porcelanato 60×60")
+    assert (
+        "ARS 2.720.000" in fila["Presupuestado"] and "85 m² × ARS 32.000" in fila["Presupuestado"]
+    )
+
+
+def test_f03_ca_42_cambiar_la_cantidad_recalcula(e2e):
+    """F-03-CA-42: al cambiar la cantidad de un ítem por unidad se recalculan el
+    total, el saldo y el semáforo."""
+
+    _obra(e2e)
+    item, _ = finanzas.add_presupuesto_item(
+        e2e.db,
+        1,
+        monto=None,
+        moneda="ARS",
+        rubro_id=_rubro(e2e, "Pintura"),
+        descripcion="Látex",
+        unidad="m2",
+        cantidad=100,
+        precio_unitario=1000,
+    )
+    finanzas.add_gasto(e2e.db, item["id"], monto=95_000, moneda="ARS", descripcion="Compra")
+    at = _plata(e2e)
+    assert "Cerca del límite" in tabla_items(at)[-1]["Estado"]
+
+    at = _abrir_edicion(at, item["id"])
+    k = f"editar_item_{item['id']}_"
+    assert at.number_input(key=f"{k}cantidad").value == 100.0
+    at.number_input(key=f"{k}cantidad").set_value(150.0)
+    at = at.button(key=f"item_guardar_{item['id']}").click().run()
+
+    assert Decimal(finanzas.get_presupuesto_item(e2e.db, item["id"])["monto"]) == 150_000
+    fila = tabla_items(at)[-1]
+    assert "ARS 150.000" in fila["Presupuestado"] and "Dentro del presupuesto" in fila["Estado"]
+
+
+def test_f03_ca_43_global_como_siempre(e2e):
+    """F-03-CA-43: con la unidad «Global» (la de siempre) se carga solo el monto."""
+
+    _obra(e2e)
+    at = _abrir_nuevo(_plata(e2e))
+
+    assert at.selectbox(key="nuevo_item_unidad").value == "global"
+    claves = {w.key for w in _tab(at).number_input}
+    assert "nuevo_item_monto" in claves and "nuevo_item_cantidad" not in claves
+    at.selectbox(key="nuevo_item_rubro").set_value(_rubro(e2e, "Instalación de gas"))
+    at.number_input(key="nuevo_item_monto").set_value(2_500_000.0)
+    at.radio(key="nuevo_item_moneda").set_value("ARS")
+    at = click(at, "Agregar")
+
+    item = _vigentes(e2e)[-1]
+    assert (item["unidad"], item["cantidad"], Decimal(item["monto"])) == ("global", None, 2_500_000)
+
+
+def test_f03_ca_44_pasar_a_global_conserva_el_total(e2e):
+    """F-03-CA-44: un ítem por unidad que pasa a «Global» conserva su total y deja
+    de mostrar cantidad y precio."""
+
+    _obra(e2e)
+    item, _ = finanzas.add_presupuesto_item(
+        e2e.db,
+        1,
+        monto=None,
+        moneda="ARS",
+        rubro_id=_rubro(e2e, "Pintura"),
+        descripcion="Látex",
+        unidad="m2",
+        cantidad=100,
+        precio_unitario=1000,
+    )
+    at = _abrir_edicion(_plata(e2e), item["id"])
+    k = f"editar_item_{item['id']}_"
+    at = at.selectbox(key=f"{k}unidad").set_value("global").run()
+    assert at.number_input(key=f"{k}monto").value == 100_000.0
+    at = at.button(key=f"item_guardar_{item['id']}").click().run()
+
+    guardado = finanzas.get_presupuesto_item(e2e.db, item["id"])
+    assert (guardado["unidad"], guardado["cantidad"], Decimal(guardado["monto"])) == (
+        "global",
+        None,
+        100_000,
+    )
+    assert "×" not in tabla_items(at)[-1]["Presupuestado"]
+
+
+def test_f03_ca_45_unidad_caja(e2e):
+    """F-03-CA-45: la lista de unidades incluye «caja» (D20) y se muestra así."""
+
+    _obra(e2e)
+    at = _abrir_nuevo(_plata(e2e))
+    opciones = at.selectbox(key="nuevo_item_unidad").options
+    assert opciones == ["Global", "m²", "m³", "ml", "kg", "unidad", "caja", "jornal"]
+    at = _alta_por_unidad(at, e2e, "caja", 12.0, 15_000.0)
+    assert "12 caja × ARS 15.000" in tabla_items(at)[-1]["Presupuestado"]
+
+
+def test_f03_ca_45b_imprevistos_siempre_global(e2e):
+    """F-03-CA-45b / D25: «Imprevistos» no ofrece unidad: es siempre un monto global."""
+
+    _obra(e2e)
+    imp, _ = finanzas.crear_imprevistos(e2e.db, obras.get_obra(e2e.db, 1))
+    at = _abrir_edicion(_plata(e2e), imp["id"])
+    assert f"editar_item_{imp['id']}_unidad" not in {w.key for w in _tab(at).selectbox}

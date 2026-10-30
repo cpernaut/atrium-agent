@@ -639,6 +639,74 @@ def anular_gasto(client: Client, gasto_id: int) -> Fila:
 # --------------------------------------------------------------------------- #
 # Presupuesto
 # --------------------------------------------------------------------------- #
+# How an item is budgeted (#55): «Global» (one total) or per unit of measure,
+# with cantidad × precio_unitario = monto. Keys are what the database stores.
+GLOBAL = "global"
+UNIDADES: dict[str, str] = {
+    GLOBAL: "Global",
+    "m2": "m²",
+    "m3": "m³",
+    "ml": "ml",
+    "kg": "kg",
+    "unidad": "unidad",
+    "caja": "caja",
+    "jornal": "jornal",
+}
+_CANTIDAD_MAX = Decimal("9999999999.99")  # numeric(12,2)
+_UNIDAD_ALIAS = {"m²": "m2", "m³": "m3", "mts2": "m2", "mts3": "m3", "u": "unidad"}
+
+
+def _unidad(valor: Any) -> str:
+    clave = str(valor or GLOBAL).strip().lower()
+    clave = _UNIDAD_ALIAS.get(clave, clave)
+    if clave not in UNIDADES:
+        raise FinanzasError("Elegí una unidad de la lista: " + ", ".join(UNIDADES.values()) + ".")
+    return clave
+
+
+def calcular_por_unidad(
+    unidad: Any, cantidad: Any = None, precio_unitario: Any = None, monto: Any = None
+) -> Fila:
+    """The item's unit fields as they would be saved (#55).
+
+    «Global»: ``monto`` as given, no cantidad or precio. Per unit: cantidad and
+    precio may be empty or zero (priced later, D23) and the total is computed.
+    """
+
+    clave = _unidad(unidad)
+    if clave == GLOBAL:
+        return {
+            "unidad": GLOBAL,
+            "cantidad": None,
+            "precio_unitario": None,
+            "monto": str(parse_monto_item(monto)),
+        }
+    if cantidad is None or (isinstance(cantidad, str) and not cantidad.strip()):
+        cantidad = 0
+    cant = _en_rango(cantidad, _CENTAVOS, _CANTIDAD_MAX, "La cantidad", cero=True)
+    precio = parse_monto_item(precio_unitario)
+    total = (cant * precio).quantize(_CENTAVOS, rounding=ROUND_HALF_UP)
+    if total > _MONTO_MAX:
+        raise FinanzasError("El total (cantidad × precio unitario) es demasiado grande.")
+    return {
+        "unidad": clave,
+        "cantidad": str(cant),
+        "precio_unitario": str(precio),
+        "monto": str(total),
+    }
+
+
+def detalle_unidad(item: Fila) -> str | None:
+    """«85 m² × ARS 32.000» for a per-unit item; None for «Global» (#55)."""
+
+    clave = item.get("unidad") or GLOBAL
+    if clave == GLOBAL or item.get("cantidad") in (None, ""):
+        return None
+    cantidad = formato_numero(parse_decimal(item["cantidad"]).normalize())
+    precio = formato_monto(item.get("precio_unitario") or 0, item["moneda"])
+    return f"{cantidad} {UNIDADES.get(clave, clave)} × {precio}"
+
+
 def add_presupuesto_item(
     client: Client,
     obra_id: int,
@@ -649,17 +717,24 @@ def add_presupuesto_item(
     descripcion: str | None = None,
     tipo_cambio: Any = None,
     es_imprevistos: bool = False,
+    unidad: Any = GLOBAL,
+    cantidad: Any = None,
+    precio_unitario: Any = None,
 ) -> tuple[Fila, str | None]:
     """Insert a budget item dated today, with today's MEP (F-03 D7).
 
     ``monto`` may be empty or zero: items can be listed first and priced later.
+    With a ``unidad`` other than «Global», the total is cantidad × precio (#55).
     """
 
     fecha = hoy()
+    por_unidad = calcular_por_unidad(unidad, cantidad, precio_unitario, monto)
+    if es_imprevistos and por_unidad["unidad"] != GLOBAL:
+        raise FinanzasError("«Imprevistos» se presupuesta siempre como monto global.")
     fila: Fila = {
         "obra_id": int(obra_id),
         "fecha": fecha.isoformat(),
-        "monto": str(parse_monto_item(monto)),
+        **por_unidad,
         "moneda": _moneda(moneda),
         "rubro_id": _rubro_activo(client, rubro_id)["id"],
         "descripcion": _texto(descripcion, "la descripción", _DESCRIPCION_MAX, False),
@@ -805,6 +880,9 @@ CAMPOS_EDITABLES_ITEM = (
     "moneda",
     "tipo_cambio",
     "tipo_cambio_origen",
+    "unidad",
+    "cantidad",
+    "precio_unitario",
 )
 
 
@@ -817,11 +895,16 @@ def update_presupuesto_item(
     rubro_id: Any,
     descripcion: str | None = None,
     tipo_cambio: Any = None,
+    unidad: Any = None,
+    cantidad: Any = None,
+    precio_unitario: Any = None,
 ) -> Fila:
     """Edit a budget item (F-03 R9).
 
     ``tipo_cambio``: empty keeps the current rate; a different value replaces it
     and marks it ``manual``. A deleted (anulado) item can't be edited.
+    ``unidad`` None keeps the item's; for a per-unit item, an omitted cantidad or
+    precio keeps the current one and the total is recomputed (#55).
     """
 
     actual = get_presupuesto_item(client, item_id)
@@ -834,10 +917,18 @@ def update_presupuesto_item(
     else:
         rubro = _rubro_activo(client, rubro_id)["id"]
 
+    clave = _unidad(unidad if unidad is not None else actual.get("unidad"))
+    if clave != GLOBAL:
+        if cantidad is None:
+            cantidad = actual.get("cantidad")
+        if precio_unitario is None:
+            precio_unitario = actual.get("precio_unitario")
+    if actual.get("es_imprevistos") and clave != GLOBAL:
+        raise FinanzasError("«Imprevistos» se presupuesta siempre como monto global.")
     cambios: Fila = {
         "rubro_id": rubro,
         "descripcion": _texto(descripcion, "la descripción", _DESCRIPCION_MAX, False),
-        "monto": str(parse_monto_item(monto)),
+        **calcular_por_unidad(clave, cantidad, precio_unitario, monto),
         "moneda": _moneda(moneda),
     }
     if tipo_cambio not in (None, "", 0):
@@ -1131,6 +1222,8 @@ def describe_resumen(res: Resumen, nombre_obra: str) -> str:
         lineas.append("Por ítem del presupuesto:")
         for fi in res.items.values():
             nombre = fi.item.get("descripcion") or "Sin descripción"
+            if detalle := detalle_unidad(fi.item):  # #55: «85 m² × ARS 32.000»
+                nombre += f" ({detalle})"
             lineas.append(
                 f"- {nombre}: total {formato_monto(fi.presupuestado, m)}, gastado "
                 f"{formato_monto(fi.gastado, m)} ({formato_porcentaje(fi.ejecutado)}), saldo "
