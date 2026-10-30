@@ -21,6 +21,7 @@ cuando está en `Lista` (sus *Decisiones pendientes* resueltas).
 - Archivar obras y editar notas (mejoras de F-02, #26). Editar los datos de la
   obra ya está, en su Detalle (UX-03).
 - Unir proveedores duplicados (mejora de F-06).
+- Ver planos de **AutoCAD (DWG) dentro de la app** con el visor de Autodesk (#57; mejora de F-05).
 - **Ofertas de proveedores por ítem** (#36), sobre la lista de F-06: candidata a F-07.
 - Renombrar rubros (la pantalla de UX-03 agrega, ordena y desactiva).
 - **Flujo de fondos** del flipping: ingresos, señas, aportes de socios y
